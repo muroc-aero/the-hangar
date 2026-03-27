@@ -1,4 +1,4 @@
-# meridian-oas — OpenAeroStruct MCP Server
+# muroc-oas — OpenAeroStruct MCP Server
 
 This package wraps OpenAeroStruct as an MCP tool server using FastMCP.
 

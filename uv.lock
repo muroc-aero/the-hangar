@@ -4,9 +4,9 @@ requires-python = ">=3.11"
 
 [manifest]
 members = [
-    "meridian-oas",
-    "meridian-sdk",
-    "meridian-tools",
+    "muroc-hangar",
+    "muroc-oas",
+    "muroc-sdk",
 ]
 
 [[package]]
@@ -1000,12 +1000,26 @@ wheels = [
 ]
 
 [[package]]
-name = "meridian-oas"
+name = "more-itertools"
+version = "10.8.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ea/5d/38b681d3fce7a266dd9ab73c66959406d565b3e85f21d5e66e1181d93721/more_itertools-10.8.0.tar.gz", hash = "sha256:f638ddf8a1a0d134181275fb5d58b086ead7c6a72429ad725c67503f13ba30bd", size = 137431, upload-time = "2025-09-02T15:23:11.018Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a4/8e/469e5a4a2f5855992e425f3cb33804cc07bf18d48f2db061aec61ce50270/more_itertools-10.8.0-py3-none-any.whl", hash = "sha256:52d4362373dcf7c52546bc4af9a86ee7c4579df9a8dc268be0a2f949d376cc9b", size = 69667, upload-time = "2025-09-02T15:23:09.635Z" },
+]
+
+[[package]]
+name = "muroc-hangar"
+version = "0.1.0"
+source = { virtual = "." }
+
+[[package]]
+name = "muroc-oas"
 version = "0.1.0"
 source = { editable = "packages/oas" }
 dependencies = [
     { name = "matplotlib" },
-    { name = "meridian-sdk" },
+    { name = "muroc-sdk" },
     { name = "numpy" },
     { name = "openmdao" },
 ]
@@ -1013,13 +1027,13 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "matplotlib" },
-    { name = "meridian-sdk", editable = "packages/sdk" },
+    { name = "muroc-sdk", editable = "packages/sdk" },
     { name = "numpy" },
     { name = "openmdao", specifier = ">=3.30" },
 ]
 
 [[package]]
-name = "meridian-sdk"
+name = "muroc-sdk"
 version = "0.1.0"
 source = { editable = "packages/sdk" }
 dependencies = [
@@ -1031,20 +1045,6 @@ dependencies = [
 requires-dist = [
     { name = "fastmcp", specifier = ">=2.0" },
     { name = "pydantic", specifier = ">=2.0" },
-]
-
-[[package]]
-name = "meridian-tools"
-version = "0.1.0"
-source = { virtual = "." }
-
-[[package]]
-name = "more-itertools"
-version = "10.8.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/ea/5d/38b681d3fce7a266dd9ab73c66959406d565b3e85f21d5e66e1181d93721/more_itertools-10.8.0.tar.gz", hash = "sha256:f638ddf8a1a0d134181275fb5d58b086ead7c6a72429ad725c67503f13ba30bd", size = 137431, upload-time = "2025-09-02T15:23:11.018Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/a4/8e/469e5a4a2f5855992e425f3cb33804cc07bf18d48f2db061aec61ce50270/more_itertools-10.8.0-py3-none-any.whl", hash = "sha256:52d4362373dcf7c52546bc4af9a86ee7c4579df9a8dc268be0a2f949d376cc9b", size = 69667, upload-time = "2025-09-02T15:23:09.635Z" },
 ]
 
 [[package]]

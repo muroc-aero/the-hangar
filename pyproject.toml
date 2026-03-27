@@ -1,5 +1,5 @@
 [project]
-name = "meridian-tools"
+name = "muroc-hangar"
 version = "0.1.0"
 description = "Agentic engineering analysis tools"
 requires-python = ">=3.11"
@@ -8,5 +8,5 @@ requires-python = ">=3.11"
 members = ["packages/*"]
 
 [tool.uv.sources]
-meridian-sdk = { workspace = true }
-meridian-oas = { workspace = true }
+muroc-sdk = { workspace = true }
+muroc-oas = { workspace = true }

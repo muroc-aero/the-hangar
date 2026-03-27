@@ -1,0 +1,134 @@
+{
+  "skill_name": "oas-cli-guide",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I want to compute the drag polar for a CRM wing using the OAS command line tools. Show me a complete working Python script that uses interactive mode to spawn oas-cli, create the surface, and sweep alpha from -5 to 15 degrees. I need to be able to extract the best L/D from the result.",
+      "expected_output": "A working Python script using subprocess to spawn oas-cli interactive, with JSON-lines protocol, that creates a CRM surface and calls compute_drag_polar. Should show how to parse the response and extract best_L_over_D.",
+      "assertions": [
+        {
+          "id": "uses_interactive_mode",
+          "description": "Script spawns oas-cli interactive as a subprocess (not one-shot subcommands)",
+          "type": "output_contains",
+          "value": "interactive"
+        },
+        {
+          "id": "correct_json_protocol",
+          "description": "Sends JSON with 'tool' and 'args' keys on stdin",
+          "type": "output_contains",
+          "value": "\"tool\""
+        },
+        {
+          "id": "creates_surface_first",
+          "description": "create_surface is called before compute_drag_polar",
+          "type": "output_contains",
+          "value": "create_surface"
+        },
+        {
+          "id": "calls_drag_polar",
+          "description": "compute_drag_polar tool is used",
+          "type": "output_contains",
+          "value": "compute_drag_polar"
+        },
+        {
+          "id": "extracts_best_ld",
+          "description": "Shows how to extract best_L_over_D or L_over_D from the result",
+          "type": "output_contains_any",
+          "values": ["best_L_over_D", "L_over_D", "best L/D"]
+        },
+        {
+          "id": "handles_ok_field",
+          "description": "Checks the ok field in the response envelope to detect errors",
+          "type": "output_contains_any",
+          "values": ["[\"ok\"]", "['ok']", "resp[\"ok\"]", "resp['ok']", "response[\"ok\"]", "response['ok']", ".ok", "\"ok\":", "'ok':"]
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "I need to run a full aerostructural optimization from bash scripts in my CI pipeline. The workflow is: create a CRM wing with a tube spar, then minimize fuel burn with twist, thickness, and alpha as design variables. Show me the bash commands using one-shot subcommand mode, and explain how state is preserved between commands. Also show me how to check whether the optimizer converged.",
+      "expected_output": "Bash commands using oas-cli subcommands (create-surface, run-optimization) with correct structural parameters (fem_model_type=tube, E, G, yield_stress, mrho, thickness_cp), fuel burn objective, correct DVs for aerostruct, and explanation of state file persistence.",
+      "assertions": [
+        {
+          "id": "uses_oneshot_mode",
+          "description": "Uses oas-cli kebab-case subcommand syntax (e.g. create-surface or run-optimization)",
+          "type": "output_contains_any",
+          "values": ["create-surface", "run-optimization"]
+        },
+        {
+          "id": "includes_fem_model_type",
+          "description": "fem_model_type or --fem-model-type is specified for structural analysis",
+          "type": "output_contains_any",
+          "values": ["fem_model_type", "fem-model-type"]
+        },
+        {
+          "id": "includes_material_props",
+          "description": "Material properties (yield_stress or --yield-stress) are provided",
+          "type": "output_contains_any",
+          "values": ["yield_stress", "yield-stress"]
+        },
+        {
+          "id": "uses_fuelburn_objective",
+          "description": "fuelburn is the optimization objective",
+          "type": "output_contains_any",
+          "values": ["fuelburn", "fuel_burn"]
+        },
+        {
+          "id": "explains_state_persistence",
+          "description": "Explains how surface state is saved between one-shot calls (mentions state file or workspace)",
+          "type": "output_contains_any",
+          "values": [".oas_mcp/state", "state file", "workspace", "persist"]
+        },
+        {
+          "id": "checks_convergence",
+          "description": "Shows how to verify optimizer convergence from the response",
+          "type": "output_contains_any",
+          "values": ["success", "converge", "opt_exit_flag"]
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "I'm writing a reproducible benchmark script that runs several OAS analyses back-to-back: first a rectangular wing aero analysis at alpha=3, then the same at alpha=7, then a drag polar. I want all results saved to a file. What's the cleanest way to do this with oas-cli? Show me the workflow file and the command to run it.",
+      "expected_output": "A JSON workflow file with steps (create_surface, run_aero_analysis x2, compute_drag_polar) and the oas-cli run-script command with --save-to flag. Should explain why script mode is appropriate here.",
+      "assertions": [
+        {
+          "id": "uses_script_mode",
+          "description": "Uses oas-cli run-script command",
+          "type": "output_contains",
+          "value": "run-script"
+        },
+        {
+          "id": "valid_json_array",
+          "description": "Workflow is a JSON array of tool-call objects",
+          "type": "output_contains",
+          "value": "\"tool\""
+        },
+        {
+          "id": "creates_surface_in_script",
+          "description": "create_surface is the first step in the script",
+          "type": "output_contains",
+          "value": "create_surface"
+        },
+        {
+          "id": "uses_save_to_flag",
+          "description": "Uses --save-to flag (not --output) to save results to file",
+          "type": "output_contains_any",
+          "values": ["--save-to", "save-to"]
+        },
+        {
+          "id": "explains_why_script_mode",
+          "description": "Explains why script mode suits this use case (reproducibility, single process, shared state, batch)",
+          "type": "output_contains_any",
+          "values": ["reproducib", "single process", "shared state", "in-memory", "batch"]
+        },
+        {
+          "id": "num_y_is_odd",
+          "description": "Uses an odd num_y value (not even) for the mesh",
+          "type": "output_contains_any",
+          "values": ["\"num_y\": 3", "\"num_y\": 5", "\"num_y\": 7", "\"num_y\": 9", "\"num_y\": 11", "\"num_y\": 13", "\"num_y\": 15", "\"num_y\": 21", "\"num_y\": 35"]
+        }
+      ]
+    }
+  ]
+}

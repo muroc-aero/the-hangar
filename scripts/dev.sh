@@ -2,4 +2,4 @@
 set -euo pipefail
 
 # Start dev environment
-echo "Starting meridian-tools dev environment..."
+echo "Starting muroc-hangar dev environment..."

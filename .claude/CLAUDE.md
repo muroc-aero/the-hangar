@@ -1,4 +1,4 @@
-# Meridian Tools Workspace
+# Muroc Hangar Workspace
 
 ## What this is
 A monorepo for MCP servers that expose engineering analysis tools to AI agents.
@@ -6,9 +6,9 @@ Each tool gets its own package under `packages/`. Shared infrastructure lives
 in `packages/sdk/`.
 
 ## Source layout
-- `packages/sdk/` — meridian-sdk: provenance, response envelopes, validation,
+- `packages/sdk/` — muroc-sdk: provenance, response envelopes, validation,
   session management, visualization
-- `packages/oas/` — meridian-oas: OpenAeroStruct aerostructural analysis server
+- `packages/oas/` — muroc-oas: OpenAeroStruct aerostructural analysis server
 - `skills/` — cross-tool process skills (design study workflows, etc.)
 - `upstream/` — local clones of upstream tool repos (read-only reference, git-ignored)
 
@@ -24,7 +24,7 @@ Key OAS entry points:
 - `openaerostruct/aerodynamics/` — VLM and aero components
 
 ## When implementing SDK infrastructure
-Read `packages/sdk/src/meridian_sdk/provenance/` for the provenance model.
+Read `packages/sdk/src/muroc_sdk/provenance/` for the provenance model.
 The middleware in `middleware.py` auto-captures every tool call — new tools
 get provenance for free if they use the `@tracked_tool` decorator.
 
@@ -41,7 +41,7 @@ get provenance for free if they use the `@tracked_tool` decorator.
 ```bash
 # Development (from workspace root)
 uv sync
-uv run python -m meridian_oas.server
+uv run python -m muroc_oas.server
 
 # Docker
 docker compose -f docker/docker-compose.yml up --build
@@ -57,6 +57,6 @@ uv run pytest tests/integration/
 ## Adding a new tool
 1. Create `packages/<toolname>/` following the `oas/` structure
 2. Add tool-specific skills in `packages/<toolname>/skills/`
-3. Import and use `meridian_sdk` for provenance, envelopes, validation
+3. Import and use `muroc_sdk` for provenance, envelopes, validation
 4. Add upstream clone to `scripts/setup-upstream.sh`
 5. Add to `docker/docker-compose.yml`
