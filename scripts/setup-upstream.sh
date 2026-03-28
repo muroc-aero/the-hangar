@@ -1,6 +1,6 @@
 #!/bin/bash
 # Clone upstream engineering tool repos for local reference
-# These are .gitignore'd — not part of the muroc-hangar repo
+# These are .gitignore'd — not part of the hangar repo
 
 set -e
 UPSTREAM_DIR="$(dirname "$0")/../upstream"

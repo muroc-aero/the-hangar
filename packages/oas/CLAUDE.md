@@ -1,4 +1,4 @@
-# muroc-oas — OpenAeroStruct MCP Server
+# hangar-oas — OpenAeroStruct MCP Server
 
 This package wraps OpenAeroStruct as an MCP tool server using FastMCP.
 

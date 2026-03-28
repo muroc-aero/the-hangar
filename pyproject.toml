@@ -1,5 +1,5 @@
 [project]
-name = "muroc-hangar"
+name = "hangar"
 version = "0.1.0"
 description = "Agentic engineering analysis tools"
 requires-python = ">=3.11"
@@ -8,5 +8,5 @@ requires-python = ">=3.11"
 members = ["packages/*"]
 
 [tool.uv.sources]
-muroc-sdk = { workspace = true }
-muroc-oas = { workspace = true }
+hangar-sdk = { workspace = true }
+hangar-oas = { workspace = true }

@@ -6,4 +6,4 @@ COPY . .
 
 RUN pip install --no-cache-dir .
 
-CMD ["python", "-m", "muroc_oas.server"]
+CMD ["python", "-m", "hangar.oas.server"]

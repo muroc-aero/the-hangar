@@ -1,14 +1,22 @@
-# Muroc Hangar Workspace
+# Hangar Workspace
 
 ## What this is
 A monorepo for MCP servers that expose engineering analysis tools to AI agents.
 Each tool gets its own package under `packages/`. Shared infrastructure lives
 in `packages/sdk/`.
 
+## Namespace convention
+All packages use the `hangar.*` Python namespace (PEP 420 implicit namespace packages).
+- `hangar.sdk` — shared provenance, response envelopes, validation, session management
+- `hangar.oas` — OpenAeroStruct aerostructural analysis server
+- PyPI names use hyphens: `hangar-sdk`, `hangar-oas`
+- **Critical:** never place an `__init__.py` in `src/hangar/` — only at the leaf
+  level (e.g. `src/hangar/oas/__init__.py`). This is what makes the namespace work.
+
 ## Source layout
-- `packages/sdk/` — muroc-sdk: provenance, response envelopes, validation,
+- `packages/sdk/` — hangar-sdk: provenance, response envelopes, validation,
   session management, visualization
-- `packages/oas/` — muroc-oas: OpenAeroStruct aerostructural analysis server
+- `packages/oas/` — hangar-oas: OpenAeroStruct aerostructural analysis server
 - `skills/` — cross-tool process skills (design study workflows, etc.)
 - `upstream/` — local clones of upstream tool repos (read-only reference, git-ignored)
 
@@ -24,7 +32,7 @@ Key OAS entry points:
 - `openaerostruct/aerodynamics/` — VLM and aero components
 
 ## When implementing SDK infrastructure
-Read `packages/sdk/src/muroc_sdk/provenance/` for the provenance model.
+Read `packages/sdk/src/hangar/sdk/provenance/` for the provenance model.
 The middleware in `middleware.py` auto-captures every tool call — new tools
 get provenance for free if they use the `@tracked_tool` decorator.
 
@@ -41,7 +49,7 @@ get provenance for free if they use the `@tracked_tool` decorator.
 ```bash
 # Development (from workspace root)
 uv sync
-uv run python -m muroc_oas.server
+uv run python -m hangar.oas.server
 
 # Docker
 docker compose -f docker/docker-compose.yml up --build
@@ -56,7 +64,8 @@ uv run pytest tests/integration/
 
 ## Adding a new tool
 1. Create `packages/<toolname>/` following the `oas/` structure
-2. Add tool-specific skills in `packages/<toolname>/skills/`
-3. Import and use `muroc_sdk` for provenance, envelopes, validation
-4. Add upstream clone to `scripts/setup-upstream.sh`
-5. Add to `docker/docker-compose.yml`
+2. Add `src/hangar/<toolname>/` — no `__init__.py` in `src/hangar/`
+3. Add tool-specific skills in `packages/<toolname>/skills/`
+4. Import and use `hangar.sdk` for provenance, envelopes, validation
+5. Add upstream clone to `scripts/setup-upstream.sh`
+6. Add to `docker/docker-compose.yml`
