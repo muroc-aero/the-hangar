@@ -368,19 +368,27 @@ def validate_stability(results: dict, context: dict | None = None) -> list[Valid
             remediation="Negative CL_alpha is unusual but may occur depending on sign conventions.",
         ))
 
-    # Static margin: positive = stable
+    # Static margin: flag dangerous values as warnings
     sm = results.get("static_margin")
     if sm is not None:
+        dangerous = sm < 0.05 or sm > 0.40
         findings.append(ValidationFinding(
             check_id="stability.static_margin",
             category="stability",
-            severity="info",
+            severity="warning" if dangerous else "info",
             confidence="high",
-            passed=True,  # Not a pass/fail; informational
+            passed=not dangerous,
             message=(
                 f"Static margin = {sm:.4f} (statically stable)"
+                if 0.05 <= sm <= 0.40
+                else f"Static margin = {sm:.4f} — outside typical range [0.05, 0.40]"
                 if sm > 0
                 else f"Static margin = {sm:.4f} (statically UNSTABLE)"
+            ),
+            remediation=(
+                "Static margin < 0.05 means nearly neutral stability (difficult to control). "
+                "Static margin > 0.40 means excessive stability (poor maneuverability, tail sizing issue)."
+                if dangerous else ""
             ),
         ))
 

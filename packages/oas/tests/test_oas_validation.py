@@ -165,11 +165,19 @@ class TestValidateStability:
         cl_alpha_checks = [f for f in findings if "cl_alpha" in f.check_id]
         assert all(f.severity == "info" for f in cl_alpha_checks)
 
-    def test_static_margin_always_passes(self):
-        for sm in [-0.1, 0.0, 0.1, 0.5]:
+    def test_static_margin_normal_range_passes(self):
+        for sm in [0.1, 0.2, 0.3]:
             findings = validate_stability({"CL_alpha": 0.1, "static_margin": sm})
             sm_checks = [f for f in findings if "static_margin" in f.check_id]
             assert all(f.passed for f in sm_checks)
+            assert all(f.severity == "info" for f in sm_checks)
+
+    def test_static_margin_dangerous_values_warn(self):
+        for sm in [-0.1, 0.0, 0.03, 0.5]:
+            findings = validate_stability({"CL_alpha": 0.1, "static_margin": sm})
+            sm_checks = [f for f in findings if "static_margin" in f.check_id]
+            assert all(not f.passed for f in sm_checks)
+            assert all(f.severity == "warning" for f in sm_checks)
 
 
 # ---------------------------------------------------------------------------
