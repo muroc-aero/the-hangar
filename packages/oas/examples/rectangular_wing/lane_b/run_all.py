@@ -15,9 +15,17 @@ SCRIPTS = ["aero_analysis", "drag_polar", "opt_twist", "opt_chord"]
 SCRIPT_DIR = Path(__file__).parent
 
 
+def _ensure_registry():
+    """Wire the OAS tool registry so run_tool() works outside oas-cli."""
+    from hangar.oas.cli import build_oas_registry
+    from hangar.sdk.cli.runner import set_registry_builder
+    set_registry_builder(build_oas_registry)
+
+
 async def run_all() -> dict:
     """Execute all Lane B scripts in-process, return dict of results."""
     from hangar.sdk.cli.runner import run_tool
+    _ensure_registry()
 
     all_results = {}
     for name in SCRIPTS:
