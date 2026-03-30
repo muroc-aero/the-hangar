@@ -156,16 +156,20 @@ def init_db(db_path: Path | str | None = None) -> None:
     Parameters
     ----------
     db_path:
-        Path to the SQLite file.  If *None*, uses ``$OAS_PROV_DB``, then
-        falls back to ``$OAS_DATA_DIR/.provenance/sessions.db`` (co-located
-        with artifacts).  If the legacy ``~/.oas_provenance/sessions.db``
-        exists but the new default does not, the legacy location is used and
-        a warning is logged.  Parent directories are created automatically.
+        Path to the SQLite file.  If *None*, uses ``$HANGAR_PROV_DB``
+        (or legacy ``$OAS_PROV_DB``), then falls back to
+        ``$HANGAR_DATA_DIR/.provenance/sessions.db`` (co-located with
+        artifacts).  If the legacy ``~/.oas_provenance/sessions.db``
+        exists but the new default does not, the legacy location is used
+        and a warning is logged.  Parent directories are created
+        automatically.
     """
     global _db_path
 
     if db_path is None:
-        env_val = os.environ.get("OAS_PROV_DB")
+        from hangar.sdk.env import _hangar_env
+
+        env_val = _hangar_env("HANGAR_PROV_DB", "OAS_PROV_DB")
         if env_val:
             db_path = Path(env_val)
         else:
@@ -177,7 +181,7 @@ def init_db(db_path: Path | str | None = None) -> None:
             if old_default.exists() and not new_default.exists():
                 logger.warning(
                     "Provenance DB found at legacy location %s but not at new default %s. "
-                    "Using legacy location. Set OAS_PROV_DB=%s to silence this warning, "
+                    "Using legacy location. Set HANGAR_PROV_DB=%s to silence this warning, "
                     "or move the file to the new location.",
                     old_default, new_default, old_default,
                 )

@@ -442,14 +442,18 @@ def start_viewer_server() -> int | None:
     """Start the viewer HTTP server in a background daemon thread.
 
     Returns the port number on success, or None if the port was busy.
-    Disabled when ``OAS_PROV_VIEWER=off`` (recommended for production).
+    Disabled when ``HANGAR_PROV_VIEWER=off`` (recommended for production).
     """
-    if os.environ.get("OAS_PROV_VIEWER", "").lower() == "off":
+    from hangar.sdk.env import _hangar_env
+
+    if _hangar_env("HANGAR_PROV_VIEWER", "OAS_PROV_VIEWER").lower() == "off":
         return None
-    port = int(os.environ.get("OAS_PROV_PORT", str(_DEFAULT_PORT)))
-    # Default to localhost in production; set OAS_PROV_HOST=0.0.0.0 explicitly
+    port = int(
+        _hangar_env("HANGAR_PROV_PORT", "OAS_PROV_PORT", default=str(_DEFAULT_PORT))
+    )
+    # Default to localhost in production; set HANGAR_PROV_HOST=0.0.0.0 explicitly
     # if Docker port mapping is needed in dev.
-    bind_host = os.environ.get("OAS_PROV_HOST", "127.0.0.1")
+    bind_host = _hangar_env("HANGAR_PROV_HOST", "OAS_PROV_HOST", default="127.0.0.1")
     try:
         server = HTTPServer((bind_host, port), _ProvHandler)
     except OSError:

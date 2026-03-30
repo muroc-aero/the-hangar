@@ -1,8 +1,8 @@
 services:
   oas:
     build:
-      context: ../packages/oas
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: packages/oas/Dockerfile
     ports:
       - "8000:8000"
       - "7654:7654"   # Provenance viewer / dashboard
@@ -19,6 +19,24 @@ services:
       # and store artifacts in the bind-mounted host directory.
       OAS_TRANSPORT: http
       OAS_HOST: 0.0.0.0
-      OAS_DATA_DIR: /data
+      HANGAR_DATA_DIR: /data
       # Store provenance DB in the bind-mounted volume so it survives restarts.
-      OAS_PROV_DB: /data/provenance.db
+      HANGAR_PROV_DB: /data/provenance.db
+
+  # Uncomment to add OpenConcept:
+  # ocp:
+  #   build:
+  #     context: ..
+  #     dockerfile: packages/ocp/Dockerfile
+  #   ports:
+  #     - "8001:8000"
+  #   volumes:
+  #     - ./ocp_data:/data
+  #   env_file:
+  #     - path: .env
+  #       required: false
+  #   environment:
+  #     OCP_TRANSPORT: http
+  #     OCP_HOST: 0.0.0.0
+  #     HANGAR_DATA_DIR: /data
+  #     HANGAR_PROV_DB: /data/provenance.db

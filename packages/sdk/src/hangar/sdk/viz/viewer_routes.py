@@ -255,8 +255,8 @@ def build_viewer_app() -> tuple[Starlette | None, str]:
     """Build and return ``(viewer_app, auth_mode)`` or ``(None, "")``.
 
     Auth mode priority:
-      1. OIDC (if ``OIDC_ISSUER_URL`` + ``OAS_VIEWER_OIDC_CLIENT_SECRET`` set)
-      2. Basic Auth (if ``OAS_VIEWER_USER`` + ``OAS_VIEWER_PASSWORD`` set)
+      1. OIDC (if ``OIDC_ISSUER_URL`` + ``HANGAR_VIEWER_OIDC_CLIENT_SECRET`` set)
+      2. Basic Auth (if ``HANGAR_VIEWER_USER`` + ``HANGAR_VIEWER_PASSWORD`` set)
       3. Disabled (viewer not mounted)
 
     Returns
@@ -287,7 +287,7 @@ def build_viewer_app() -> tuple[Starlette | None, str]:
                 Middleware(
                     SessionMiddleware,
                     secret_key=oidc_config.session_secret,
-                    session_cookie="oas_viewer_session",
+                    session_cookie="hangar_viewer_session",
                     same_site="lax",
                     https_only=https_only,
                     max_age=86400,  # 24 hours
@@ -305,13 +305,15 @@ def build_viewer_app() -> tuple[Starlette | None, str]:
         return app, "oidc"
 
     # --- Basic Auth fallback ---
-    viewer_user = os.environ.get("OAS_VIEWER_USER", "")
-    viewer_password = os.environ.get("OAS_VIEWER_PASSWORD", "")
+    from hangar.sdk.env import _hangar_env
+
+    viewer_user = _hangar_env("HANGAR_VIEWER_USER", "OAS_VIEWER_USER")
+    viewer_password = _hangar_env("HANGAR_VIEWER_PASSWORD", "OAS_VIEWER_PASSWORD")
 
     if not viewer_user or not viewer_password:
         logger.warning(
-            "Set OAS_VIEWER_OIDC_CLIENT_SECRET (for OIDC) or "
-            "OAS_VIEWER_USER + OAS_VIEWER_PASSWORD (for Basic Auth) "
+            "Set HANGAR_VIEWER_OIDC_CLIENT_SECRET (for OIDC) or "
+            "HANGAR_VIEWER_USER + HANGAR_VIEWER_PASSWORD (for Basic Auth) "
             "to enable the provenance viewer on the HTTP transport."
         )
         return None, ""

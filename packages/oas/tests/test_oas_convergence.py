@@ -88,12 +88,12 @@ class TestSummarizeConvergenceHistory:
 class TestOptimizationTrackerWarnings:
     @pytest.fixture(autouse=True)
     def _enable_propagation(self):
-        """Ensure the oas_mcp logger propagates so caplog can capture."""
-        oas_logger = logging.getLogger("oas_mcp")
-        old = oas_logger.propagate
-        oas_logger.propagate = True
+        """Ensure the hangar logger propagates so caplog can capture."""
+        hangar_logger = logging.getLogger("hangar")
+        old = hangar_logger.propagate
+        hangar_logger.propagate = True
         yield
-        oas_logger.propagate = old
+        hangar_logger.propagate = old
 
     def test_record_initial_logs_warning_on_failure(self, caplog):
         """record_initial should log a warning when a DV path fails."""

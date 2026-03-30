@@ -1,0 +1,18 @@
+# Keep Docker build context small — only packages/sdk and packages/oas (or ocp)
+# are needed. Everything else is excluded.
+.git
+.venv
+upstream
+docker
+deploy
+skills
+scripts
+*.md
+*.lock
+.claude
+.github
+__pycache__
+*.pyc
+*.egg-info
+hangar_data
+oas_data

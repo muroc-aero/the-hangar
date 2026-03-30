@@ -19,14 +19,27 @@ import numpy as np
 # Configuration
 # ---------------------------------------------------------------------------
 
-_LOG_LEVEL = getattr(logging, os.environ.get("OAS_LOG_LEVEL", "INFO").upper(), logging.INFO)
-_MAX_RUNS = int(os.environ.get("OAS_LOG_MAX_RUNS", "100"))
+def _env_first(*names: str, default: str = "") -> str:
+    """Return the first non-empty env var value, or *default*."""
+    for name in names:
+        val = os.environ.get(name)
+        if val:
+            return val
+    return default
+
+
+_LOG_LEVEL = getattr(
+    logging,
+    _env_first("HANGAR_LOG_LEVEL", "OAS_LOG_LEVEL", default="INFO").upper(),
+    logging.INFO,
+)
+_MAX_RUNS = int(_env_first("HANGAR_LOG_MAX_RUNS", "OAS_LOG_MAX_RUNS", default="100"))
 
 # ---------------------------------------------------------------------------
 # Logging setup
 # ---------------------------------------------------------------------------
 
-logger = logging.getLogger("oas_mcp")
+logger = logging.getLogger("hangar")
 if not logger.handlers:
     _handler = logging.StreamHandler()
     _handler.setFormatter(

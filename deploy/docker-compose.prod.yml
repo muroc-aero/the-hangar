@@ -1,0 +1,145 @@
+# Production deployment: Hangar MCP tool servers + Keycloak + Postgres
+#
+# Supports multiple tool servers behind a shared Caddy reverse proxy
+# with Keycloak OIDC authentication.
+#
+# Prerequisites:
+#   1. Clone the-hangar repo on the VPS:
+#        git clone https://github.com/acb-code/the-hangar.git ~/hangar/repo
+#   2. Copy deploy/.env.example to ~/hangar/.env and fill in secrets
+#   3. Caddy reverse proxy (separate stack) with TLS for:
+#        - mcp.lakesideai.dev  → web network (path-prefix routing)
+#        - auth.lakesideai.dev → web network (keycloak:8080)
+#
+# First-time setup:
+#   cd ~/hangar && docker compose -f docker-compose.prod.yml up -d
+#   # Then follow deploy/keycloak-setup.md for Keycloak configuration
+#
+# Updating:
+#   cd ~/hangar/repo && git pull
+#   cd ~/hangar && docker compose -f docker-compose.prod.yml build --no-cache oas-mcp
+#   docker compose -f docker-compose.prod.yml up -d oas-mcp
+#
+# Adding a new tool:
+#   1. Add a new service below (copy oas-mcp pattern)
+#   2. Create OIDC client in Keycloak hangar realm
+#   3. Add handle_path /<tool>/* route to Caddyfile
+#   4. Add <TOOL>_OIDC_CLIENT_SECRET to .env
+
+services:
+  # ---------- Shared Postgres ----------
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: ${KC_DB_PASSWORD:?Set KC_DB_PASSWORD in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - internal
+
+  # ---------- Keycloak ----------
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.2
+    restart: unless-stopped
+    command: start --health-enabled=true --metrics-enabled=false
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Admin bootstrap credentials (only used on first start)
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?Set KEYCLOAK_ADMIN_PASSWORD in .env}
+      # Database
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${KC_DB_PASSWORD}
+      # Hostname — Caddy terminates TLS, Keycloak runs plain HTTP behind it
+      KC_HOSTNAME: ${KC_HOSTNAME:-auth.lakesideai.dev}
+      KC_PROXY_HEADERS: xforwarded
+      KC_HTTP_ENABLED: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "cat < /dev/null > /dev/tcp/127.0.0.1/8080 2>/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 45s
+    networks:
+      - internal
+      - web
+
+  # ---------- OAS MCP Server ----------
+  oas-mcp:
+    build:
+      context: ./repo
+      dockerfile: packages/oas/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    volumes:
+      - ./oas_data:/data
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      OAS_TRANSPORT: http
+      OAS_HOST: 0.0.0.0
+      HANGAR_DATA_DIR: /data
+      HANGAR_PROV_DB: /data/provenance.db
+      # Auth — point to Keycloak hangar realm
+      OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-https://auth.lakesideai.dev/realms/hangar}
+      OIDC_CLIENT_ID: ${OAS_OIDC_CLIENT_ID:-oas-mcp}
+      OIDC_CLIENT_SECRET: ${OAS_OIDC_CLIENT_SECRET:?Set OAS_OIDC_CLIENT_SECRET in .env}
+      RESOURCE_SERVER_URL: ${OAS_RESOURCE_SERVER_URL:-https://mcp.lakesideai.dev/oas}
+      HANGAR_PROV_VIEWER: "off"
+    networks:
+      - internal
+      - web
+
+  # ---------- OCP MCP Server (OpenConcept) ----------
+  # Uncomment when packages/ocp is ready:
+  #
+  # ocp-mcp:
+  #   build:
+  #     context: ./repo
+  #     dockerfile: packages/ocp/Dockerfile
+  #   restart: unless-stopped
+  #   depends_on:
+  #     keycloak:
+  #       condition: service_healthy
+  #   volumes:
+  #     - ./ocp_data:/data
+  #   env_file:
+  #     - path: .env
+  #       required: false
+  #   environment:
+  #     OCP_TRANSPORT: http
+  #     OCP_HOST: 0.0.0.0
+  #     HANGAR_DATA_DIR: /data
+  #     HANGAR_PROV_DB: /data/provenance.db
+  #     OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-https://auth.lakesideai.dev/realms/hangar}
+  #     OIDC_CLIENT_ID: ${OCP_OIDC_CLIENT_ID:-ocp-mcp}
+  #     OIDC_CLIENT_SECRET: ${OCP_OIDC_CLIENT_SECRET:?Set OCP_OIDC_CLIENT_SECRET in .env}
+  #     RESOURCE_SERVER_URL: ${OCP_RESOURCE_SERVER_URL:-https://mcp.lakesideai.dev/ocp}
+  #     HANGAR_PROV_VIEWER: "off"
+  #   networks:
+  #     - internal
+  #     - web
+
+networks:
+  web:
+    external: true
+  internal:
+    driver: bridge
+
+volumes:
+  postgres_data:

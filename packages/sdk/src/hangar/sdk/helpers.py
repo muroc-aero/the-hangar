@@ -52,8 +52,10 @@ def _get_viewer_base_url() -> str | None:
     resource_url = os.environ.get("RESOURCE_SERVER_URL")
     if resource_url:
         return resource_url.rstrip("/")
-    prov_port = os.environ.get("OAS_PROV_PORT", "7654")
-    if os.environ.get("OAS_PROV_VIEWER", "").lower() != "off":
+    from hangar.sdk.env import _hangar_env
+
+    prov_port = _hangar_env("HANGAR_PROV_PORT", "OAS_PROV_PORT", default="7654")
+    if _hangar_env("HANGAR_PROV_VIEWER", "OAS_PROV_VIEWER").lower() != "off":
         return f"http://localhost:{prov_port}"
     return None
 

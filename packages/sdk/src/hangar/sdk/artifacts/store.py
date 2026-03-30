@@ -46,7 +46,9 @@ def _validate_path_segment(value: str, label: str) -> None:
 
 
 def _default_data_dir() -> Path:
-    return Path(os.environ.get("OAS_DATA_DIR", "./oas_data"))
+    from hangar.sdk.env import _hangar_env
+
+    return Path(_hangar_env("HANGAR_DATA_DIR", "OAS_DATA_DIR", default="./hangar_data"))
 
 
 class _NumpyEncoder(json.JSONEncoder):
@@ -77,8 +79,8 @@ class ArtifactStore:
     Parameters
     ----------
     data_dir:
-        Root directory for artifacts.  Falls back to the ``OAS_DATA_DIR``
-        environment variable, or ``./oas_data/`` if that is unset.
+        Root directory for artifacts.  Falls back to ``HANGAR_DATA_DIR``
+        (or legacy ``OAS_DATA_DIR``), or ``./hangar_data/`` if unset.
 
     Storage layout::
 

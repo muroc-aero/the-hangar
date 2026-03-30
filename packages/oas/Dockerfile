@@ -9,17 +9,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY . .
+# Copy SDK first (changes less often → better layer caching)
+COPY packages/sdk/ packages/sdk/
+RUN pip install --no-cache-dir "packages/sdk[all]"
 
-# Install the package (includes hangar-sdk dependency)
-RUN pip install --no-cache-dir .
+# Copy and install the OAS package
+COPY packages/oas/ packages/oas/
+RUN pip install --no-cache-dir packages/oas
 
 # Create non-root user for runtime with a writable home directory
 RUN useradd -r -m -s /usr/sbin/nologin oas && \
     mkdir -p /data && chown oas:oas /data
 
 # Artifact storage root inside the container (bind-mounted from host)
-ENV OAS_DATA_DIR=/data
+ENV HANGAR_DATA_DIR=/data
 
 # Matplotlib cache dir — avoids "Permission denied" warnings
 ENV MPLCONFIGDIR=/tmp/matplotlib

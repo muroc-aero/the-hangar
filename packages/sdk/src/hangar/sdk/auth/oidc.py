@@ -13,6 +13,7 @@ import threading
 import urllib.request
 from typing import Any
 
+from hangar.sdk.env import _hangar_env
 from hangar.sdk.telemetry import logger
 
 # Contextvar that holds the authenticated username for the current async request.
@@ -26,7 +27,10 @@ _current_user_ctx: contextvars.ContextVar[str] = contextvars.ContextVar(
 
 
 def _env(name: str, legacy_name: str, default: str = "") -> str:
-    """Read *name* from env, falling back to *legacy_name* (Keycloak compat)."""
+    """Read *name* from env, falling back to *legacy_name* (Keycloak compat).
+
+    .. deprecated:: Use :func:`hangar.sdk.env._hangar_env` for new code.
+    """
     return os.environ.get(name) or os.environ.get(legacy_name, default)
 
 
@@ -210,14 +214,14 @@ def get_current_user() -> str:
     In HTTP mode with OIDC, this reads the username stored by
     ``OIDCTokenVerifier.verify_token()`` via a contextvar.
 
-    Falls back to the ``OAS_USER`` environment variable, then to the
-    OS login name (``getpass.getuser()``).  The stdio transport always
-    uses the fallback since there is no JWT.
+    Falls back to the ``HANGAR_USER`` environment variable (or legacy
+    ``OAS_USER``), then to the OS login name (``getpass.getuser()``).
+    The stdio transport always uses the fallback since there is no JWT.
     """
     user = _current_user_ctx.get()
     if user:
         return user
-    return os.environ.get("OAS_USER") or getpass.getuser()
+    return _hangar_env("HANGAR_USER", "OAS_USER") or getpass.getuser()
 
 
 def build_auth_settings() -> Any:
@@ -246,9 +250,16 @@ def build_token_verifier() -> OIDCTokenVerifier | None:
     issuer_url = _env("OIDC_ISSUER_URL", "KEYCLOAK_ISSUER_URL")
     if not issuer_url:
         return None
+    client_id = _env("OIDC_CLIENT_ID", "KEYCLOAK_CLIENT_ID")
+    if not client_id:
+        logger.warning(
+            "OIDC_ISSUER_URL is set but OIDC_CLIENT_ID is not — "
+            "token audience validation will fail. "
+            "Set OIDC_CLIENT_ID to the tool's client ID (e.g. 'oas-mcp')."
+        )
     return OIDCTokenVerifier(
         issuer_url=issuer_url,
-        client_id=_env("OIDC_CLIENT_ID", "KEYCLOAK_CLIENT_ID", "oas-mcp"),
+        client_id=client_id,
         client_secret=_env("OIDC_CLIENT_SECRET", "KEYCLOAK_CLIENT_SECRET"),
     )
 

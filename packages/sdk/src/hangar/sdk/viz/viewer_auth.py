@@ -57,27 +57,37 @@ class ViewerOIDCConfig:
 def build_viewer_oidc_config() -> ViewerOIDCConfig | None:
     """Build a :class:`ViewerOIDCConfig` from env vars, or ``None`` if unconfigured."""
     from hangar.sdk.auth import _env
+    from hangar.sdk.env import _hangar_env
 
     issuer_url = _env("OIDC_ISSUER_URL", "KEYCLOAK_ISSUER_URL")
-    client_secret = os.environ.get("OAS_VIEWER_OIDC_CLIENT_SECRET", "")
+    client_secret = _hangar_env(
+        "HANGAR_VIEWER_OIDC_CLIENT_SECRET", "OAS_VIEWER_OIDC_CLIENT_SECRET"
+    )
     if not issuer_url or not client_secret:
         return None
 
-    client_id = os.environ.get("OAS_VIEWER_OIDC_CLIENT_ID", "oas-viewer")
+    client_id = _hangar_env(
+        "HANGAR_VIEWER_OIDC_CLIENT_ID", "OAS_VIEWER_OIDC_CLIENT_ID",
+        default="oas-viewer",
+    )
     resource_server_url = os.environ.get(
         "RESOURCE_SERVER_URL", "http://localhost:8000"
     ).rstrip("/")
     redirect_uri = f"{resource_server_url}/viewer/callback"
 
-    session_secret = os.environ.get("OAS_VIEWER_SESSION_SECRET", "")
+    session_secret = _hangar_env(
+        "HANGAR_VIEWER_SESSION_SECRET", "OAS_VIEWER_SESSION_SECRET"
+    )
     if not session_secret:
         session_secret = secrets.token_hex(32)
         logger.warning(
-            "OAS_VIEWER_SESSION_SECRET is not set — using an auto-generated key. "
+            "HANGAR_VIEWER_SESSION_SECRET is not set — using an auto-generated key. "
             "Sessions will not survive server restarts."
         )
 
-    admin_role = os.environ.get("OAS_VIEWER_ADMIN_ROLE", "oas-admin")
+    admin_role = _hangar_env(
+        "HANGAR_VIEWER_ADMIN_ROLE", "OAS_VIEWER_ADMIN_ROLE", default="oas-admin"
+    )
 
     return ViewerOIDCConfig(
         issuer_url=issuer_url.rstrip("/"),
