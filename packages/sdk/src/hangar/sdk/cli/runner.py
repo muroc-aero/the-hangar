@@ -48,6 +48,10 @@ def json_dumps(obj: Any, pretty: bool = False) -> str:
 _REGISTRY: dict[str, Callable] | None = None
 _REGISTRY_BUILDER: Callable[[], dict[str, Callable]] | None = None
 
+# Setup tools: tools whose args should be persisted and replayed in one-shot mode.
+# Ordered list of tool names — replay order matches declaration order.
+_SETUP_TOOLS: list[str] = []
+
 
 def set_registry_builder(builder: Callable[[], dict[str, Callable]]) -> None:
     """Register a callable that builds the tool name -> function mapping.
@@ -64,6 +68,48 @@ def set_registry_builder(builder: Callable[[], dict[str, Callable]]) -> None:
     global _REGISTRY_BUILDER, _REGISTRY
     _REGISTRY_BUILDER = builder
     _REGISTRY = None  # reset so next get_registry() calls the new builder
+
+
+def set_setup_tools(tool_names: list[str]) -> None:
+    """Declare which tools produce persistent state for one-shot mode.
+
+    When a tool listed here succeeds, its arguments are saved to the
+    workspace state file. Before running any non-setup tool, the saved
+    setup steps are replayed in order to reconstruct the session.
+
+    The ``"reset"`` tool is always handled specially (clears state) and
+    does not need to be listed.
+
+    Call this alongside ``set_registry_builder()`` in your CLI entry point.
+
+    Parameters
+    ----------
+    tool_names:
+        Ordered list of tool names. Replay order matches this order,
+        regardless of the order the user originally called them.
+
+    Example
+    -------
+    OAS declares::
+
+        set_setup_tools(["create_surface"])
+
+    OCP declares::
+
+        set_setup_tools([
+            "load_aircraft_template",
+            "define_aircraft",
+            "set_propulsion_architecture",
+            "configure_mission",
+        ])
+    """
+    global _SETUP_TOOLS
+    _SETUP_TOOLS = list(tool_names)
+
+
+def get_setup_tools() -> list[str]:
+    """Return the declared setup tool names."""
+    return list(_SETUP_TOOLS)
 
 
 def get_registry() -> dict[str, Callable]:

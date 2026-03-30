@@ -6,6 +6,7 @@ requires-python = ">=3.11"
 dependencies = [
     "hangar-sdk",
     "hangar-oas",
+    "hangar-ocp",
 ]
 
 [tool.uv.workspace]
@@ -14,6 +15,7 @@ members = ["packages/*"]
 [tool.uv.sources]
 hangar-sdk = { workspace = true }
 hangar-oas = { workspace = true }
+hangar-ocp = { workspace = true }
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -22,4 +24,10 @@ markers = [
     "golden_physics: physics-invariant golden tests",
     "golden_numerics: platform-dependent numeric baselines",
     "parity: parity tests vs direct OAS API",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
 ]

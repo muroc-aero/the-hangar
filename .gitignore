@@ -211,6 +211,9 @@ __marimo__/
 upstream/*/
 !upstream/.gitkeep
 
+# OpenMDAO report output directories
+*_out/
+
 # Provenance databases (local state)
 *.db
 
