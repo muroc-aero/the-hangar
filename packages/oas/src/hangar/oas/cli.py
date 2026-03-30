@@ -63,10 +63,11 @@ def build_oas_registry() -> dict[str, Callable]:
 
 def main() -> None:
     """OAS CLI entry point — wires the OAS registry into the generic CLI."""
-    from hangar.sdk.cli.runner import set_registry_builder
+    from hangar.sdk.cli.runner import set_registry_builder, set_setup_tools
     from hangar.sdk.cli.main import main as _cli_main
 
     set_registry_builder(build_oas_registry)
+    set_setup_tools(["create_surface"])
 
     def _start_viewer(port: int = 7654, db: str | None = None):
         from hangar.sdk.viz.viewer_server import start_viewer_server

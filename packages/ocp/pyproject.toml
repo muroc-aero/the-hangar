@@ -1,0 +1,37 @@
+[project]
+name = "hangar-ocp"
+version = "0.1.0"
+description = "OpenConcept MCP server for agentic aircraft conceptual design"
+requires-python = ">=3.11"
+dependencies = [
+    "hangar-sdk[all]",
+    "openconcept>=1.2,<2",
+    "openmdao>=3.35,!=3.40",
+    "numpy>=1.21",
+    "scipy>=1.7",
+    "matplotlib",
+]
+
+[project.scripts]
+ocp-server = "hangar.ocp.server:main"
+ocp-cli    = "hangar.ocp.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hangar"]
+
+[tool.uv.sources]
+hangar-sdk = { workspace = true }
+# For development: use local upstream clone
+openconcept = { path = "../../upstream/openconcept", editable = true }
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "golden_physics: physics-invariant golden tests",
+    "parity: parity tests vs direct OpenConcept API",
+]

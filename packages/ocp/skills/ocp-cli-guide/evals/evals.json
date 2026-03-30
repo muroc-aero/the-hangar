@@ -1,0 +1,159 @@
+{
+  "skill_name": "ocp-cli-guide",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I want to run a basic Caravan mission analysis using the OCP command line. Show me a complete Python script that uses interactive mode to spawn ocp-cli, load the Caravan template, set the turboprop architecture, configure a 250 NM mission at FL180, and run the analysis. I need to extract the fuel burn from the result.",
+      "expected_output": "A working Python script using subprocess to spawn ocp-cli interactive, with JSON-lines protocol, that loads caravan template, sets turboprop architecture, configures mission, and runs analysis. Should show how to extract fuel_burn_kg.",
+      "assertions": [
+        {
+          "id": "uses_interactive_mode",
+          "description": "Script spawns ocp-cli interactive as a subprocess",
+          "type": "output_contains",
+          "value": "interactive"
+        },
+        {
+          "id": "loads_template",
+          "description": "load_aircraft_template is called with caravan",
+          "type": "output_contains",
+          "value": "load_aircraft_template"
+        },
+        {
+          "id": "sets_architecture",
+          "description": "set_propulsion_architecture is called",
+          "type": "output_contains",
+          "value": "set_propulsion_architecture"
+        },
+        {
+          "id": "runs_analysis",
+          "description": "run_mission_analysis is called",
+          "type": "output_contains",
+          "value": "run_mission_analysis"
+        },
+        {
+          "id": "extracts_fuel",
+          "description": "Shows how to extract fuel_burn_kg from result",
+          "type": "output_contains",
+          "value": "fuel_burn_kg"
+        },
+        {
+          "id": "handles_ok_field",
+          "description": "Checks the ok field in the response",
+          "type": "output_contains_any",
+          "values": ["[\"ok\"]", "['ok']", "resp[\"ok\"]", "resp['ok']", ".ok", "\"ok\":", "'ok':"]
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "I need to compare a conventional turboprop against a series-hybrid configuration for a 250 NM mission. Show me bash commands using one-shot mode that load the King Air template, run a turboprop baseline, then switch to twin_series_hybrid and run again. Explain the workflow order requirement.",
+      "expected_output": "Bash commands using ocp-cli subcommands showing the correct workflow order: load template -> set architecture -> configure mission -> run analysis, done twice for two architectures. Should explain that architecture must be set after template and before analysis.",
+      "assertions": [
+        {
+          "id": "loads_template",
+          "description": "Uses load-aircraft-template subcommand",
+          "type": "output_contains",
+          "value": "load-aircraft-template"
+        },
+        {
+          "id": "uses_turboprop",
+          "description": "Sets turboprop architecture first",
+          "type": "output_contains",
+          "value": "turboprop"
+        },
+        {
+          "id": "uses_hybrid",
+          "description": "Switches to twin_series_hybrid",
+          "type": "output_contains_any",
+          "values": ["twin_series_hybrid", "twin-series-hybrid"]
+        },
+        {
+          "id": "explains_order",
+          "description": "Explains the workflow order requirement",
+          "type": "output_contains_any",
+          "values": ["before", "first", "order", "must be called", "prerequisite", "sequence"]
+        },
+        {
+          "id": "runs_analysis_twice",
+          "description": "Calls run-mission-analysis for both configurations",
+          "type": "output_contains",
+          "value": "run-mission-analysis"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Create a JSON script file for ocp-cli that runs a hybridization sweep on a King Air from 0% to 30% in 5% increments. I want to see how fuel burn changes with hybridization fraction.",
+      "expected_output": "A JSON script with tool calls for loading kingair, setting twin_series_hybrid architecture, configuring mission, and running a parameter sweep over hybridization values [0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3].",
+      "assertions": [
+        {
+          "id": "valid_json_array",
+          "description": "Output contains a JSON array of tool call objects",
+          "type": "output_contains",
+          "value": "\"tool\""
+        },
+        {
+          "id": "loads_kingair",
+          "description": "Loads the kingair template",
+          "type": "output_contains",
+          "value": "kingair"
+        },
+        {
+          "id": "uses_sweep",
+          "description": "Uses run_parameter_sweep tool",
+          "type": "output_contains_any",
+          "values": ["run_parameter_sweep", "parameter_sweep"]
+        },
+        {
+          "id": "sweeps_hybridization",
+          "description": "Sweeps over hybridization parameter",
+          "type": "output_contains",
+          "value": "hybridization"
+        },
+        {
+          "id": "correct_architecture",
+          "description": "Uses twin_series_hybrid architecture for hybrid capability",
+          "type": "output_contains",
+          "value": "twin_series_hybrid"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "How do I run a design optimization for a hybrid aircraft using ocp-cli? I want to minimize fuel burn while keeping the battery from depleting and the throttle below 1.05. Show me the command with appropriate design variables and constraints.",
+      "expected_output": "Shows run-optimization command or script with fuel_burn objective, design variables (at minimum hybridization), and constraints (SOC >= 0, throttle <= 1.05). Should mention num_nodes must be odd.",
+      "assertions": [
+        {
+          "id": "uses_optimization",
+          "description": "Uses run_optimization or run-optimization tool",
+          "type": "output_contains_any",
+          "values": ["run_optimization", "run-optimization"]
+        },
+        {
+          "id": "fuel_burn_objective",
+          "description": "Sets fuel_burn as the objective",
+          "type": "output_contains",
+          "value": "fuel_burn"
+        },
+        {
+          "id": "soc_constraint",
+          "description": "Includes battery SOC constraint",
+          "type": "output_contains_any",
+          "values": ["SOC_final", "SOC", "battery"]
+        },
+        {
+          "id": "throttle_constraint",
+          "description": "Includes throttle feasibility constraint",
+          "type": "output_contains",
+          "value": "throttle"
+        },
+        {
+          "id": "mentions_odd_nodes",
+          "description": "Mentions that num_nodes must be odd",
+          "type": "output_contains_any",
+          "values": ["odd", "ODD", "2N+1", "Simpson"]
+        }
+      ]
+    }
+  ]
+}

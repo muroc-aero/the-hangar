@@ -280,47 +280,107 @@ def oneshot_mode(
     pretty: bool = False,
     output: str | None = None,
 ) -> None:
-    """Execute a single tool call, persisting surface state for one-shot mode."""
-    from hangar.sdk.cli.runner import run_tool, get_registry, json_dumps
-    from hangar.sdk.cli.state import load_surfaces, save_surfaces
+    """Execute a single tool call, persisting setup state for one-shot mode.
+
+    Before running the requested tool, any saved setup steps from prior
+    invocations are replayed to reconstruct the session. After the tool
+    completes, its args are saved if it's a declared setup tool.
+
+    Two state paths are supported:
+
+    1. **Generic setup steps** — used when ``set_setup_tools()`` has been
+       called by the tool server. Steps are saved as an ordered list and
+       replayed in declaration order before analysis tools.
+
+    2. **Legacy surface persistence** — backward-compatible fallback for
+       OAS when no setup tools are declared. Saves ``create_surface()``
+       args and replays them via the ``"create_surface"`` registry entry.
+    """
+    from hangar.sdk.cli.runner import run_tool, get_registry, get_setup_tools, json_dumps
+    from hangar.sdk.cli.state import (
+        load_setup_steps, save_setup_step,
+        load_surfaces, save_surfaces,
+        clear_state,
+    )
 
     registry = get_registry()
+    setup_tools = get_setup_tools()
+    is_setup_tool = tool_name in setup_tools
 
     # Parse and coerce args before entering the event loop
     tool_args = _coerce_json_args(tool_name, args_ns)
 
     async def _run() -> dict:
-        # Rebuild session state from state file (create surfaces from saved args)
-        saved_surfaces = load_surfaces(workspace)
-        create_surface_fn = registry.get("create_surface")
-        if saved_surfaces and create_surface_fn and tool_name != "create_surface":
-            for surf_args in saved_surfaces.values():
-                try:
-                    await create_surface_fn(**surf_args)
-                except Exception as exc:
-                    return {
-                        "ok": False,
-                        "error": {
-                            "code": "INTERNAL_ERROR",
-                            "message": f"Failed to reconstruct surface from saved state: {exc}",
-                        },
-                    }
+        if setup_tools:
+            # --- Generic path: replay setup steps ---
+            # Replay saved steps that precede the current tool in declaration order.
+            # Analysis tools (not in setup_tools) get all steps replayed.
+            # Setup tools get only the steps that come *before* them.
+            if tool_name != "reset":
+                saved_steps = load_setup_steps(workspace)
+                if is_setup_tool:
+                    # Only replay steps that come before this tool in the order
+                    my_idx = setup_tools.index(tool_name)
+                    predecessors = set(setup_tools[:my_idx])
+                    steps_to_replay = [s for s in saved_steps if s["tool"] in predecessors]
+                else:
+                    steps_to_replay = saved_steps
+
+                for step in steps_to_replay:
+                    step_fn = registry.get(step["tool"])
+                    if step_fn is None:
+                        continue
+                    try:
+                        await step_fn(**step.get("args", {}))
+                    except Exception as exc:
+                        return {
+                            "ok": False,
+                            "error": {
+                                "code": "INTERNAL_ERROR",
+                                "message": (
+                                    f"Failed to reconstruct state from saved "
+                                    f"step '{step['tool']}': {exc}"
+                                ),
+                            },
+                        }
+        else:
+            # --- Legacy path: replay create_surface calls ---
+            saved_surfaces = load_surfaces(workspace)
+            create_surface_fn = registry.get("create_surface")
+            if saved_surfaces and create_surface_fn and tool_name != "create_surface":
+                for surf_args in saved_surfaces.values():
+                    try:
+                        await create_surface_fn(**surf_args)
+                    except Exception as exc:
+                        return {
+                            "ok": False,
+                            "error": {
+                                "code": "INTERNAL_ERROR",
+                                "message": f"Failed to reconstruct surface from saved state: {exc}",
+                            },
+                        }
 
         # Run the actual tool
         return await run_tool(tool_name, tool_args)
 
-    # Single event loop for both state reconstruction and tool execution (P3)
+    # Single event loop for both state reconstruction and tool execution
     response = asyncio.run(_run())
 
-    # If create_surface succeeded, persist the args
-    if tool_name == "create_surface" and response.get("ok"):
-        surface_name = tool_args.get("name", "wing")
-        save_surfaces(workspace, {surface_name: tool_args})
+    # --- Post-tool state persistence ---
+    if response.get("ok"):
+        if setup_tools:
+            # Generic path: save setup tool args
+            if is_setup_tool:
+                save_setup_step(workspace, tool_name, tool_args)
+        else:
+            # Legacy path: save create_surface args
+            if tool_name == "create_surface":
+                surface_name = tool_args.get("name", "wing")
+                save_surfaces(workspace, {surface_name: tool_args})
 
-    # If reset was called, clear the state
-    if tool_name == "reset" and response.get("ok"):
-        from hangar.sdk.cli.state import clear_state
-        clear_state(workspace)
+        # Reset always clears state (both paths)
+        if tool_name == "reset":
+            clear_state(workspace)
 
     _output_response(response, pretty=pretty, output=output)
 
