@@ -1,0 +1,31 @@
+[
+  {
+    "tool": "load_aircraft_template",
+    "args": {
+      "template": "caravan"
+    }
+  },
+  {
+    "tool": "set_propulsion_architecture",
+    "args": {
+      "architecture": "turboprop"
+    }
+  },
+  {
+    "tool": "configure_mission",
+    "args": {
+      "mission_type": "full",
+      "cruise_altitude": 18000.0,
+      "mission_range": 250.0,
+      "climb_vs": 850.0,
+      "climb_Ueas": 104.0,
+      "cruise_Ueas": 129.0,
+      "descent_vs": 400.0,
+      "descent_Ueas": 100.0,
+      "num_nodes": 11
+    }
+  },
+  {
+    "tool": "run_mission_analysis"
+  }
+]

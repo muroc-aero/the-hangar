@@ -42,10 +42,13 @@ from hangar.sdk.cli.runner import (
     list_tools,
     run_tool,
     set_registry_builder,
+    set_setup_tools,
 )
 from hangar.sdk.cli.state import (
     clear_state,
+    load_setup_steps,
     load_surfaces,
+    save_setup_step,
     save_surfaces,
 )
 
@@ -61,6 +64,7 @@ def _setup_oas_registry():
     from hangar.oas.cli import build_oas_registry
 
     set_registry_builder(build_oas_registry)
+    set_setup_tools(["create_surface"])
     yield
 
 
@@ -303,9 +307,9 @@ def test_oneshot_create_surface(isolated_state, capsys):
     result = json.loads(captured.out.strip())
     assert result["ok"] is True
 
-    # Surface should be saved in state
-    surfaces = load_surfaces("test_ws")
-    assert "wing" in surfaces
+    # Surface should be saved in state (generic setup-step path)
+    steps = load_setup_steps("test_ws")
+    assert any(s["tool"] == "create_surface" and s["args"].get("name") == "wing" for s in steps)
 
 
 def test_oneshot_state_reconstruction(isolated_state, capsys):
@@ -314,8 +318,8 @@ def test_oneshot_state_reconstruction(isolated_state, capsys):
 
     asyncio.run(reset())
 
-    # Pre-save a surface in state
-    save_surfaces("test_ws", {"wing": {"name": "wing", "num_y": 7}})
+    # Pre-save a surface in state (generic setup-step path)
+    save_setup_step("test_ws", "create_surface", {"name": "wing", "num_y": 7})
 
     # Run aero analysis -- should reconstruct the surface first
     fn = get_registry()["run_aero_analysis"]
@@ -352,9 +356,11 @@ def test_oneshot_workspace_isolation(isolated_state, capsys):
     oneshot_mode("create_surface", ns2, workspace="ws_b")
     capsys.readouterr()
 
-    assert "wing" in load_surfaces("ws_a")
-    assert "tail" not in load_surfaces("ws_a")
-    assert "tail" in load_surfaces("ws_b")
+    steps_a = load_setup_steps("ws_a")
+    steps_b = load_setup_steps("ws_b")
+    assert any(s["args"].get("name") == "wing" for s in steps_a)
+    assert not any(s["args"].get("name") == "tail" for s in steps_a)
+    assert any(s["args"].get("name") == "tail" for s in steps_b)
 
 
 def test_oneshot_reset_clears_state(isolated_state, capsys):
@@ -363,15 +369,15 @@ def test_oneshot_reset_clears_state(isolated_state, capsys):
 
     asyncio.run(server_reset())
 
-    save_surfaces("test_ws", {"wing": {"name": "wing", "num_y": 7}})
-    assert load_surfaces("test_ws") != {}
+    save_setup_step("test_ws", "create_surface", {"name": "wing", "num_y": 7})
+    assert load_setup_steps("test_ws") != []
 
     # Build a namespace for reset (no params)
     ns = argparse.Namespace()
     oneshot_mode("reset", ns, workspace="test_ws")
     capsys.readouterr()
 
-    assert load_surfaces("test_ws") == {}
+    assert load_setup_steps("test_ws") == []
 
 
 def test_oneshot_output_file(isolated_state, tmp_path, capsys):
@@ -396,7 +402,7 @@ def test_oneshot_bad_saved_surface(isolated_state, capsys):
     asyncio.run(reset())
 
     # Save a surface with invalid args (num_y must be odd >= 3)
-    save_surfaces("test_ws", {"bad": {"name": "bad", "num_y": 2}})
+    save_setup_step("test_ws", "create_surface", {"name": "bad", "num_y": 2})
 
     # Try to run analysis -- state reconstruction should fail gracefully
     fn = get_registry()["run_aero_analysis"]

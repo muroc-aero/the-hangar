@@ -1,0 +1,171 @@
+"""Lane A: Basic Caravan mission using raw OpenConcept.
+
+Three-phase mission (climb/cruise/descent) for a Cessna Caravan turboprop.
+No takeoff analysis. Uses OpenConcept directly with OpenMDAO.
+"""
+
+import contextlib
+import io
+
+import numpy as np
+import openmdao.api as om
+
+from openconcept.utilities import Integrator, AddSubtractComp, DictIndepVarComp
+from openconcept.propulsion import TurbopropPropulsionSystem
+from openconcept.weights import SingleTurboPropEmptyWeight
+from openconcept.aerodynamics import PolarDrag
+from openconcept.mission import BasicMission
+
+import sys, os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from shared import MISSION_BASIC
+
+# Aircraft data dict (same as openconcept/examples/aircraft_data/caravan.py)
+from openconcept.examples.aircraft_data.caravan import data as acdata
+
+
+class CaravanModel(om.Group):
+    def initialize(self):
+        self.options.declare("num_nodes", default=1)
+        self.options.declare("flight_phase", default=None)
+
+    def setup(self):
+        nn = self.options["num_nodes"]
+        flight_phase = self.options["flight_phase"]
+
+        controls = self.add_subsystem("controls", om.IndepVarComp(), promotes_outputs=["*"])
+        controls.add_output("prop1rpm", val=np.ones((nn,)) * 2000, units="rpm")
+
+        self.add_subsystem(
+            "propmodel",
+            TurbopropPropulsionSystem(num_nodes=nn),
+            promotes_inputs=["fltcond|*", "ac|propulsion|*", "throttle"],
+            promotes_outputs=["fuel_flow", "thrust"],
+        )
+        self.connect("prop1rpm", "propmodel.prop1.rpm")
+
+        cd0_source = "ac|aero|polar|CD0_cruise"
+        self.add_subsystem(
+            "drag",
+            PolarDrag(num_nodes=nn),
+            promotes_inputs=[
+                "fltcond|CL", "ac|geom|*",
+                ("CD0", cd0_source), "fltcond|q",
+                ("e", "ac|aero|polar|e"),
+            ],
+            promotes_outputs=["drag"],
+        )
+
+        self.add_subsystem(
+            "OEW",
+            SingleTurboPropEmptyWeight(),
+            promotes_inputs=["*", ("P_TO", "ac|propulsion|engine|rating")],
+            promotes_outputs=["OEW"],
+        )
+        self.connect("propmodel.prop1.component_weight", "W_propeller")
+        self.connect("propmodel.eng1.component_weight", "W_engine")
+
+        intfuel = self.add_subsystem(
+            "intfuel",
+            Integrator(num_nodes=nn, method="simpson", diff_units="s", time_setup="duration"),
+            promotes_inputs=["*"],
+            promotes_outputs=["*"],
+        )
+        intfuel.add_integrand("fuel_used", rate_name="fuel_flow", val=1.0, units="kg")
+
+        self.add_subsystem(
+            "weight",
+            AddSubtractComp(
+                output_name="weight",
+                input_names=["ac|weights|MTOW", "fuel_used"],
+                units="kg",
+                vec_size=[1, nn],
+                scaling_factors=[1, -1],
+            ),
+            promotes_inputs=["*"],
+            promotes_outputs=["weight"],
+        )
+
+
+class CaravanBasicAnalysis(om.Group):
+    def setup(self):
+        nn = MISSION_BASIC["num_nodes"]
+
+        dv_comp = self.add_subsystem("dv_comp", DictIndepVarComp(acdata), promotes_outputs=["*"])
+        dv_comp.add_output_from_dict("ac|aero|CLmax_TO")
+        dv_comp.add_output_from_dict("ac|aero|polar|e")
+        dv_comp.add_output_from_dict("ac|aero|polar|CD0_TO")
+        dv_comp.add_output_from_dict("ac|aero|polar|CD0_cruise")
+        dv_comp.add_output_from_dict("ac|geom|wing|S_ref")
+        dv_comp.add_output_from_dict("ac|geom|wing|AR")
+        dv_comp.add_output_from_dict("ac|geom|wing|c4sweep")
+        dv_comp.add_output_from_dict("ac|geom|wing|taper")
+        dv_comp.add_output_from_dict("ac|geom|wing|toverc")
+        dv_comp.add_output_from_dict("ac|geom|hstab|S_ref")
+        dv_comp.add_output_from_dict("ac|geom|hstab|c4_to_wing_c4")
+        dv_comp.add_output_from_dict("ac|geom|vstab|S_ref")
+        dv_comp.add_output_from_dict("ac|geom|fuselage|S_wet")
+        dv_comp.add_output_from_dict("ac|geom|fuselage|width")
+        dv_comp.add_output_from_dict("ac|geom|fuselage|length")
+        dv_comp.add_output_from_dict("ac|geom|fuselage|height")
+        dv_comp.add_output_from_dict("ac|geom|nosegear|length")
+        dv_comp.add_output_from_dict("ac|geom|maingear|length")
+        dv_comp.add_output_from_dict("ac|weights|MTOW")
+        dv_comp.add_output_from_dict("ac|weights|W_fuel_max")
+        dv_comp.add_output_from_dict("ac|weights|MLW")
+        dv_comp.add_output_from_dict("ac|propulsion|engine|rating")
+        dv_comp.add_output_from_dict("ac|propulsion|propeller|diameter")
+        dv_comp.add_output_from_dict("ac|num_passengers_max")
+        dv_comp.add_output_from_dict("ac|q_cruise")
+
+        self.add_subsystem(
+            "analysis",
+            BasicMission(num_nodes=nn, aircraft_model=CaravanModel),
+            promotes_inputs=["*"],
+            promotes_outputs=["*"],
+        )
+
+
+def run() -> dict:
+    """Run basic Caravan mission and return key results."""
+    nn = MISSION_BASIC["num_nodes"]
+
+    prob = om.Problem(reports=False)
+    prob.model = CaravanBasicAnalysis()
+    prob.model.nonlinear_solver = om.NewtonSolver(iprint=0, solve_subsystems=True)
+    prob.model.linear_solver = om.DirectSolver()
+    prob.model.nonlinear_solver.options["maxiter"] = 20
+    prob.model.nonlinear_solver.options["atol"] = 1e-10
+    prob.model.nonlinear_solver.options["rtol"] = 1e-10
+    prob.model.nonlinear_solver.linesearch = om.BoundsEnforceLS(
+        bound_enforcement="scalar", print_bound_enforce=False,
+    )
+    prob.setup(check=False, mode="fwd")
+
+    prob.set_val("climb.fltcond|vs", np.ones((nn,)) * MISSION_BASIC["climb_vs_ftmin"], units="ft/min")
+    prob.set_val("climb.fltcond|Ueas", np.ones((nn,)) * MISSION_BASIC["climb_Ueas_kn"], units="kn")
+    prob.set_val("cruise.fltcond|vs", np.ones((nn,)) * 0.01, units="ft/min")
+    prob.set_val("cruise.fltcond|Ueas", np.ones((nn,)) * MISSION_BASIC["cruise_Ueas_kn"], units="kn")
+    prob.set_val("descent.fltcond|vs", np.ones((nn,)) * (-MISSION_BASIC["descent_vs_ftmin"]), units="ft/min")
+    prob.set_val("descent.fltcond|Ueas", np.ones((nn,)) * MISSION_BASIC["descent_Ueas_kn"], units="kn")
+    prob.set_val("cruise|h0", MISSION_BASIC["cruise_altitude_ft"], units="ft")
+    prob.set_val("mission_range", MISSION_BASIC["mission_range_NM"], units="NM")
+
+    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+        prob.run_model()
+
+    fuel_burn = float(prob.get_val("descent.fuel_used_final", units="kg")[0])
+    oew = float(prob.get_val("climb.OEW", units="kg")[0])
+    mtow = float(prob.get_val("ac|weights|MTOW", units="kg")[0])
+
+    return {
+        "fuel_burn_kg": fuel_burn,
+        "OEW_kg": oew,
+        "MTOW_kg": mtow,
+    }
+
+
+if __name__ == "__main__":
+    import json
+    result = run()
+    print(json.dumps(result, indent=2))

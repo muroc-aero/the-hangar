@@ -1,0 +1,34 @@
+[
+  {
+    "tool": "load_aircraft_template",
+    "args": {
+      "template": "kingair"
+    }
+  },
+  {
+    "tool": "set_propulsion_architecture",
+    "args": {
+      "architecture": "twin_series_hybrid",
+      "battery_specific_energy": 450
+    }
+  },
+  {
+    "tool": "configure_mission",
+    "args": {
+      "mission_type": "full",
+      "cruise_altitude": 29000.0,
+      "mission_range": 500.0,
+      "climb_vs": 1500.0,
+      "climb_Ueas": 124.0,
+      "cruise_Ueas": 170.0,
+      "descent_vs": 600.0,
+      "descent_Ueas": 140.0,
+      "num_nodes": 11,
+      "cruise_hybridization": 0.058,
+      "payload": 1000.0
+    }
+  },
+  {
+    "tool": "run_mission_analysis"
+  }
+]

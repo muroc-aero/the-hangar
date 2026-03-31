@@ -6,6 +6,7 @@ requires-python = ">=3.11"
 dependencies = [
     "hangar-sdk",
     "hangar-oas",
+    "hangar-ocp",
     "hangar-pyc",
 ]
 
@@ -15,6 +16,7 @@ members = ["packages/*"]
 [tool.uv.sources]
 hangar-sdk = { workspace = true }
 hangar-oas = { workspace = true }
+hangar-ocp = { workspace = true }
 hangar-pyc = { workspace = true }
 
 [tool.pytest.ini_options]
