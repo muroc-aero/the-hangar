@@ -236,7 +236,7 @@ def generate_dashboard_html(run_id: str, *, user: str | None = None) -> str | No
     viewer_link = ""
     if session_id:
         viewer_link = (
-            f'<p><a href="/viewer?session_id={session_id}">'
+            f'<p><a href="viewer?session_id={session_id}">'
             f'View provenance graph for session {session_id}</a></p>'
         )
 
