@@ -13,7 +13,7 @@ WORKDIR /app
 # Install pyCycle from upstream with numpy 2.x compatibility patch.
 # The patch fixes np.complex removal and shape-(1,) scalar assignment.
 # Remove this block once upstream merges OpenMDAO/pyCycle#116.
-ARG PYC_REF=main
+ARG PYC_REF=master
 RUN git clone --depth 1 -b ${PYC_REF} https://github.com/OpenMDAO/pyCycle.git /tmp/pyCycle
 COPY scripts/pycycle-numpy2.patch /tmp/pycycle-numpy2.patch
 RUN cd /tmp/pyCycle && \
