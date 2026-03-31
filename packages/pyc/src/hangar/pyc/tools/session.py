@@ -7,10 +7,8 @@ Most of the implementation is reused from hangar.sdk.
 from __future__ import annotations
 
 import asyncio
-import json
 import uuid
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Annotated
 
 from hangar.sdk.auth import get_current_user
@@ -20,9 +18,7 @@ from hangar.sdk.telemetry import get_run_logs
 from hangar.sdk.viz.plotting import PLOT_TYPES, generate_n2, generate_plot
 from hangar.sdk.provenance.middleware import _get_session_id, _prov_session_id, set_server_session_id
 from hangar.sdk.provenance.db import (
-    _dumps,
     _next_seq,
-    get_session_graph,
     list_sessions,
     record_decision,
     record_session,
@@ -97,29 +93,43 @@ async def log_decision(
 
 
 async def export_session_graph(
-    session_id: Annotated[str | None, "Session to export (default: current)"] = None,
-    output_path: Annotated[str | None, "File path for JSON export"] = None,
+    session_id: Annotated[
+        str | None,
+        "Session ID to export (None = current session)",
+    ] = None,
 ) -> dict:
-    """Export the provenance DAG for the session as JSON.
+    """Export the provenance graph for a session as a JSON dict.
 
-    Returns ``{session_id, graph_path, num_nodes, num_edges}``.
+    Returns ``{session_id, graph_path, viewer_url, node_count, edge_count}``
+    where *graph_path* is the auto-generated file in the artifact directory.
     """
+    from hangar.sdk.provenance.flush import flush_session_graph
+
     sid = session_id or _get_session_id()
-    graph = get_session_graph(sid)
-    if not graph:
-        return {"session_id": sid, "error": "No provenance data found for session."}
 
-    if output_path is None:
-        output_path = f"pycycle_session_{sid}.json"
+    user = get_current_user()
+    try:
+        session = _sessions.get(sid)
+        project = session.project
+    except Exception:
+        project = None
 
-    path = Path(output_path)
-    path.write_text(_dumps(graph))
+    flush_result = flush_session_graph(sid, user=user, project=project)
+
+    viewer_url: str | None = None
+    try:
+        base = _get_viewer_base_url()
+        if base:
+            viewer_url = f"{base}/viewer?session_id={sid}"
+    except Exception:
+        pass
 
     return {
         "session_id": sid,
-        "graph_path": str(path.resolve()),
-        "num_nodes": len(graph.get("nodes", [])),
-        "num_edges": len(graph.get("edges", [])),
+        "graph_path": flush_result.get("path"),
+        "viewer_url": viewer_url,
+        "node_count": flush_result.get("node_count", 0),
+        "edge_count": flush_result.get("edge_count", 0),
     }
 
 
