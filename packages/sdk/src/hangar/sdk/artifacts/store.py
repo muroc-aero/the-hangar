@@ -17,7 +17,7 @@ import re
 
 import numpy as np
 
-_SAFE_NAME_RE = re.compile(r"^[a-zA-Z0-9_\-. ]+$")
+_SAFE_NAME_RE = re.compile(r"^[a-zA-Z0-9_\-. @]+$")
 
 # Artifact schema version — stamped into every persisted artifact.
 # Bump when the on-disk artifact format changes; add a migration step
