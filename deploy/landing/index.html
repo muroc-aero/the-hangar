@@ -88,6 +88,20 @@ section .subtitle{color:var(--fg2);margin-bottom:40px;font-size:1.05rem}
 .study h3{font-size:1.05rem;font-weight:600;color:var(--fg2);margin-bottom:8px}
 .study p{font-size:.875rem;color:var(--fg3)}
 
+/* ---- CITATIONS ---- */
+.citations{max-width:760px;margin:0 auto}
+.citation{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px 24px;margin-bottom:16px}
+.citation h3{font-size:1rem;font-weight:700;margin-bottom:6px}
+.citation .authors{font-size:.875rem;color:var(--fg2);margin-bottom:4px}
+.citation .venue{font-size:.85rem;color:var(--fg3);margin-bottom:8px;font-style:italic}
+.citation .links{font-size:.8rem}
+.citation .links a{margin-right:16px}
+
+/* ---- CONTRIBUTE ---- */
+.contribute-box{max-width:760px;margin:0 auto;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:28px 32px}
+.contribute-box p{color:var(--fg2);font-size:.95rem;margin-bottom:12px}
+.contribute-box p:last-child{margin-bottom:0}
+
 /* ---- FOOTER ---- */
 footer{border-top:1px solid var(--border);padding:32px 0;text-align:center;font-size:.85rem;color:var(--fg3)}
 footer a{color:var(--fg3)}
@@ -113,6 +127,8 @@ footer .sep{margin:0 8px;opacity:.4}
       <a href="#connect">Connect</a>
       <a href="#about">About</a>
       <a href="#studies">Case Studies</a>
+      <a href="#citations">Citations</a>
+      <a href="#contribute">Contribute</a>
     </div>
   </div>
 </nav>
@@ -295,6 +311,59 @@ codex mcp login pyc --scopes mcp:tools</code></pre>
         <p>Multi-tool workflow: pyCycle engine sizing feeding into OpenConcept mission analysis with OAS wing design.</p>
       </div>
 
+    </div>
+  </div>
+</section>
+
+<!-- CITATIONS -->
+<section id="citations">
+  <div class="container">
+    <h2>Citations</h2>
+    <p class="subtitle">The Hangar builds on these open-source projects. If you use these tools in published work, please cite the original authors.</p>
+    <div class="citations">
+
+      <div class="citation">
+        <h3>OpenAeroStruct</h3>
+        <div class="authors">Jasa, J. P., Hwang, J. T., and Martins, J. R. R. A.</div>
+        <div class="venue">Structural and Multidisciplinary Optimization, 57(4), 1815-1827, 2018</div>
+        <div class="links">
+          <a href="https://doi.org/10.1007/s00158-018-1912-8" target="_blank" rel="noopener">DOI</a>
+          <a href="https://github.com/mdolab/OpenAeroStruct" target="_blank" rel="noopener">GitHub</a>
+        </div>
+      </div>
+
+      <div class="citation">
+        <h3>OpenConcept</h3>
+        <div class="authors">Brelje, B. J. and Martins, J. R. R. A.</div>
+        <div class="venue">AIAA/IEEE Electric Aircraft Technologies Symposium, AIAA 2018-4979, 2018</div>
+        <div class="links">
+          <a href="https://doi.org/10.2514/6.2018-4979" target="_blank" rel="noopener">DOI</a>
+          <a href="https://github.com/mdolab/openconcept" target="_blank" rel="noopener">GitHub</a>
+        </div>
+      </div>
+
+      <div class="citation">
+        <h3>pyCycle</h3>
+        <div class="authors">Hendricks, E. S. and Gray, J. S.</div>
+        <div class="venue">Aerospace, 6(87), 2019</div>
+        <div class="links">
+          <a href="https://doi.org/10.3390/aerospace6080087" target="_blank" rel="noopener">DOI</a>
+          <a href="https://github.com/OpenMDAO/pyCycle" target="_blank" rel="noopener">GitHub</a>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- CONTRIBUTE -->
+<section id="contribute">
+  <div class="container">
+    <h2>Contribute</h2>
+    <p class="subtitle">The Hangar is designed to support new analysis tools beyond the initial three.</p>
+    <div class="contribute-box">
+      <p>We welcome contributions of MCP server wrappers for other engineering tools. The SDK provides shared infrastructure for response envelopes, provenance tracking, validation, and artifact storage, so you can focus on the tool-specific logic.</p>
+      <p>Check the <a href="https://github.com/muroc-aero/the-hangar/issues" target="_blank" rel="noopener">issues</a> and <a href="https://github.com/muroc-aero/the-hangar/discussions" target="_blank" rel="noopener">discussions</a> on GitHub to see what tools are being considered, propose new ones, or pick up an existing request.</p>
     </div>
   </div>
 </section>
