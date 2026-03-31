@@ -121,7 +121,7 @@ footer .sep{margin:0 8px;opacity:.4}
 <section class="hero">
   <div class="container">
     <h1>Engineering Analysis,<br><span>Tool-Called.</span></h1>
-    <p class="tagline">Open-source MCP servers that give AI agents access to real aerospace engineering tools &mdash; aerodynamics, structures, propulsion, and mission design.</p>
+    <p class="tagline">Open-source MCP servers that connect AI agents to real aerospace analysis tools: aerodynamics, structures, propulsion, and mission design.</p>
     <div class="status-bar">
       <div class="status-item"><span class="dot" id="dot-oas"></span> OAS</div>
       <div class="status-item"><span class="dot" id="dot-ocp"></span> OCP</div>
@@ -139,30 +139,30 @@ footer .sep{margin:0 8px;opacity:.4}
 
       <div class="card">
         <div class="card-head">
-          <h3>OAS &mdash; OpenAeroStruct</h3>
+          <h3>OAS: OpenAeroStruct</h3>
           <span class="badge" id="badge-oas">--</span>
         </div>
-        <p>Aerostructural analysis and optimization of lifting surfaces. Coupled VLM aerodynamics with finite-element structures for rapid wing design exploration.</p>
+        <p>Aerostructural analysis and optimization of lifting surfaces. Couples vortex-lattice aerodynamics with finite-element structures for wing design.</p>
         <div class="tools">~20 tools &middot; geometry, aero analysis, aerostructural analysis, drag polars, stability derivatives, optimization</div>
         <code class="endpoint">https://mcp.lakesideai.dev/oas/mcp</code>
       </div>
 
       <div class="card">
         <div class="card-head">
-          <h3>OCP &mdash; OpenConcept</h3>
+          <h3>OCP: OpenConcept</h3>
           <span class="badge" id="badge-ocp">--</span>
         </div>
-        <p>Aircraft conceptual design and mission analysis. Evaluate fuel burn, takeoff performance, and hybrid-electric propulsion architectures across full mission profiles.</p>
+        <p>Aircraft conceptual design and mission analysis. Computes fuel burn, takeoff performance, and battery state-of-charge for conventional and hybrid-electric architectures.</p>
         <div class="tools">~15 tools &middot; aircraft templates, propulsion architecture, mission analysis, parameter sweeps, optimization</div>
         <code class="endpoint">https://mcp.lakesideai.dev/ocp/mcp</code>
       </div>
 
       <div class="card">
         <div class="card-head">
-          <h3>PYC &mdash; pyCycle</h3>
+          <h3>PYC: pyCycle</h3>
           <span class="badge" id="badge-pyc">--</span>
         </div>
-        <p>Gas turbine engine cycle analysis. Design-point sizing and off-design performance evaluation for jet engines with full thermodynamic modeling.</p>
+        <p>Gas turbine engine cycle analysis. Design-point sizing and off-design performance evaluation with full thermodynamic station modeling.</p>
         <div class="tools">~13 tools &middot; engine creation, design-point analysis, off-design sweeps, TSFC &amp; thrust computation</div>
         <code class="endpoint">https://mcp.lakesideai.dev/pyc/mcp</code>
       </div>
@@ -189,7 +189,7 @@ footer .sep{margin:0 8px;opacity:.4}
         <pre><code>claude mcp add --transport http oas https://mcp.lakesideai.dev/oas/mcp
 claude mcp add --transport http ocp https://mcp.lakesideai.dev/ocp/mcp
 claude mcp add --transport http pyc https://mcp.lakesideai.dev/pyc/mcp</code></pre>
-        <p>Start a Claude Code session &mdash; the tools are available immediately.</p>
+        <p>Start a Claude Code session. The tools are available immediately.</p>
       </div>
 
       <div class="panel" id="panel-claude-ai">
@@ -227,47 +227,45 @@ codex mcp login pyc --scopes mcp:tools</code></pre>
       <h2>What Is The Hangar?</h2>
       <div class="meta">March 2026 &middot; Lakeside AI</div>
 
-      <p>The Hangar is an open-source project that bridges the gap between AI agents and real engineering analysis tools. Instead of asking an AI to <em>guess</em> at aerodynamic performance or <em>approximate</em> structural loads, The Hangar lets it <em>compute</em> them &mdash; using the same validated solvers that engineers rely on.</p>
+      <p>The Hangar is an open-source collection of MCP servers that wrap real aerospace analysis solvers. AI agents can call these tools directly to compute aerodynamic coefficients, structural loads, fuel burn, engine performance, and more. No approximations: the agent runs the same solvers you would run yourself.</p>
 
-      <h3>The Problem</h3>
-      <p>Engineering analysis tools are powerful but have steep learning curves. Setting up an OpenMDAO problem, defining mesh parameters, connecting subsystems, and interpreting solver output requires deep domain expertise. This creates a bottleneck: the tools exist, but the barrier to entry keeps them out of reach for rapid exploration, early-stage design, and cross-disciplinary collaboration.</p>
+      <h3>Background</h3>
+      <p>Tools like OpenAeroStruct, OpenConcept, and pyCycle are capable but have significant setup overhead. Building an OpenMDAO problem, defining meshes, connecting subsystems, setting solver options, and extracting results takes time and domain knowledge. This makes quick design iteration expensive, especially early in a project when you need to explore broadly.</p>
+
+      <p>MCP (Model Context Protocol) is an open standard that lets AI applications call external tools with structured inputs and outputs. The Hangar uses MCP to expose each analysis framework as a set of callable tools with input validation, physics checks, and structured result envelopes.</p>
 
       <h3>How It Works</h3>
-      <p>The Hangar wraps proven open-source analysis frameworks as <strong>MCP (Model Context Protocol) servers</strong>. MCP is an open standard that lets AI applications call external tools with structured inputs and outputs. Each Hangar server exposes a set of tools that an AI agent can invoke:</p>
+      <p>Each server exposes tools that map to common engineering workflows:</p>
 
       <ul>
-        <li><strong>Define geometry</strong> &mdash; create a wing with specific span, chord, sweep, and thickness distributions</li>
-        <li><strong>Run analysis</strong> &mdash; compute lift, drag, structural stresses, fuel burn, or engine thrust at specific flight conditions</li>
-        <li><strong>Optimize</strong> &mdash; let a gradient-based optimizer find the best design variables subject to engineering constraints</li>
-        <li><strong>Explore the design space</strong> &mdash; sweep parameters, compare architectures, and build intuition through computed results</li>
+        <li><strong>Define geometry</strong>: create a wing surface with span, chord, sweep, taper, and thickness distributions</li>
+        <li><strong>Run analysis</strong>: compute CL, CD, structural stresses, fuel burn, TSFC, or thrust at specified flight conditions</li>
+        <li><strong>Optimize</strong>: gradient-based optimization over design variables with engineering constraints</li>
+        <li><strong>Sweep parameters</strong>: drag polars, off-design engine maps, mission range trades</li>
       </ul>
 
-      <p>Every tool call returns a structured response with results, physics validation checks, and a provenance trail linking decisions to data.</p>
-
-      <div class="highlight">
-        <strong>The key insight:</strong> AI agents are excellent at navigating complex tool interfaces, interpreting results in context, and iterating through design spaces &mdash; exactly the workflow that makes engineering analysis tools hard to use manually. The Hangar turns the AI into a capable engineering analyst that can set up, run, and interpret real simulations.
-      </div>
+      <p>Every tool call returns a structured envelope containing results, physics validation findings (convergence, bounds, sanity checks), and a run ID for provenance tracking.</p>
 
       <h3>The Tool Chain</h3>
-      <p>All three analysis servers build on the <a href="https://openmdao.org" target="_blank" rel="noopener">OpenMDAO</a> ecosystem &mdash; NASA's open-source framework for multidisciplinary design, analysis, and optimization:</p>
+      <p>All three servers build on the <a href="https://openmdao.org" target="_blank" rel="noopener">OpenMDAO</a> ecosystem from NASA Glenn:</p>
 
       <ul>
-        <li><strong>OpenAeroStruct</strong> (OAS) &mdash; aerostructural analysis using vortex-lattice aerodynamics coupled with finite-element structures. Ideal for wing design studies, trade-offs between aerodynamic and structural performance, and rapid configuration exploration.</li>
-        <li><strong>OpenConcept</strong> (OCP) &mdash; aircraft conceptual design with mission analysis across full flight profiles. Supports conventional and hybrid-electric propulsion architectures, enabling comparative studies of next-generation aircraft concepts.</li>
-        <li><strong>pyCycle</strong> (PYC) &mdash; thermodynamic cycle analysis for gas turbine engines. Design-point sizing and off-design performance evaluation with full component-level modeling.</li>
+        <li><strong>OpenAeroStruct</strong> (OAS): vortex-lattice method coupled with finite-element structures. Suited for wing planform studies, aerostructural trade-offs, and configuration screening.</li>
+        <li><strong>OpenConcept</strong> (OCP): mission analysis with full flight profiles. Supports turboprop, turbofan, and series-hybrid-electric architectures for fuel burn and range evaluation.</li>
+        <li><strong>pyCycle</strong> (PYC): thermodynamic cycle analysis for gas turbines. Design-point engine sizing and off-design performance with component-level modeling.</li>
       </ul>
 
-      <h3>What This Enables</h3>
-      <p>With The Hangar, an AI agent can conduct engineering workflows that previously required hours of setup:</p>
+      <h3>Example Workflows</h3>
+      <p>Some things you can do with an AI agent connected to these servers:</p>
 
       <ul>
-        <li><strong>Design space exploration</strong> &mdash; "How does fuel burn change if we increase aspect ratio from 9 to 14?" becomes a single conversation turn.</li>
-        <li><strong>Architecture comparison</strong> &mdash; "Compare a conventional turboprop against a series-hybrid for a 500 nmi regional mission" produces computed results, not speculation.</li>
-        <li><strong>Multi-tool analysis</strong> &mdash; size an engine with pyCycle, feed its performance into an OpenConcept mission, and optimize the wing with OpenAeroStruct &mdash; all in one session.</li>
-        <li><strong>Optimization</strong> &mdash; set up gradient-based optimization with real design variables and engineering constraints, then interpret what the optimizer found and why.</li>
+        <li><strong>Design space exploration</strong>: "What happens to fuel burn if aspect ratio goes from 9 to 14?" The agent creates the surface, runs analyses at each AR, and reports the trend.</li>
+        <li><strong>Architecture comparison</strong>: "Compare turboprop vs. series-hybrid for a 500 nmi regional mission." Computed results across the full mission profile, not estimates.</li>
+        <li><strong>Multi-tool analysis</strong>: size an engine with pyCycle, feed its TSFC into an OpenConcept mission model, and optimize the wing with OpenAeroStruct.</li>
+        <li><strong>Optimization</strong>: define design variables, set constraints (stress, fuel capacity, CL targets), run SNOPT or SLSQP, and interpret convergence.</li>
       </ul>
 
-      <p>The Hangar doesn't replace engineering judgment &mdash; it amplifies it. By removing the boilerplate between an engineer's question and a computed answer, it makes iterative analysis practical at the speed of conversation.</p>
+      <p>The agent handles the setup boilerplate. You stay focused on the engineering questions.</p>
     </div>
   </div>
 </section>
@@ -305,7 +303,7 @@ codex mcp login pyc --scopes mcp:tools</code></pre>
 <footer>
   <div class="container">
     Lakeside AI <span class="sep">|</span>
-    <a href="https://github.com/lakesideai/the-hangar" target="_blank" rel="noopener">GitHub</a>
+    <a href="https://github.com/muroc-aero/the-hangar" target="_blank" rel="noopener">GitHub</a>
     <span class="sep">|</span> Powered by FastMCP + OpenMDAO
   </div>
 </footer>
