@@ -1,28 +1,30 @@
 # Caddyfile for reverse-proxying Hangar services.
 #
-# Usage:
-#   caddy run --config docker/Caddyfile
-#
-# This configuration provides TLS termination and path-prefix routing
-# for multi-tool deployments.  Each tool gets a /<tool>/* prefix that is
-# stripped before proxying (handle_path), so each tool server sees
-# requests at its own root (e.g. /mcp, /.well-known/*).
+# Each tool gets two routes:
+#   1. handle_path /<tool>/*  — strips prefix, proxies MCP requests
+#   2. handle /.well-known/oauth-protected-resource/<tool>  — RFC 9728
+#      metadata discovery (path NOT stripped, FastMCP serves it as-is)
 #
 # For local development, access services directly on their exposed ports
-# (e.g. http://localhost:8000 for OAS, http://localhost:7654 for dashboard).
+# (e.g. http://localhost:8000 for OAS).
 
 {$HANGAR_DOMAIN:localhost} {
-	# --- OAS MCP server (streamable HTTP transport) ---
+	# --- OAS ---
+	handle /.well-known/oauth-protected-resource/oas {
+		reverse_proxy oas:8000
+	}
 	handle_path /oas/* {
 		reverse_proxy oas:8000
 	}
 
 	# --- Future tools ---
+	# handle /.well-known/oauth-protected-resource/ocp {
+	# 	reverse_proxy ocp:8000
+	# }
 	# handle_path /ocp/* {
 	# 	reverse_proxy ocp:8000
 	# }
 
-	# Default: return 404 for unmatched routes
 	handle {
 		respond "Not Found" 404
 	}

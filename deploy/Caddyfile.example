@@ -1,8 +1,9 @@
 # Production Caddyfile for Hangar multi-tool deployment.
 #
-# Each tool gets a path prefix on mcp.lakesideai.dev.
-# handle_path strips the prefix before proxying, so each tool server
-# sees requests at its own root (e.g. /mcp, /.well-known/*).
+# Each tool gets two routes on mcp.lakesideai.dev:
+#   1. handle_path /<tool>/*  — strips prefix, proxies MCP requests
+#   2. handle /.well-known/oauth-protected-resource/<tool>  — RFC 9728
+#      metadata discovery (path NOT stripped, FastMCP serves it as-is)
 #
 # Client connection URLs:
 #   Claude Code:  claude mcp add --transport http oas https://mcp.lakesideai.dev/oas/mcp
@@ -26,12 +27,20 @@ mcp.lakesideai.dev {
         -Server
     }
 
-    # OAS MCP server
+    # --- OAS ---
+    # RFC 9728 OAuth protected resource metadata (no prefix stripping)
+    handle /.well-known/oauth-protected-resource/oas {
+        reverse_proxy oas-mcp:8000
+    }
+    # MCP + viewer requests (prefix stripped)
     handle_path /oas/* {
         reverse_proxy oas-mcp:8000
     }
 
-    # OCP MCP server (uncomment when ready)
+    # --- OCP (uncomment when ready) ---
+    # handle /.well-known/oauth-protected-resource/ocp {
+    #     reverse_proxy ocp-mcp:8000
+    # }
     # handle_path /ocp/* {
     #     reverse_proxy ocp-mcp:8000
     # }
