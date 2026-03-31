@@ -213,7 +213,7 @@ def generate_dashboard_html(run_id: str, *, user: str | None = None) -> str | No
         plot_panels += (
             f'<div class="plot-panel">'
             f'<h3>{pt_title}</h3>'
-            f'<img src="/plot?run_id={run_id}&amp;plot_type={pt}" '
+            f'<img src="plot?run_id={run_id}&amp;plot_type={pt}" '
             f'alt="{pt}" style="max-width:100%;height:auto;" '
             f'onerror="{onerror}">'
             f'</div>'
@@ -300,7 +300,7 @@ def generate_dashboard_html(run_id: str, *, user: str | None = None) -> str | No
   <div class="card">
     <h2>Links</h2>
     {viewer_link}
-    <p><a href="/plot_types?run_id={run_id}">Available plot types (JSON)</a></p>
+    <p><a href="plot_types?run_id={run_id}">Available plot types (JSON)</a></p>
   </div>
 </div>
 

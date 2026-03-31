@@ -597,11 +597,16 @@ function loadFile(file) {
 }
 
 // ── Live server connection ────────────────────────────────────────────────
-// Use the page's own origin so fetches are same-origin (avoids CORS issues).
+// Derive the base URL from the current page path.  When accessed via a
+// path-prefix reverse proxy (e.g. /oas/viewer), strip the viewer path
+// component to get the tool's base URL (e.g. https://host/oas).
 // Override with ?url=http://... to point at a remote server.
 const BASE_URL = (() => {
   const params = new URLSearchParams(window.location.search);
-  return params.get('url') || window.location.origin;
+  if (params.get('url')) return params.get('url');
+  // Strip /viewer or /viewer/ from the current path to get the tool prefix
+  const path = window.location.pathname.replace(/\/viewer\/?$/, '');
+  return window.location.origin + path;
 })();
 
 async function fetchSessions() {
