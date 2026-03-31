@@ -5,7 +5,7 @@
 #
 # Prerequisites:
 #   1. Clone the-hangar repo on the VPS:
-#        git clone https://github.com/acb-code/the-hangar.git ~/hangar/repo
+#        git clone https://github.com/muroc-aero/the-hangar.git ~/hangar/repo
 #   2. Copy deploy/.env.example to ~/hangar/.env and fill in secrets
 #   3. Caddy reverse proxy (separate stack) with TLS for:
 #        - mcp.lakesideai.dev  → web network (path-prefix routing)
@@ -86,7 +86,7 @@ services:
       keycloak:
         condition: service_healthy
     volumes:
-      - ./oas_data:/data
+      - ./hangar_data/oas:/data
     env_file:
       - path: .env
         required: false
@@ -117,7 +117,7 @@ services:
   #     keycloak:
   #       condition: service_healthy
   #   volumes:
-  #     - ./ocp_data:/data
+  #     - ./hangar_data/ocp:/data
   #   env_file:
   #     - path: .env
   #       required: false

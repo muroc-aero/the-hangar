@@ -22,8 +22,8 @@ OAS deployment (`~/oas/` with `oas` realm) to the multi-tool Hangar deployment
 ~/hangar/
   docker-compose.prod.yml   # oas-mcp + (ocp-mcp) + keycloak + postgres
   .env                      # OIDC_ISSUER_URL=.../realms/hangar
-  oas_data/                 # OAS artifacts
-  ocp_data/                 # OCP artifacts (when ready)
+  hangar_data/oas/          # OAS artifacts
+  hangar_data/ocp/          # OCP artifacts (when ready)
 
 ~/caddy/
   Caddyfile                 # mcp.lakesideai.dev/oas/* -> oas-mcp:8000
@@ -54,7 +54,7 @@ cat ~/oas/.env
 ```bash
 # Clone the-hangar repo on the VPS
 mkdir -p ~/hangar
-git clone https://github.com/acb-code/the-hangar.git ~/hangar/repo
+git clone https://github.com/muroc-aero/the-hangar.git ~/hangar/repo
 
 # Copy deploy files to ~/hangar/ (compose references ./repo as build context)
 cp ~/hangar/repo/deploy/docker-compose.prod.yml ~/hangar/
@@ -100,7 +100,8 @@ see the existing `oas` realm plus any users.
 cd ~/hangar
 
 # Copy OAS artifact data to the new location
-cp -r ~/oas/oas_data ~/hangar/oas_data
+mkdir -p ~/hangar/hangar_data
+cp -r ~/oas/oas_data ~/hangar/hangar_data/oas
 
 # Stop the OLD stack's oas-mcp (but keep keycloak + postgres running)
 cd ~/oas && docker compose -f docker-compose.prod.yml stop oas-mcp

@@ -9,7 +9,7 @@ services:
     volumes:
       # Bind-mount host directory for persistent artifact storage.
       # Docker creates the directory automatically if it doesn't exist.
-      - ./oas_data:/data
+      - ./hangar_data/oas:/data
     # Load secrets from .env (copy from .env.example and fill in values).
     env_file:
       - path: .env
@@ -31,7 +31,7 @@ services:
   #   ports:
   #     - "8001:8000"
   #   volumes:
-  #     - ./ocp_data:/data
+  #     - ./hangar_data/ocp:/data
   #   env_file:
   #     - path: .env
   #       required: false

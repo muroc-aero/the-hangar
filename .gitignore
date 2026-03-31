@@ -218,10 +218,8 @@ upstream/*/
 *.db
 
 # Artifact data (analysis run outputs)
-hangar_data/
+**/hangar_data/
 oas_data/
-docker/*_data/
-deploy/*_data/
 
 # CLI state
 .hangar/

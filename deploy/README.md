@@ -42,7 +42,7 @@ Multi-tool MCP server deployment with shared Keycloak auth.
 1. Clone the repo on the VPS:
    ```bash
    mkdir -p ~/hangar
-   git clone https://github.com/acb-code/the-hangar.git ~/hangar/repo
+   git clone https://github.com/muroc-aero/the-hangar.git ~/hangar/repo
    ```
 2. Set up env and compose:
    ```bash
