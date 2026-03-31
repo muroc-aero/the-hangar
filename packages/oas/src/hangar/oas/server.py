@@ -173,8 +173,8 @@ PERFORMANCE:
 
 ARTIFACT STORAGE (every analysis is automatically saved):
   • Each analysis tool returns a run_id — use it to retrieve results later.
-  • Storage hierarchy: {OAS_DATA_DIR}/{user}/{project}/{session_id}/{run_id}.json
-  • OAS_USER env var sets user identity (default: OS login name)
+  • Storage hierarchy: {HANGAR_DATA_DIR}/{user}/{project}/{session_id}/{run_id}.json
+  • HANGAR_USER env var sets user identity (default: OS login name)
   • OAS_PROJECT env var sets default project (default: "default")
   • Pass run_name="my label" to any analysis tool to tag a run
   • list_artifacts(session_id?, analysis_type?, user?, project?) — browse saved runs

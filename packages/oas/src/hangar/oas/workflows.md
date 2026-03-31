@@ -197,4 +197,4 @@ Every run has a context-rich HTML dashboard at `/dashboard?run_id=X` that shows
 flight conditions, key results, validation status, and all applicable plots.
 
   • Local:  http://localhost:7654/dashboard?run_id=X  (no auth)
-  • VPS:    https://<RESOURCE_SERVER_URL>/dashboard?run_id=X  (Basic Auth)
+  • VPS:    use visualize(run_id, output="url") to get the correct dashboard URL

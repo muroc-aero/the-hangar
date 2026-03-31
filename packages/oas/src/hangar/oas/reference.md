@@ -91,7 +91,7 @@ NOTE: All *_cp arrays use ROOT-to-TIP ordering: cp[0]=root, cp[-1]=tip.
 ## Dashboard
   /dashboard?run_id=<id>   context-rich HTML page (flight conds, results, plots, validation)
   Local:  http://localhost:7654/dashboard?run_id=X  (no auth)
-  VPS:    https://<host>/dashboard?run_id=X         (Basic Auth)
+  VPS:    use visualize(run_id, output="url") to get the correct dashboard URL
 
 ## Common errors and fixes
   "num_y must be odd"           → change num_y to nearest odd number
