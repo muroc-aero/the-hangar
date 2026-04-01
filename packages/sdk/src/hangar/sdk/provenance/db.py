@@ -237,6 +237,7 @@ def init_db(db_path: Path | str | None = None) -> None:
         try:
             conn.execute(f"SELECT tool FROM {table} LIMIT 0")
         except Exception:
+            logger.info("Migrating %s: adding tool column", table)
             conn.execute(f"ALTER TABLE {table} ADD COLUMN tool TEXT DEFAULT ''")
     conn.commit()
 

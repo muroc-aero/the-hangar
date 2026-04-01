@@ -646,12 +646,16 @@ function loadFile(file) {
 // Derive the base URL from the current page path.  When accessed via a
 // path-prefix reverse proxy (e.g. /oas/viewer), strip the viewer path
 // component to get the tool's base URL (e.g. https://host/oas).
+// For the unified viewer at /viewer, keep the path as-is so API calls
+// go to /viewer/sessions etc. (Caddy handle_path /viewer/* routes these).
 // Override with ?url=http://... to point at a remote server.
 const BASE_URL = (() => {
   const params = new URLSearchParams(window.location.search);
   if (params.get('url')) return params.get('url');
-  // Strip /viewer or /viewer/ from the current path to get the tool prefix
+  // Strip /viewer or /viewer/ from the current path to get the tool prefix.
+  // If the result is empty (unified viewer at /viewer), keep /viewer.
   const path = window.location.pathname.replace(/\/viewer\/?$/, '');
+  if (!path) return window.location.origin + '/viewer';
   return window.location.origin + path;
 })();
 
