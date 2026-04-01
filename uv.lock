@@ -9,6 +9,7 @@ members = [
     "hangar-ocp",
     "hangar-pyc",
     "hangar-sdk",
+    "hangar-viewer",
 ]
 
 [[package]]
@@ -623,6 +624,7 @@ dependencies = [
     { name = "hangar-ocp" },
     { name = "hangar-pyc" },
     { name = "hangar-sdk" },
+    { name = "hangar-viewer" },
 ]
 
 [package.dev-dependencies]
@@ -638,6 +640,7 @@ requires-dist = [
     { name = "hangar-ocp", editable = "packages/ocp" },
     { name = "hangar-pyc", editable = "packages/pyc" },
     { name = "hangar-sdk", editable = "packages/sdk" },
+    { name = "hangar-viewer", editable = "packages/viewer" },
 ]
 
 [package.metadata.requires-dev]
@@ -763,6 +766,23 @@ requires-dist = [
     { name = "uvicorn", marker = "extra == 'http'", specifier = ">=0.27" },
 ]
 provides-extras = ["auth", "viz", "http", "all"]
+
+[[package]]
+name = "hangar-viewer"
+version = "0.1.0"
+source = { editable = "packages/viewer" }
+dependencies = [
+    { name = "hangar-sdk", extra = ["all"] },
+    { name = "starlette" },
+    { name = "uvicorn" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "hangar-sdk", extras = ["all"], editable = "packages/sdk" },
+    { name = "starlette", specifier = ">=0.36" },
+    { name = "uvicorn", specifier = ">=0.27" },
+]
 
 [[package]]
 name = "httpcore"

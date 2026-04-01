@@ -51,7 +51,7 @@ def _require_basic_auth(handler):
             return Response(
                 content="Unauthorized",
                 status_code=401,
-                headers={"WWW-Authenticate": 'Basic realm="OAS Viewer"'},
+                headers={"WWW-Authenticate": 'Basic realm="Hangar Viewer"'},
                 media_type="text/plain",
             )
         return await handler(request)
@@ -318,6 +318,10 @@ def build_viewer_app() -> tuple[Starlette | None, str]:
         )
         return None, ""
 
+    resource_server_url = os.environ.get(
+        "RESOURCE_SERVER_URL", "http://localhost:8000"
+    ).rstrip("/")
+
     routes = _wrap_handlers(_require_basic_auth)
 
     app = Starlette(
@@ -325,7 +329,7 @@ def build_viewer_app() -> tuple[Starlette | None, str]:
         middleware=[
             Middleware(
                 CORSMiddleware,
-                allow_origins=["*"],
+                allow_origins=[resource_server_url],
                 allow_methods=["GET"],
                 allow_headers=["Authorization"],
             ),

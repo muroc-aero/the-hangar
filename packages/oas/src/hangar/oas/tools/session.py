@@ -30,6 +30,7 @@ from hangar.sdk.provenance.db import (
     _next_seq,
     get_session_graph,
     list_sessions,
+    record_cross_reference,
     record_decision,
     record_session,
     session_exists,
@@ -114,6 +115,55 @@ async def log_decision(
         confidence=confidence,
     )
     return {"decision_id": decision_id}
+
+
+async def link_cross_tool_result(
+    source_call_id: Annotated[
+        str,
+        "call_id from the source tool's _provenance field",
+    ],
+    source_tool: Annotated[
+        str,
+        "Name of the source tool server (e.g. 'oas', 'ocp', 'pyc')",
+    ],
+    target_tool: Annotated[
+        str,
+        "Name of the target tool server that will consume this data",
+    ],
+    target_call_id: Annotated[
+        str | None,
+        "call_id from the target tool's _provenance field (if known)",
+    ] = None,
+    variables: Annotated[
+        dict | None,
+        "Data being passed between tools (e.g. {'CD': 0.032, 'structural_mass': 1500})",
+    ] = None,
+    notes: Annotated[
+        str,
+        "Description of the data handoff",
+    ] = "",
+) -> dict:
+    """Record a cross-tool data dependency in the provenance graph.
+
+    Call this when passing results from one tool server to another (e.g.,
+    using OAS drag output as input to OCP mission analysis). Creates a
+    visible edge in the provenance DAG connecting the two tool calls.
+
+    Returns ``{ref_id}``.
+    """
+    session_id = _get_session_id()
+    ref_id = str(uuid.uuid4())
+    record_cross_reference(
+        ref_id=ref_id,
+        session_id=session_id,
+        source_call_id=source_call_id,
+        source_tool=source_tool,
+        target_call_id=target_call_id,
+        target_tool=target_tool,
+        variables=variables,
+        notes=notes,
+    )
+    return {"ref_id": ref_id}
 
 
 async def export_session_graph(

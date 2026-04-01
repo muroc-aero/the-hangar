@@ -8,6 +8,7 @@ dependencies = [
     "hangar-oas",
     "hangar-ocp",
     "hangar-pyc",
+    "hangar-viewer",
 ]
 
 [tool.uv.workspace]
@@ -18,6 +19,7 @@ hangar-sdk = { workspace = true }
 hangar-oas = { workspace = true }
 hangar-ocp = { workspace = true }
 hangar-pyc = { workspace = true }
+hangar-viewer = { workspace = true }
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

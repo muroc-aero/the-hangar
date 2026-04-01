@@ -106,6 +106,7 @@ class ArtifactStore:
         return self._data_dir / user / project / session_id
 
     def _artifact_path(self, user: str, project: str, session_id: str, run_id: str) -> Path:
+        _validate_path_segment(run_id, "run_id")
         return self._session_dir(user, project, session_id) / f"{run_id}.json"
 
     def _index_path(self, user: str, project: str, session_id: str) -> Path:

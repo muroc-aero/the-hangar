@@ -51,7 +51,15 @@ mcp.lakesideai.dev {
         reverse_proxy pyc-mcp:8000
     }
 
-    # Landing page — static files from /srv/landing (mounted read-only).
+    # --- Unified Provenance Viewer ---
+    handle_path /viewer/* {
+        reverse_proxy viewer:8080
+    }
+    handle /viewer {
+        reverse_proxy viewer:8080
+    }
+
+    # Landing page -- static files from /srv/landing (mounted read-only).
     # Update via: git pull on the repo; Caddy serves new files immediately.
     handle {
         root * /srv/landing

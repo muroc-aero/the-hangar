@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>OAS Provenance Viewer</title>
+<title>Hangar Provenance Viewer</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dagre/0.8.5/dagre.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/cytoscape-dagre.min.js"></script>
@@ -135,6 +135,7 @@
   .badge-high   { background: #1a3a1a; color: #5de05d; }
   .badge-medium { background: #3a3010; color: #e0c040; }
   .badge-low    { background: #3a2010; color: #e08040; }
+  .badge-tool   { background: #1a2a4a; color: #8eb6ff; margin-left: 4px; }
 
   /* ── Timeline bar ── */
   #timeline {
@@ -207,7 +208,7 @@
 <body>
 
 <div id="toolbar">
-  <h1>OAS Provenance</h1>
+  <h1>Hangar Provenance</h1>
 
   <!-- File drop -->
   <div id="drop-zone" title="Drop a JSON graph file or click to browse">
@@ -220,6 +221,9 @@
   <button class="btn" id="btn-refresh" title="Refresh session list">↺ Refresh</button>
 
   <div style="flex:1"></div>
+
+  <!-- Tool legend (visible when nodes have tool labels) -->
+  <div id="tool-legend" style="display:none;gap:8px;align-items:center;font-size:11px;color:#888"></div>
 
   <!-- Controls -->
   <button class="btn" id="btn-fit">Fit</button>
@@ -248,6 +252,18 @@
 // ── Register cytoscape-dagre layout ──────────────────────────────────────
 cytoscape.use(cytoscapeDagre);
 
+// ── Tool color map (border colors per tool server) ──────────────────────
+const TOOL_COLORS = {
+  oas: '#3a9aff',  // blue
+  ocp: '#ff9a3a',  // orange
+  pyc: '#3adf7a',  // green
+};
+const DEFAULT_TOOL_COLOR = '#3a7aaa';
+function toolBorderColor(ele) {
+  const t = ele.data('tool');
+  return (t && TOOL_COLORS[t]) || DEFAULT_TOOL_COLOR;
+}
+
 // ── Cytoscape instance ────────────────────────────────────────────────────
 const cy = cytoscape({
   container: document.getElementById('cy'),
@@ -263,8 +279,8 @@ const cy = cytoscape({
         'font-size': 11,
         'color': '#e0e8ff',
         'background-color': ele => ele.data('status') === 'error' ? '#5a1a1a' : '#1a3a5a',
-        'border-width': 1.5,
-        'border-color': ele => ele.data('status') === 'error' ? '#ff6b6b' : '#3a7aaa',
+        'border-width': 2,
+        'border-color': ele => ele.data('status') === 'error' ? '#ff6b6b' : toolBorderColor(ele),
         'text-wrap': 'ellipsis',
         'text-max-width': 110,
       }
@@ -311,14 +327,16 @@ const cy = cytoscape({
         'arrow-scale': 1.2,
         'line-color': ele => {
           const l = ele.data('label');
-          if (l === 'informs') return '#5aaa5a';
-          if (l === 'decides') return '#9a6add';
+          if (l === 'informs')    return '#5aaa5a';
+          if (l === 'decides')    return '#9a6add';
+          if (l === 'cross_tool') return '#ff9a3a';
           return '#6070a0';
         },
         'target-arrow-color': ele => {
           const l = ele.data('label');
-          if (l === 'informs') return '#5aaa5a';
-          if (l === 'decides') return '#9a6add';
+          if (l === 'informs')    return '#5aaa5a';
+          if (l === 'decides')    return '#9a6add';
+          if (l === 'cross_tool') return '#ff9a3a';
           return '#6070a0';
         },
         'label': 'data(label)',
@@ -326,6 +344,14 @@ const cy = cytoscape({
         'color': '#888',
         'text-rotation': 'autorotate',
         width: 2,
+      }
+    },
+    {
+      selector: 'edge[label="cross_tool"]',
+      style: {
+        'line-style': 'dashed',
+        'line-dash-pattern': [6, 3],
+        width: 2.5,
       }
     }
   ],
@@ -353,6 +379,7 @@ function renderGraph(data) {
         label: isTC ? node.tool_name : (node.decision_type || 'decision'),
         status: node.status || 'ok',
         confidence: node.confidence || 'medium',
+        tool: node.tool || '',
         _raw: node,
       }
     });
@@ -375,6 +402,7 @@ function renderGraph(data) {
   cy.fit(30);
 
   buildTimeline(data);
+  buildToolLegend(data);
 }
 
 // ── Node click → panel ───────────────────────────────────────────────────
@@ -397,6 +425,7 @@ function showPanel(node) {
 
   if (node.type === 'tool_call') {
     const statusBadge = `<span class="badge badge-${node.status}">${node.status}</span>`;
+    const toolBadge = node.tool ? `<span class="badge badge-tool">${escHtml(node.tool)}</span>` : '';
 
     // Build Visualizations section if this tool produces plots
     const runId     = node.outputs?.run_id;
@@ -414,7 +443,7 @@ function showPanel(node) {
     }
 
     body.innerHTML = `
-      <h3>${escHtml(node.tool_name)}</h3>
+      <h3>${escHtml(node.tool_name)} ${toolBadge}</h3>
       <div class="kv"><span class="key">Status </span><span class="val">${statusBadge}</span></div>
       <div class="kv"><span class="key">call_id </span><span class="val" style="font-family:monospace;font-size:10px">${escHtml(node.id)}</span></div>
       <div class="kv"><span class="key">started_at </span><span class="val">${escHtml(node.started_at||'')}</span></div>
@@ -430,8 +459,9 @@ function showPanel(node) {
     `;
   } else {
     const conf = node.confidence || 'medium';
+    const toolBadge2 = node.tool ? `<span class="badge badge-tool">${escHtml(node.tool)}</span>` : '';
     body.innerHTML = `
-      <h3>${escHtml(node.decision_type || 'Decision')}</h3>
+      <h3>${escHtml(node.decision_type || 'Decision')} ${toolBadge2}</h3>
       <div class="kv"><span class="key">confidence </span><span class="val"><span class="badge badge-${conf}">${conf}</span></span></div>
       <div class="kv"><span class="key">decision_id </span><span class="val" style="font-family:monospace;font-size:10px">${escHtml(node.id)}</span></div>
       <div class="kv"><span class="key">recorded_at </span><span class="val">${escHtml(node.recorded_at||'')}</span></div>
@@ -482,6 +512,22 @@ function buildTimeline(data) {
       showPanel(n);
     });
     tl.appendChild(seg);
+  }
+}
+
+// ── Tool legend ──────────────────────────────────────────────────────────
+function buildToolLegend(data) {
+  const legend = document.getElementById('tool-legend');
+  const tools = new Set(data.nodes.map(n => n.tool).filter(Boolean));
+  if (tools.size < 2) {
+    legend.style.display = 'none';
+    return;
+  }
+  legend.style.display = 'flex';
+  legend.innerHTML = '';
+  for (const t of [...tools].sort()) {
+    const color = TOOL_COLORS[t] || DEFAULT_TOOL_COLOR;
+    legend.innerHTML += `<span style="display:inline-flex;align-items:center;gap:3px"><span style="width:10px;height:10px;border-radius:2px;background:${color};display:inline-block"></span>${escHtml(t)}</span>`;
   }
 }
 
@@ -619,9 +665,10 @@ async function fetchSessions() {
     for (const s of sessions) {
       const calls = s.tool_call_count || 0;
       const decs = s.decision_count || 0;
+      const tools = s.tools ? ` [${s.tools.join(',')}]` : '';
       const opt = document.createElement('option');
       opt.value = s.session_id;
-      opt.textContent = `${s.session_id} (${calls} calls, ${decs} decisions)`;
+      opt.textContent = `${s.session_id} (${calls} calls, ${decs} decisions)${tools}`;
       if (!calls && !decs) opt.style.color = '#666';
       sel.appendChild(opt);
     }

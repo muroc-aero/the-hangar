@@ -264,6 +264,7 @@ mcp.tool()(capture_tool(set_requirements))
 
 mcp.tool()(_prov_tools.start_session)
 mcp.tool()(_prov_tools.log_decision)
+mcp.tool()(_prov_tools.link_cross_tool_result)
 mcp.tool()(_prov_tools.export_session_graph)
 
 # ---------------------------------------------------------------------------
@@ -355,6 +356,8 @@ def main():
     args = parser.parse_args()
 
     # --- Provenance setup ---
+    from hangar.sdk.provenance.middleware import set_tool_name
+    set_tool_name("oas")
     _prov_init_db()
     import uuid as _uuid
     _auto_sid = f"auto-{_uuid.uuid4().hex[:8]}"

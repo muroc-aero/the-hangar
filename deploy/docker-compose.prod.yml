@@ -164,6 +164,32 @@ services:
       - internal
       - web
 
+  # ---------- Unified Provenance Viewer ----------
+  viewer:
+    build:
+      context: ./repo
+      dockerfile: packages/viewer/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    volumes:
+      - ./hangar_data/oas:/data/oas:ro
+      - ./hangar_data/ocp:/data/ocp:ro
+      - ./hangar_data/pyc:/data/pyc:ro
+    environment:
+      HANGAR_VIEWER_DBS: "oas=/data/oas/provenance.db,ocp=/data/ocp/provenance.db,pyc=/data/pyc/provenance.db"
+      HANGAR_VIEWER_PORT: 8080
+      # Auth -- same Keycloak realm, hangar-viewer client
+      OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-https://auth.lakesideai.dev/realms/hangar}
+      HANGAR_VIEWER_OIDC_CLIENT_ID: ${HANGAR_VIEWER_OIDC_CLIENT_ID:-hangar-viewer}
+      HANGAR_VIEWER_OIDC_CLIENT_SECRET: ${HANGAR_VIEWER_OIDC_CLIENT_SECRET:?Set HANGAR_VIEWER_OIDC_CLIENT_SECRET in .env}
+      HANGAR_VIEWER_SESSION_SECRET: ${HANGAR_VIEWER_SESSION_SECRET}
+      RESOURCE_SERVER_URL: ${VIEWER_RESOURCE_SERVER_URL:-https://mcp.lakesideai.dev/viewer}
+    networks:
+      - internal
+      - web
+
 networks:
   web:
     external: true

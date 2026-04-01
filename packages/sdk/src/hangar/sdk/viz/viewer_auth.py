@@ -30,7 +30,7 @@ class ViewerOIDCConfig:
     client_secret: str
     redirect_uri: str
     session_secret: str
-    admin_role: str = "oas-admin"
+    admin_role: str = "hangar-admin"
 
     # Populated by discover_oidc_endpoints()
     authorization_endpoint: str = ""
@@ -86,7 +86,7 @@ def build_viewer_oidc_config() -> ViewerOIDCConfig | None:
         )
 
     admin_role = _hangar_env(
-        "HANGAR_VIEWER_ADMIN_ROLE", "OAS_VIEWER_ADMIN_ROLE", default="oas-admin"
+        "HANGAR_VIEWER_ADMIN_ROLE", "OAS_VIEWER_ADMIN_ROLE", default="hangar-admin"
     )
 
     return ViewerOIDCConfig(

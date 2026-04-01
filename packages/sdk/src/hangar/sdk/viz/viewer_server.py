@@ -5,6 +5,7 @@ Migrated from: OpenAeroStruct/oas_mcp/provenance/viewer_server.py
 
 from __future__ import annotations
 
+import html as _html
 import json
 import os
 import threading
@@ -19,7 +20,8 @@ from hangar.sdk.provenance.db import _dumps, get_session_graph, list_sessions
 VIEWER_HTML = Path(__file__).parent / "viewer" / "index.html"
 _DEFAULT_PORT = 7654
 
-# Maps analysis_type to applicable plot types (for /plot_types endpoint)
+# Maps analysis_type to applicable plot types (for /plot_types endpoint).
+# Tools register their own analysis types via ``register_plot_types()``.
 ANALYSIS_PLOT_TYPES: dict[str, list[str]] = {
     "aero":         ["lift_distribution", "planform", "mesh_3d", "twist_chord_overlay"],
     "aerostruct":   ["lift_distribution", "stress_distribution", "planform", "mesh_3d",
@@ -30,6 +32,15 @@ ANALYSIS_PLOT_TYPES: dict[str, list[str]] = {
     "optimization": ["opt_history", "opt_dv_evolution", "opt_comparison", "planform",
                      "mesh_3d", "twist_chord_overlay"],
 }
+
+
+def register_plot_types(analysis_type: str, plot_types: list[str]) -> None:
+    """Register plot types for a given analysis_type.
+
+    Called by tool packages at import time to extend the viewer with
+    tool-specific plot types.
+    """
+    ANALYSIS_PLOT_TYPES[analysis_type] = plot_types
 
 
 def generate_plot_png(run_id: str, plot_type: str, *, user: str | None = None) -> bytes | None:
@@ -55,10 +66,6 @@ def generate_plot_png(run_id: str, plot_type: str, *, user: str | None = None) -
 
     store = ArtifactStore()
     artifact = store.get(run_id, user=user)
-    if artifact is None and user is not None:
-        # Fallback: artifact may have been created before per-user scoping
-        # was enabled (stored under a different username).
-        artifact = store.get(run_id)
     if artifact is None:
         return None
 
@@ -136,12 +143,10 @@ def get_plot_types_for_run(run_id: str, *, user: str | None = None) -> list[str]
 
     store = ArtifactStore()
     summary = store.get_summary(run_id, user=user)
-    if summary is None and user is not None:
-        summary = store.get_summary(run_id)
     if summary is None:
         return None
     analysis_type = summary.get("analysis_type", "aero")
-    return ANALYSIS_PLOT_TYPES.get(analysis_type, ["lift_distribution", "planform"])
+    return ANALYSIS_PLOT_TYPES.get(analysis_type, [])
 
 
 def generate_dashboard_html(run_id: str, *, user: str | None = None) -> str | None:
@@ -158,8 +163,6 @@ def generate_dashboard_html(run_id: str, *, user: str | None = None) -> str | No
 
     store = ArtifactStore()
     artifact = store.get(run_id, user=user)
-    if artifact is None and user is not None:
-        artifact = store.get(run_id)
     if artifact is None:
         return None
 
@@ -195,26 +198,31 @@ def generate_dashboard_html(run_id: str, *, user: str | None = None) -> str | No
             if key in final and key not in scalars:
                 scalars[key] = final[key]
 
+    tool_name = metadata.get("tool_name", "Hangar")
+
     # Determine available plot types
-    plot_types = ANALYSIS_PLOT_TYPES.get(analysis_type, ["lift_distribution", "planform"])
+    plot_types = ANALYSIS_PLOT_TYPES.get(analysis_type, [])
+
+    # HTML-escape helper for artifact-derived values
+    _e = _html.escape
 
     # Build HTML
     flight_rows = "".join(
-        f"<tr><td>{k}</td><td>{v}</td></tr>" for k, v in flight.items()
+        f"<tr><td>{_e(str(k))}</td><td>{_e(str(v))}</td></tr>" for k, v in flight.items()
     )
     scalar_rows = "".join(
-        f"<tr><td>{k}</td><td>{f'{v:.6g}' if isinstance(v, float) else v}</td></tr>"
+        f"<tr><td>{_e(str(k))}</td><td>{_e(f'{v:.6g}' if isinstance(v, float) else str(v))}</td></tr>"
         for k, v in scalars.items()
     )
     plot_panels = ""
     for pt in plot_types:
-        pt_title = pt.replace("_", " ").title()
+        pt_title = _e(pt.replace("_", " ").title())
         onerror = "this.parentElement.innerHTML='<p class=no-data>Not available</p>'"
         plot_panels += (
             f'<div class="plot-panel">'
             f'<h3>{pt_title}</h3>'
-            f'<img src="plot?run_id={run_id}&amp;plot_type={pt}" '
-            f'alt="{pt}" style="max-width:100%;height:auto;" '
+            f'<img src="plot?run_id={_e(run_id)}&amp;plot_type={_e(pt)}" '
+            f'alt="{_e(pt)}" style="max-width:100%;height:auto;" '
             f'onerror="{onerror}">'
             f'</div>'
         )
@@ -230,14 +238,14 @@ def generate_dashboard_html(run_id: str, *, user: str | None = None) -> str | No
         color = {"error": "red", "warning": "orange"}.get(f.get("severity", ""), "#666")
         findings_html += (
             f'<div style="color:{color};margin:2px 0;">'
-            f'[{f.get("severity", "?")}] {f.get("message", "")}</div>'
+            f'[{_e(str(f.get("severity", "?")))}] {_e(str(f.get("message", "")))}</div>'
         )
 
     viewer_link = ""
     if session_id:
         viewer_link = (
-            f'<p><a href="viewer?session_id={session_id}">'
-            f'View provenance graph for session {session_id}</a></p>'
+            f'<p><a href="viewer?session_id={_e(session_id)}">'
+            f'View provenance graph for session {_e(session_id)}</a></p>'
         )
 
     html = f"""<!DOCTYPE html>
@@ -245,7 +253,7 @@ def generate_dashboard_html(run_id: str, *, user: str | None = None) -> str | No
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>OAS Dashboard — {run_id}</title>
+<title>{_e(tool_name)} Dashboard -- {_e(run_id)}</title>
 <style>
   * {{ box-sizing: border-box; margin: 0; padding: 0; }}
   body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -274,10 +282,10 @@ def generate_dashboard_html(run_id: str, *, user: str | None = None) -> str | No
 </head>
 <body>
 <div class="header">
-  <h1>{analysis_type.replace("_", " ").title()} Analysis{f" — {run_name}" if run_name else ""}</h1>
+  <h1>{_e(analysis_type.replace("_", " ").title())} Analysis{f" -- {_e(run_name)}" if run_name else ""}</h1>
   <div class="meta">
-    Run ID: {run_id} &nbsp;|&nbsp; Surfaces: {", ".join(surfaces) if surfaces else "N/A"}
-    &nbsp;|&nbsp; {timestamp}
+    Run ID: {_e(run_id)} &nbsp;|&nbsp; Surfaces: {_e(", ".join(surfaces)) if surfaces else "N/A"}
+    &nbsp;|&nbsp; {_e(timestamp)}
   </div>
 </div>
 
@@ -300,7 +308,7 @@ def generate_dashboard_html(run_id: str, *, user: str | None = None) -> str | No
   <div class="card">
     <h2>Links</h2>
     {viewer_link}
-    <p><a href="plot_types?run_id={run_id}">Available plot types (JSON)</a></p>
+    <p><a href="plot_types?run_id={_e(run_id)}">Available plot types (JSON)</a></p>
   </div>
 </div>
 
@@ -310,7 +318,7 @@ def generate_dashboard_html(run_id: str, *, user: str | None = None) -> str | No
 </div>
 
 <div class="footer">
-  Generated by OpenAeroStruct MCP Server
+  Generated by {_e(tool_name)} MCP Server
 </div>
 </body>
 </html>"""

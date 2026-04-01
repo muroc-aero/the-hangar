@@ -23,20 +23,49 @@ services:
       # Store provenance DB in the bind-mounted volume so it survives restarts.
       HANGAR_PROV_DB: /data/provenance.db
 
-  # Uncomment to add OpenConcept:
-  # ocp:
-  #   build:
-  #     context: ..
-  #     dockerfile: packages/ocp/Dockerfile
-  #   ports:
-  #     - "8001:8000"
-  #   volumes:
-  #     - ./hangar_data/ocp:/data
-  #   env_file:
-  #     - path: .env
-  #       required: false
-  #   environment:
-  #     OCP_TRANSPORT: http
-  #     OCP_HOST: 0.0.0.0
-  #     HANGAR_DATA_DIR: /data
-  #     HANGAR_PROV_DB: /data/provenance.db
+  ocp:
+    build:
+      context: ..
+      dockerfile: packages/ocp/Dockerfile
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./hangar_data/ocp:/data
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      OCP_TRANSPORT: http
+      OCP_HOST: 0.0.0.0
+      HANGAR_DATA_DIR: /data
+      HANGAR_PROV_DB: /data/provenance.db
+
+  pyc:
+    build:
+      context: ..
+      dockerfile: packages/pyc/Dockerfile
+    ports:
+      - "8002:8000"
+    volumes:
+      - ./hangar_data/pyc:/data
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PYC_TRANSPORT: http
+      PYC_HOST: 0.0.0.0
+      HANGAR_DATA_DIR: /data
+      HANGAR_PROV_DB: /data/provenance.db
+
+  viewer:
+    build:
+      context: ..
+      dockerfile: packages/viewer/Dockerfile
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./hangar_data/oas:/data/oas:ro
+      - ./hangar_data/ocp:/data/ocp:ro
+      - ./hangar_data/pyc:/data/pyc:ro
+    environment:
+      HANGAR_VIEWER_DBS: "oas=/data/oas/provenance.db,ocp=/data/ocp/provenance.db,pyc=/data/pyc/provenance.db"

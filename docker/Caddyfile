@@ -17,13 +17,29 @@
 		reverse_proxy oas:8000
 	}
 
-	# --- Future tools ---
-	# handle /.well-known/oauth-protected-resource/ocp {
-	# 	reverse_proxy ocp:8000
-	# }
-	# handle_path /ocp/* {
-	# 	reverse_proxy ocp:8000
-	# }
+	# --- OCP ---
+	handle /.well-known/oauth-protected-resource/ocp {
+		reverse_proxy ocp:8000
+	}
+	handle_path /ocp/* {
+		reverse_proxy ocp:8000
+	}
+
+	# --- PYC ---
+	handle /.well-known/oauth-protected-resource/pyc {
+		reverse_proxy pyc:8000
+	}
+	handle_path /pyc/* {
+		reverse_proxy pyc:8000
+	}
+
+	# --- Unified Viewer ---
+	handle_path /viewer/* {
+		reverse_proxy viewer:8080
+	}
+	handle /viewer {
+		reverse_proxy viewer:8080
+	}
 
 	handle {
 		respond "Not Found" 404

@@ -42,6 +42,19 @@ def set_server_session_id(session_id: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Tool name state (identifies which tool server is running)
+# ---------------------------------------------------------------------------
+
+_tool_name: str = ""
+
+
+def set_tool_name(name: str) -> None:
+    """Set the tool name for provenance records (e.g. ``"oas"``, ``"ocp"``, ``"pyc"``)."""
+    global _tool_name
+    _tool_name = name
+
+
+# ---------------------------------------------------------------------------
 # JSON serialiser
 # ---------------------------------------------------------------------------
 
@@ -112,9 +125,9 @@ def capture_tool(fn):
                     # start_session already created the row).
                     try:
                         from hangar.sdk.auth.oidc import get_current_user
-                        _ensure_session(session_id, user=get_current_user())
+                        _ensure_session(session_id, user=get_current_user(), tool=_tool_name)
                     except Exception:
-                        _ensure_session(session_id)
+                        _ensure_session(session_id, tool=_tool_name)
                     seq = _next_seq(session_id)
                     record_tool_call(
                         call_id,
@@ -127,6 +140,7 @@ def capture_tool(fn):
                         error_msg,
                         started_at,
                         duration_s,
+                        tool=_tool_name,
                     )
 
                     # Periodic graph flush

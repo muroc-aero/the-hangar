@@ -110,7 +110,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     oas_session_id TEXT,
     started_at   TEXT NOT NULL,
     user         TEXT DEFAULT '',
-    project      TEXT DEFAULT 'default'
+    project      TEXT DEFAULT 'default',
+    tool         TEXT DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS tool_calls (
@@ -124,6 +125,7 @@ CREATE TABLE IF NOT EXISTS tool_calls (
     error_msg    TEXT,
     started_at   TEXT NOT NULL,
     duration_s   REAL,
+    tool         TEXT DEFAULT '',
     FOREIGN KEY (session_id) REFERENCES sessions(session_id)
 );
 
@@ -137,11 +139,26 @@ CREATE TABLE IF NOT EXISTS decisions (
     selected_action TEXT,
     confidence      TEXT DEFAULT 'medium',
     recorded_at     TEXT NOT NULL,
+    tool            TEXT DEFAULT '',
+    FOREIGN KEY (session_id) REFERENCES sessions(session_id)
+);
+
+CREATE TABLE IF NOT EXISTS cross_references (
+    ref_id          TEXT PRIMARY KEY,
+    session_id      TEXT NOT NULL,
+    source_call_id  TEXT NOT NULL,
+    source_tool     TEXT NOT NULL,
+    target_call_id  TEXT,
+    target_tool     TEXT NOT NULL,
+    variables_json  TEXT,
+    notes           TEXT,
+    created_at      TEXT NOT NULL,
     FOREIGN KEY (session_id) REFERENCES sessions(session_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_tool_calls_session ON tool_calls(session_id, seq);
 CREATE INDEX IF NOT EXISTS idx_decisions_session  ON decisions(session_id, seq);
+CREATE INDEX IF NOT EXISTS idx_cross_refs_session ON cross_references(session_id);
 """
 
 
@@ -215,6 +232,12 @@ def init_db(db_path: Path | str | None = None) -> None:
         conn.execute("SELECT project FROM sessions LIMIT 0")
     except Exception:
         conn.execute("ALTER TABLE sessions ADD COLUMN project TEXT DEFAULT 'default'")
+    # Migrate: add tool column to all three tables.
+    for table in ("sessions", "tool_calls", "decisions"):
+        try:
+            conn.execute(f"SELECT tool FROM {table} LIMIT 0")
+        except Exception:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN tool TEXT DEFAULT ''")
     conn.commit()
 
 
@@ -224,20 +247,21 @@ def record_session(
     oas_session_id: str | None = None,
     user: str = "",
     project: str = "default",
+    tool: str = "",
 ) -> None:
     """Insert a new provenance session record (ignore if already exists)."""
     conn = _get_conn()
     conn.execute(
         """
-        INSERT OR IGNORE INTO sessions(session_id, notes, oas_session_id, started_at, user, project)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT OR IGNORE INTO sessions(session_id, notes, oas_session_id, started_at, user, project, tool)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
-        (session_id, notes, oas_session_id, datetime.now(timezone.utc).isoformat(), user, project),
+        (session_id, notes, oas_session_id, datetime.now(timezone.utc).isoformat(), user, project, tool),
     )
     conn.commit()
 
 
-def _ensure_session(session_id: str, user: str = "", project: str = "default") -> None:
+def _ensure_session(session_id: str, user: str = "", project: str = "default", tool: str = "") -> None:
     """Auto-create a session row if one does not already exist.
 
     Satisfies the FK constraint on tool_calls and decisions without requiring
@@ -246,10 +270,10 @@ def _ensure_session(session_id: str, user: str = "", project: str = "default") -
     conn = _get_conn()
     conn.execute(
         """
-        INSERT OR IGNORE INTO sessions(session_id, notes, oas_session_id, started_at, user, project)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT OR IGNORE INTO sessions(session_id, notes, oas_session_id, started_at, user, project, tool)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
-        (session_id, "auto-created", None, datetime.now(timezone.utc).isoformat(), user, project),
+        (session_id, "auto-created", None, datetime.now(timezone.utc).isoformat(), user, project, tool),
     )
     conn.commit()
 
@@ -265,16 +289,17 @@ def record_tool_call(
     error_msg: str | None,
     started_at: str,
     duration_s: float | None,
+    tool: str = "",
 ) -> None:
     """Insert a tool-call record."""
-    _ensure_session(session_id)
+    _ensure_session(session_id, tool=tool)
     conn = _get_conn()
     conn.execute(
         """
         INSERT OR REPLACE INTO tool_calls
             (call_id, session_id, seq, tool_name, inputs_json, outputs_json,
-             status, error_msg, started_at, duration_s)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             status, error_msg, started_at, duration_s, tool)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             call_id,
@@ -287,6 +312,7 @@ def record_tool_call(
             error_msg,
             started_at,
             duration_s,
+            tool,
         ),
     )
     conn.commit()
@@ -301,16 +327,17 @@ def record_decision(
     prior_call_id: str | None,
     selected_action: str,
     confidence: str = "medium",
+    tool: str = "",
 ) -> None:
     """Insert a decision record."""
-    _ensure_session(session_id)
+    _ensure_session(session_id, tool=tool)
     conn = _get_conn()
     conn.execute(
         """
         INSERT OR REPLACE INTO decisions
             (decision_id, session_id, seq, decision_type, reasoning,
-             prior_call_id, selected_action, confidence, recorded_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+             prior_call_id, selected_action, confidence, recorded_at, tool)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             decision_id,
@@ -322,6 +349,7 @@ def record_decision(
             selected_action,
             confidence,
             datetime.now(timezone.utc).isoformat(),
+            tool,
         ),
     )
     conn.commit()
@@ -372,34 +400,40 @@ def get_session_graph(session_id: str) -> dict:
     # Build nodes
     nodes: list[dict] = []
     for r in tool_rows:
-        nodes.append(
-            {
-                "id": r["call_id"],
-                "type": "tool_call",
-                "seq": r["seq"],
-                "tool_name": r["tool_name"],
-                "status": r["status"],
-                "error_msg": r["error_msg"],
-                "started_at": r["started_at"],
-                "duration_s": r["duration_s"],
-                "inputs": _try_json(r["inputs_json"]),
-                "outputs": _try_json(r["outputs_json"]),
-            }
-        )
+        node = {
+            "id": r["call_id"],
+            "type": "tool_call",
+            "seq": r["seq"],
+            "tool_name": r["tool_name"],
+            "status": r["status"],
+            "error_msg": r["error_msg"],
+            "started_at": r["started_at"],
+            "duration_s": r["duration_s"],
+            "inputs": _try_json(r["inputs_json"]),
+            "outputs": _try_json(r["outputs_json"]),
+        }
+        try:
+            node["tool"] = r["tool"]
+        except (IndexError, KeyError):
+            pass
+        nodes.append(node)
     for r in decision_rows:
-        nodes.append(
-            {
-                "id": r["decision_id"],
-                "type": "decision",
-                "seq": r["seq"],
-                "decision_type": r["decision_type"],
-                "reasoning": r["reasoning"],
-                "prior_call_id": r["prior_call_id"],
-                "selected_action": r["selected_action"],
-                "confidence": r["confidence"],
-                "recorded_at": r["recorded_at"],
-            }
-        )
+        node = {
+            "id": r["decision_id"],
+            "type": "decision",
+            "seq": r["seq"],
+            "decision_type": r["decision_type"],
+            "reasoning": r["reasoning"],
+            "prior_call_id": r["prior_call_id"],
+            "selected_action": r["selected_action"],
+            "confidence": r["confidence"],
+            "recorded_at": r["recorded_at"],
+        }
+        try:
+            node["tool"] = r["tool"]
+        except (IndexError, KeyError):
+            pass
+        nodes.append(node)
 
     # Sort nodes by seq for edge computation
     nodes.sort(key=lambda n: n["seq"])
@@ -460,6 +494,26 @@ def get_session_graph(session_id: str) -> dict:
                     "label": "sequence",
                 }
             )
+
+    # Edge type 4: cross-tool references
+    try:
+        xref_rows = conn.execute(
+            "SELECT * FROM cross_references WHERE session_id=?", (session_id,)
+        ).fetchall()
+        for xr in xref_rows:
+            edges.append(
+                {
+                    "source": xr["source_call_id"],
+                    "target": xr["target_call_id"],
+                    "label": "cross_tool",
+                    "source_tool": xr["source_tool"],
+                    "target_tool": xr["target_tool"],
+                    "variables": _try_json(xr["variables_json"]),
+                    "notes": xr["notes"],
+                }
+            )
+    except Exception:
+        pass  # table may not exist in older DBs
 
     session_meta = dict(session_row) if session_row else {"session_id": session_id}
     return {"session": session_meta, "nodes": nodes, "edges": edges}
@@ -536,6 +590,72 @@ def list_sessions(user: str | None = None) -> list[dict]:
         d["decision_count"] = dec_count
         result.append(d)
     return result
+
+
+# ---------------------------------------------------------------------------
+# Cross-tool references
+# ---------------------------------------------------------------------------
+
+
+def record_cross_reference(
+    ref_id: str,
+    session_id: str,
+    source_call_id: str,
+    source_tool: str,
+    target_call_id: str | None,
+    target_tool: str,
+    variables: dict | None = None,
+    notes: str = "",
+) -> None:
+    """Record a cross-tool data dependency."""
+    _ensure_session(session_id)
+    conn = _get_conn()
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO cross_references
+            (ref_id, session_id, source_call_id, source_tool,
+             target_call_id, target_tool, variables_json, notes, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            ref_id,
+            session_id,
+            source_call_id,
+            source_tool,
+            target_call_id,
+            target_tool,
+            _dumps(variables) if variables else None,
+            notes,
+            datetime.now(timezone.utc).isoformat(),
+        ),
+    )
+    conn.commit()
+
+
+def get_cross_references(session_id: str) -> list[dict]:
+    """Return all cross-tool references for a session."""
+    conn = _get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM cross_references WHERE session_id=? ORDER BY created_at",
+            (session_id,),
+        ).fetchall()
+    except Exception:
+        return []
+    return [
+        {
+            "ref_id": r["ref_id"],
+            "session_id": r["session_id"],
+            "source_call_id": r["source_call_id"],
+            "source_tool": r["source_tool"],
+            "target_call_id": r["target_call_id"],
+            "target_tool": r["target_tool"],
+            "variables": _try_json(r["variables_json"]),
+            "notes": r["notes"],
+            "created_at": r["created_at"],
+        }
+        for r in rows
+    ]
 
 
 # ---------------------------------------------------------------------------
