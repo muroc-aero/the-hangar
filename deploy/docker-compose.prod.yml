@@ -101,6 +101,7 @@ services:
       OIDC_CLIENT_ID: ${OAS_OIDC_CLIENT_ID:-oas-mcp}
       OIDC_CLIENT_SECRET: ${OAS_OIDC_CLIENT_SECRET:?Set OAS_OIDC_CLIENT_SECRET in .env}
       RESOURCE_SERVER_URL: ${OAS_RESOURCE_SERVER_URL:-https://mcp.lakesideai.dev/oas}
+      HANGAR_UNIFIED_VIEWER_URL: ${HANGAR_UNIFIED_VIEWER_URL:-https://mcp.lakesideai.dev/viewer}
       HANGAR_PROV_VIEWER: "off"
     networks:
       - internal
@@ -130,6 +131,7 @@ services:
       OIDC_CLIENT_ID: ${OCP_OIDC_CLIENT_ID:-ocp-mcp}
       OIDC_CLIENT_SECRET: ${OCP_OIDC_CLIENT_SECRET:?Set OCP_OIDC_CLIENT_SECRET in .env}
       RESOURCE_SERVER_URL: ${OCP_RESOURCE_SERVER_URL:-https://mcp.lakesideai.dev/ocp}
+      HANGAR_UNIFIED_VIEWER_URL: ${HANGAR_UNIFIED_VIEWER_URL:-https://mcp.lakesideai.dev/viewer}
       HANGAR_PROV_VIEWER: "off"
     networks:
       - internal
@@ -159,6 +161,7 @@ services:
       OIDC_CLIENT_ID: ${PYC_OIDC_CLIENT_ID:-pyc-mcp}
       OIDC_CLIENT_SECRET: ${PYC_OIDC_CLIENT_SECRET:?Set PYC_OIDC_CLIENT_SECRET in .env}
       RESOURCE_SERVER_URL: ${PYC_RESOURCE_SERVER_URL:-https://mcp.lakesideai.dev/pyc}
+      HANGAR_UNIFIED_VIEWER_URL: ${HANGAR_UNIFIED_VIEWER_URL:-https://mcp.lakesideai.dev/viewer}
       HANGAR_PROV_VIEWER: "off"
     networks:
       - internal

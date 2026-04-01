@@ -490,12 +490,14 @@ function buildTimeline(data) {
 
   for (const n of toolCalls) {
     const w = Math.max(6, Math.round((n.duration_s / maxDur) * scale));
-    const color = n.status === 'error' ? '#7a2a2a' : '#1a4a7a';
+    const toolColor = n.tool && TOOL_COLORS[n.tool];
+    const color = n.status === 'error' ? '#7a2a2a' : (toolColor || '#1a4a7a');
     const seg = document.createElement('div');
     seg.className = 'tl-segment';
     seg.style.width = w + 'px';
     seg.style.background = color;
-    const tipText = `${n.tool_name} — ${n.duration_s.toFixed(3)}s`;
+    const toolLabel = n.tool ? ` [${n.tool}]` : '';
+    const tipText = `${n.tool_name}${toolLabel} -- ${n.duration_s.toFixed(3)}s`;
     seg.addEventListener('mouseenter', () => {
       _tlTooltip.textContent = tipText;
       _tlTooltip.style.display = 'block';
@@ -519,7 +521,7 @@ function buildTimeline(data) {
 function buildToolLegend(data) {
   const legend = document.getElementById('tool-legend');
   const tools = new Set(data.nodes.map(n => n.tool).filter(Boolean));
-  if (tools.size < 2) {
+  if (tools.size === 0) {
     legend.style.display = 'none';
     return;
   }
@@ -673,7 +675,7 @@ async function fetchSessions() {
       const opt = document.createElement('option');
       opt.value = s.session_id;
       opt.textContent = `${s.session_id} (${calls} calls, ${decs} decisions)${tools}`;
-      if (!calls && !decs) opt.style.color = '#666';
+      if (!calls && !decs) { opt.style.color = '#666'; opt.disabled = true; }
       sel.appendChild(opt);
     }
     return sessions;
@@ -728,11 +730,18 @@ document.getElementById('btn-refresh').addEventListener('click', fetchSessions);
 
 // ── Plot button handling ──────────────────────────────────────────────────
 const TOOL_PLOT_TYPES = {
+  // OAS
   'run_aero_analysis':             ['lift_distribution', 'planform'],
   'run_aerostruct_analysis':       ['lift_distribution', 'stress_distribution', 'planform'],
   'compute_drag_polar':            ['drag_polar'],
   'run_optimization':              ['opt_history', 'opt_dv_evolution', 'opt_comparison', 'planform'],
   'compute_stability_derivatives': ['lift_distribution'],
+  // OCP
+  'run_mission_analysis':          ['mission_profile', 'fuel_burn_breakdown'],
+  'run_parameter_sweep':           ['sweep_results'],
+  // PYC
+  'run_design_point':              ['station_diagram'],
+  'run_off_design':                ['performance_map'],
 };
 
 document.getElementById('panel-body').addEventListener('click', async e => {

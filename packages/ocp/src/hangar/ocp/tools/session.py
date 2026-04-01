@@ -142,10 +142,20 @@ async def export_session_graph(
     except Exception:
         pass
 
+    unified_viewer_url: str | None = None
+    try:
+        from hangar.sdk.helpers import _get_unified_viewer_url
+        ubase = _get_unified_viewer_url()
+        if ubase:
+            unified_viewer_url = f"{ubase}/viewer?session_id={sid}"
+    except Exception:
+        pass
+
     return {
         "session_id": sid,
         "graph_path": flush_result.get("path"),
         "viewer_url": viewer_url,
+        "unified_viewer_url": unified_viewer_url,
         "node_count": flush_result.get("node_count", 0),
         "edge_count": flush_result.get("edge_count", 0),
     }

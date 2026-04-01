@@ -60,6 +60,15 @@ def _get_viewer_base_url() -> str | None:
     return None
 
 
+def _get_unified_viewer_url() -> str | None:
+    """Return the unified viewer base URL if configured.
+
+    Set ``HANGAR_UNIFIED_VIEWER_URL`` (e.g. ``https://mcp.lakesideai.dev/viewer``)
+    to enable cross-tool viewer links in ``export_session_graph`` responses.
+    """
+    return os.environ.get("HANGAR_UNIFIED_VIEWER_URL") or None
+
+
 def _sanitize_surface_dicts(surface_dicts: list[dict]) -> list[dict]:
     """Strip complex dtypes from surface dicts so they survive JSON round-trip.
 
