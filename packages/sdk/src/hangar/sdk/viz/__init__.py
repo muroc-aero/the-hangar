@@ -16,6 +16,7 @@ from hangar.sdk.viz.viewer_server import (
     generate_dashboard_html,
     generate_plot_png,
     get_plot_types_for_run,
+    register_plot_generator,
     register_plot_types,
     start_viewer_server,
 )
@@ -34,6 +35,7 @@ __all__ = [
     "generate_plot",
     "generate_plot_png",
     "get_plot_types_for_run",
+    "register_plot_generator",
     "register_plot_types",
     "start_viewer_server",
 ]

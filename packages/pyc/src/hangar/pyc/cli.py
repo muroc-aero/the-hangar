@@ -28,6 +28,7 @@ def build_pyc_registry() -> dict[str, Callable]:
         "get_last_logs",
         "configure_session",
         "set_requirements",
+        "visualize",
     ]
 
     registry: dict[str, Callable] = {}

@@ -9,6 +9,7 @@ import html as _html
 import json
 import os
 import threading
+from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -43,6 +44,26 @@ def register_plot_types(analysis_type: str, plot_types: list[str]) -> None:
     ANALYSIS_PLOT_TYPES[analysis_type] = plot_types
 
 
+# Plugin registry: tool packages register their own plot generators so the
+# viewer server can render plots for tool-specific plot types without the SDK
+# needing a direct dependency on downstream packages.
+_PLOT_GENERATORS: dict[str, Callable] = {}
+
+
+def register_plot_generator(
+    plot_types: frozenset[str] | set[str],
+    generator_fn: Callable,
+) -> None:
+    """Register a plot generator for a set of plot types.
+
+    Called by tool packages at startup.  ``generator_fn`` must accept
+    ``(plot_type, run_id, results, case_name, save_dir)`` and return a
+    ``PlotResult``.
+    """
+    for pt in plot_types:
+        _PLOT_GENERATORS[pt] = generator_fn
+
+
 def generate_plot_png(run_id: str, plot_type: str, *, user: str | None = None) -> bytes | None:
     """Load an artifact by run_id and return a rendered PNG as bytes.
 
@@ -58,10 +79,13 @@ def generate_plot_png(run_id: str, plot_type: str, *, user: str | None = None) -
     from hangar.sdk.artifacts.store import ArtifactStore
     from hangar.sdk.viz.plotting import PLOT_TYPES, generate_plot
 
-    if plot_type not in PLOT_TYPES or plot_type == "n2":
+    is_sdk_type = plot_type in PLOT_TYPES and plot_type != "n2"
+    is_plugin_type = plot_type in _PLOT_GENERATORS
+
+    if not is_sdk_type and not is_plugin_type:
+        all_types = sorted((PLOT_TYPES - {"n2"}) | _PLOT_GENERATORS.keys())
         raise ValueError(
-            f"Unsupported plot_type {plot_type!r}. "
-            f"Supported: {sorted(PLOT_TYPES - {'n2'})}"
+            f"Unsupported plot_type {plot_type!r}. Supported: {all_types}"
         )
 
     store = ArtifactStore()
@@ -125,9 +149,14 @@ def generate_plot_png(run_id: str, plot_type: str, *, user: str | None = None) -
             "final_dvs": results.get("optimized_design_variables", {}),
         }
 
-    plot_result = generate_plot(
-        plot_type, run_id, plot_results, conv_data, mesh_data, "", opt_history
-    )
+    if is_plugin_type:
+        plot_result = _PLOT_GENERATORS[plot_type](
+            plot_type, run_id, results, ""
+        )
+    else:
+        plot_result = generate_plot(
+            plot_type, run_id, plot_results, conv_data, mesh_data, "", opt_history
+        )
     return plot_result.image.data
 
 

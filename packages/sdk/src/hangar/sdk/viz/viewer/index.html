@@ -740,8 +740,8 @@ const TOOL_PLOT_TYPES = {
   'run_mission_analysis':          ['mission_profile', 'fuel_burn_breakdown'],
   'run_parameter_sweep':           ['sweep_results'],
   // PYC
-  'run_design_point':              ['station_diagram'],
-  'run_off_design':                ['performance_map'],
+  'run_design_point':              ['station_properties', 'ts_diagram', 'performance_summary', 'component_bars'],
+  'run_off_design':                ['station_properties', 'ts_diagram', 'performance_summary', 'component_bars', 'design_vs_offdesign'],
 };
 
 document.getElementById('panel-body').addEventListener('click', async e => {

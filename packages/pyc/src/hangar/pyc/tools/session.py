@@ -15,7 +15,6 @@ from hangar.sdk.auth import get_current_user
 from hangar.sdk.helpers import _get_viewer_base_url, _resolve_run_id, _suppress_output
 from hangar.sdk.state import artifacts as _artifacts, sessions as _sessions
 from hangar.sdk.telemetry import get_run_logs
-from hangar.sdk.viz.plotting import PLOT_TYPES, generate_n2, generate_plot
 from hangar.sdk.provenance.middleware import _get_session_id, _prov_session_id, set_server_session_id
 from hangar.sdk.provenance.db import (
     _next_seq,
@@ -310,3 +309,95 @@ async def get_last_logs(
     """Retrieve server-side log records for a run."""
     logs = get_run_logs(run_id)
     return {"run_id": run_id, "logs": logs}
+
+
+# ---------------------------------------------------------------------------
+# Visualization
+# ---------------------------------------------------------------------------
+
+async def visualize(
+    run_id: Annotated[str, "Run ID to visualize"],
+    plot_type: Annotated[
+        str,
+        "Plot type -- one of: station_properties, ts_diagram, performance_summary, "
+        "component_bars, design_vs_offdesign",
+    ],
+    session_id: Annotated[str | None, "Session hint for faster artifact lookup"] = None,
+    case_name: Annotated[str, "Human-readable label for the plot title"] = "",
+    output: Annotated[
+        str | None,
+        "Override visualization output mode: "
+        "'inline' = PNG image (default for claude.ai), "
+        "'file' = save PNG to disk only, "
+        "'url' = return dashboard URL. "
+        "When None, uses session default.",
+    ] = None,
+) -> list:
+    """Generate a visualization plot for a pyCycle analysis run.
+
+    Available plot types:
+      station_properties    -- 2x2 grid of Pt, Tt, Mach, mass flow through the engine
+      ts_diagram            -- T-s diagram of the Brayton cycle
+      performance_summary   -- table card with all key engine metrics
+      component_bars        -- bar chart comparing component PR, efficiency, power
+      design_vs_offdesign   -- paired bars comparing design and off-design performance
+                               (requires an off-design artifact)
+
+    Output modes (set per-call via 'output', or per-session via configure_session):
+      inline  -- returns [metadata, ImageContent] (default, best for claude.ai)
+      file    -- saves PNG to disk, returns [metadata] with file_path
+      url     -- returns [metadata] with dashboard_url and plot_url
+
+    Scoped to the authenticated user.
+    """
+    from hangar.pyc.viz.plotting import PYC_PLOT_TYPES, generate_pyc_plot
+
+    if plot_type not in PYC_PLOT_TYPES:
+        raise ValueError(
+            f"Unknown plot_type {plot_type!r}. "
+            f"Supported: {sorted(PYC_PLOT_TYPES)}"
+        )
+
+    if output is not None and output not in ("inline", "file", "url"):
+        raise ValueError(
+            f"Unknown output mode {output!r}. Use 'inline', 'file', or 'url'."
+        )
+
+    run_id = await _resolve_run_id(run_id, session_id)
+    user = get_current_user()
+    artifact = await asyncio.to_thread(_artifacts.get, run_id, session_id, user)
+    if artifact is None:
+        raise ValueError(f"Run '{run_id}' not found.")
+
+    # Resolve effective output mode
+    artifact_meta = artifact.get("metadata", {})
+    sid = artifact_meta.get("session_id", session_id or "default")
+    session = _sessions.get(sid)
+    effective_output = output or session.defaults.visualization_output
+
+    # Compute save_dir
+    _user = artifact_meta.get("user", user)
+    _project = artifact_meta.get("project", "default")
+    save_dir = str(_artifacts._data_dir / _user / _project / sid)
+
+    results = artifact.get("results", {})
+
+    plot_result = await asyncio.to_thread(
+        generate_pyc_plot, plot_type, run_id, results, case_name, save_dir,
+    )
+
+    if effective_output == "file":
+        return [plot_result.metadata]
+    elif effective_output == "url":
+        base_url = _get_viewer_base_url()
+        if base_url:
+            plot_result.metadata["dashboard_url"] = (
+                f"{base_url}/dashboard?run_id={run_id}"
+            )
+            plot_result.metadata["plot_url"] = (
+                f"{base_url}/plot?run_id={run_id}&plot_type={plot_type}"
+            )
+        return [plot_result.metadata]
+    else:
+        # Inline mode (default): metadata + ImageContent
+        return [plot_result.metadata, plot_result.image]

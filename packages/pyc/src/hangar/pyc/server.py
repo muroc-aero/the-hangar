@@ -38,10 +38,27 @@ from hangar.pyc.tools.session import (
     reset,
     set_requirements,
     unpin_run,
+    visualize,
 )
 
 # Re-export for tests
 from hangar.sdk.state import sessions as _sessions, artifacts as _artifacts  # noqa: F401
+
+# ---------------------------------------------------------------------------
+# Register pyCycle plot types with the SDK viewer infrastructure
+# ---------------------------------------------------------------------------
+
+from hangar.pyc.viz.plotting import PYC_PLOT_TYPES, generate_pyc_plot
+from hangar.sdk.viz.viewer_server import register_plot_generator, register_plot_types
+
+register_plot_types("design", [
+    "station_properties", "ts_diagram", "performance_summary", "component_bars",
+])
+register_plot_types("off_design", [
+    "station_properties", "ts_diagram", "performance_summary", "component_bars",
+    "design_vs_offdesign",
+])
+register_plot_generator(PYC_PLOT_TYPES, generate_pyc_plot)
 
 # ---------------------------------------------------------------------------
 # FastMCP construction
@@ -109,7 +126,15 @@ PROVENANCE & DECISION LOGGING:
   * After create_engine:      decision_type="archetype_selection"
   * After run_design_point:   decision_type="result_interpretation"
   * After run_off_design:     decision_type="result_interpretation"
-  Always pass prior_call_id when informed by a specific tool result.""",
+  Always pass prior_call_id when informed by a specific tool result.
+
+VISUALIZATION:
+  Call visualize(run_id, plot_type) after any analysis to generate plots:
+    * station_properties   -- Pt, Tt, Mach, mass flow through the engine (2x2 grid)
+    * ts_diagram           -- T-s diagram of the Brayton cycle
+    * performance_summary  -- table card with all key engine metrics
+    * component_bars       -- bar chart comparing component PR, efficiency, power
+    * design_vs_offdesign  -- paired bars comparing design vs off-design (off-design only)""",
 )
 
 # ---------------------------------------------------------------------------
@@ -138,6 +163,12 @@ mcp.tool()(capture_tool(get_run))
 mcp.tool()(capture_tool(pin_run))
 mcp.tool()(capture_tool(unpin_run))
 mcp.tool()(capture_tool(get_last_logs))
+
+# ---------------------------------------------------------------------------
+# Register visualization tools
+# ---------------------------------------------------------------------------
+
+mcp.tool()(capture_tool(visualize))
 
 # ---------------------------------------------------------------------------
 # Register session configuration tools
