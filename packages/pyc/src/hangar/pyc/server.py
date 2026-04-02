@@ -31,6 +31,7 @@ from hangar.pyc.tools.session import (
     delete_artifact,
     get_artifact,
     get_artifact_summary,
+    get_detailed_results,
     get_last_logs,
     get_run,
     list_artifacts,
@@ -162,6 +163,7 @@ mcp.tool()(capture_tool(delete_artifact))
 mcp.tool()(capture_tool(get_run))
 mcp.tool()(capture_tool(pin_run))
 mcp.tool()(capture_tool(unpin_run))
+mcp.tool()(capture_tool(get_detailed_results))
 mcp.tool()(capture_tool(get_last_logs))
 
 # ---------------------------------------------------------------------------

@@ -28,6 +28,7 @@ def build_ocp_registry() -> dict[str, Callable]:
         get_detailed_results,
         get_last_logs,
         get_run,
+        link_cross_tool_result,
         list_artifacts,
         log_decision,
         pin_run,
@@ -49,6 +50,7 @@ def build_ocp_registry() -> dict[str, Callable]:
         "run_optimization": run_optimization,
         "start_session": start_session,
         "log_decision": log_decision,
+        "link_cross_tool_result": link_cross_tool_result,
         "export_session_graph": export_session_graph,
         "configure_session": configure_session,
         "set_requirements": set_requirements,
@@ -78,7 +80,12 @@ def main():
         "set_propulsion_architecture",
         "configure_mission",
     ])
+    def _start_viewer(port: int = 7654, db: str | None = None):
+        from hangar.sdk.viz.viewer_server import start_viewer_server
+        start_viewer_server(port=port, db_path=db)
+
     _cli_main(
         prog="ocp-cli",
-        description="OpenConcept CLI — run conceptual design tools from the command line.",
+        description="OpenConcept CLI -- run conceptual design tools from the command line.",
+        viewer_callback=_start_viewer,
     )

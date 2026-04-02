@@ -167,9 +167,9 @@ def test_list_tools():
 
 
 def test_list_tools_completeness():
-    """All 23 tools (20 analysis + 3 provenance) should be registered."""
+    """All 24 tools (20 analysis + 4 provenance) should be registered."""
     tools = list_tools()
-    assert len(tools) == 23, f"Expected 23 tools, got {len(tools)}: {tools}"
+    assert len(tools) == 24, f"Expected 24 tools, got {len(tools)}: {tools}"
 
 
 # ===========================================================================

@@ -56,6 +56,7 @@ def build_oas_registry() -> dict[str, Callable]:
     # Provenance tools
     registry["start_session"] = _session_tools.start_session
     registry["log_decision"] = _session_tools.log_decision
+    registry["link_cross_tool_result"] = _session_tools.link_cross_tool_result
     registry["export_session_graph"] = _session_tools.export_session_graph
 
     return registry

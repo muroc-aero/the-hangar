@@ -303,6 +303,38 @@ async def unpin_run(
     return {"unpinned": run_id}
 
 
+async def get_detailed_results(
+    run_id: Annotated[str, "Run ID"],
+    detail_level: Annotated[str, "'summary' or 'standard'"] = "standard",
+    session_id: Annotated[str | None, "Session hint"] = None,
+) -> dict:
+    """Retrieve detailed results for a past run.
+
+    In 'summary' mode, returns only scalar values (no nested dicts/lists).
+    In 'standard' mode, returns the full results including flow_stations,
+    components, and performance data.
+    """
+    run_id = await _resolve_run_id(run_id, session_id)
+    artifact = _artifacts.get(run_id)
+    if artifact is None:
+        raise ValueError(f"Run '{run_id}' not found")
+
+    results = artifact.get("results", {})
+
+    if detail_level == "summary":
+        return {
+            "run_id": run_id,
+            "detail_level": "summary",
+            "results": {k: v for k, v in results.items() if not isinstance(v, (list, dict))},
+        }
+    else:
+        return {
+            "run_id": run_id,
+            "detail_level": "standard",
+            "results": results,
+        }
+
+
 async def get_last_logs(
     run_id: Annotated[str, "Run ID"],
 ) -> dict:
