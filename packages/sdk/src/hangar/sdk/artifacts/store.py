@@ -353,6 +353,9 @@ class ArtifactStore:
                 index = self._load_index(u, p, s)
                 for entry in index:
                     rid = entry.get("run_id", "")
+                    # Skip internal artifacts (e.g. _provenance_graph)
+                    if not rid or not rid[0].isdigit():
+                        continue
                     if latest_rid is None or rid > latest_rid:
                         latest_rid = rid
             return latest_rid
