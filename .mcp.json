@@ -2,9 +2,23 @@
   "mcpServers": {
     "OpenAeroStruct": {
       "command": "uv",
-      "args": ["run", "--directory", "/home/alex/coding/the-hangar", "python", "-m", "hangar.oas.server"],
+      "args": ["run", "--directory", ".", "python", "-m", "hangar.oas.server"],
       "env": {
-        "OAS_DATA_DIR": "/home/alex/coding/the-hangar/oas_data"
+        "HANGAR_DATA_DIR": "./hangar_data"
+      }
+    },
+    "OpenConcept": {
+      "command": "uv",
+      "args": ["run", "--directory", ".", "python", "-m", "hangar.ocp.server"],
+      "env": {
+        "HANGAR_DATA_DIR": "./hangar_data"
+      }
+    },
+    "pyCycle": {
+      "command": "uv",
+      "args": ["run", "--directory", ".", "python", "-m", "hangar.pyc.server"],
+      "env": {
+        "HANGAR_DATA_DIR": "./hangar_data"
       }
     }
   }
