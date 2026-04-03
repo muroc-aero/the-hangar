@@ -63,14 +63,14 @@ graph show *which result informed which decision*.
 sess = call("start_session", notes="CRM drag study")
 
 # Create surface
-call("create_surface", name="wing", wing_type="CRM", num_y=7,
+call("create_surface", name="wing", wing_type="CRM", num_x=7, num_y=35,
      symmetry=True, with_viscous=True, CD0=0.015)
 
 # Log mesh decision
 call("log_decision",
      decision_type="mesh_resolution",
-     reasoning="num_y=7 for fast iteration; will refine later",
-     selected_action="num_y=7")
+     reasoning="num_y=35 publication-quality mesh, matches upstream OAS examples",
+     selected_action="num_x=7, num_y=35")
 
 # Run analysis
 result = call("run_aero_analysis", surfaces=["wing"], alpha=5.0,
@@ -94,7 +94,7 @@ graph = call("export_session_graph", output_path="study_provenance.json")
 [
   {"tool": "start_session", "args": {"notes": "CRM aero optimization"}},
   {"tool": "create_surface", "args": {
-    "name": "wing", "wing_type": "CRM", "num_y": 7,
+    "name": "wing", "wing_type": "CRM", "num_x": 7, "num_y": 35,
     "symmetry": true, "with_viscous": true, "CD0": 0.015
   }},
   {"tool": "log_decision", "args": {

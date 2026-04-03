@@ -6,7 +6,7 @@
 [
   {"tool": "start_session", "args": {"notes": "Aero optimization — min CD at CL=0.5"}},
   {"tool": "create_surface", "args": {
-    "name": "wing", "wing_type": "CRM", "num_y": 7,
+    "name": "wing", "wing_type": "CRM", "num_x": 7, "num_y": 35,
     "symmetry": true, "with_viscous": true, "CD0": 0.015
   }},
   {"tool": "log_decision", "args": {

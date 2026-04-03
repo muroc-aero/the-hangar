@@ -30,6 +30,11 @@ Define a lifting surface. Must be called before any analysis.
 - `--dihedral DEG` (default: 0.0)
 - `--num-x N` — chordwise mesh nodes, >= 2 (default: 2)
 - `--num-y N` — spanwise mesh nodes, **must be ODD** >= 3 (default: 7)
+
+  **Mesh resolution note**: the server default (num_x=2, num_y=7) is a unit-
+  test mesh. Default to num_x=7, num_y=35 for all analyses. Only reduce
+  if the user asks for speed or runtime is a problem. See SKILL.md "Mesh
+  resolution guide" for the full tier table.
 - `--symmetry` / `--no-symmetry` (default: True)
 - `--span-cos-spacing F` — spanwise blending (default: 0.0)
 - `--chord-cos-spacing F` — chordwise blending (default: 0.0)

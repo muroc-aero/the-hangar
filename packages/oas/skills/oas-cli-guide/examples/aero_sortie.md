@@ -3,8 +3,8 @@
 ## Interactive mode (Python)
 
 ```python
-call("create_surface", name="wing", wing_type="CRM", num_y=7, symmetry=True,
-     with_viscous=True, CD0=0.015)
+call("create_surface", name="wing", wing_type="CRM", num_x=7, num_y=35,
+     symmetry=True, with_viscous=True, CD0=0.015)
 
 result = call("run_aero_analysis", surfaces=["wing"], alpha=5.0,
               velocity=248.136, Mach_number=0.84, density=0.38,
@@ -34,7 +34,7 @@ oas-cli visualize --run-id latest --plot-type lift_distribution --output file
 ```json
 [
   {"tool": "create_surface", "args": {
-    "name": "wing", "wing_type": "CRM", "num_y": 7,
+    "name": "wing", "wing_type": "CRM", "num_x": 7, "num_y": 35,
     "symmetry": true, "with_viscous": true, "CD0": 0.015
   }},
   {"tool": "run_aero_analysis", "args": {

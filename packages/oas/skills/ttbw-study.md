@@ -38,7 +38,7 @@ create_surface(
     root_chord=4.0,
     taper=0.3,
     sweep=10.0,
-    num_x=2, num_y=11,      # more spanwise panels for high AR
+    num_x=7, num_y=51,      # high AR needs extra spanwise panels
     symmetry=True,
     with_viscous=True, with_wave=True, CD0=0.010
 )

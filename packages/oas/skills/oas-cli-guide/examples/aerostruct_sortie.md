@@ -21,7 +21,7 @@ Structural analysis requires `fem_model_type` plus material properties:
 [
   {"tool": "start_session", "args": {"notes": "CRM aerostruct baseline"}},
   {"tool": "create_surface", "args": {
-    "name": "wing", "wing_type": "CRM", "num_y": 7, "symmetry": true,
+    "name": "wing", "wing_type": "CRM", "num_x": 7, "num_y": 35, "symmetry": true,
     "fem_model_type": "tube",
     "thickness_cp": [0.05, 0.08, 0.05],
     "E": 70e9, "G": 30e9, "yield_stress": 500e6, "mrho": 3000.0

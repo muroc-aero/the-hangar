@@ -25,10 +25,14 @@ start_session(notes="drag polar sweep: <brief description>")
 ```
 create_surface(
     name="wing", wing_type="CRM",
-    num_x=2, num_y=7, symmetry=True,
+    num_x=7, num_y=35, symmetry=True,
     with_viscous=True, CD0=0.015
 )
 ```
+
+Default to num_x=7, num_y=35 for drag polars. Coarser meshes under-resolve
+induced drag and can shift the best-L/D point. Only reduce if the user asks
+for speed or runtime is a problem (try num_y=21, num_x=5 as a fallback).
 
 For wave drag studies at transonic speeds, set `with_wave=True`.
 
@@ -101,9 +105,9 @@ export_session_graph(session_id=session_id)
 For wing + tail configurations:
 
 ```
-create_surface(name="wing", wing_type="CRM", num_x=2, num_y=7, ...)
+create_surface(name="wing", wing_type="CRM", num_x=7, num_y=35, ...)
 create_surface(name="tail", wing_type="rect", span=6.0, root_chord=1.5,
-               num_x=2, num_y=5, offset=[20.0, 0.0, 0.0],
+               num_x=7, num_y=21, offset=[20.0, 0.0, 0.0],
                CD0=0.0, CL0=0.0)
 compute_drag_polar(surfaces=["wing", "tail"], ...)
 ```

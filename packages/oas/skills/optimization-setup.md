@@ -25,7 +25,7 @@ For aero-only optimization (min drag):
 ```
 create_surface(
     name="wing", wing_type="CRM",
-    num_x=2, num_y=7, symmetry=True,
+    num_x=7, num_y=35, symmetry=True,
     with_viscous=True, CD0=0.015
 )
 ```
@@ -34,12 +34,18 @@ For aerostructural optimization (min fuelburn/mass):
 ```
 create_surface(
     name="wing", wing_type="CRM",
-    num_x=2, num_y=7, symmetry=True,
+    num_x=7, num_y=35, symmetry=True,
     with_viscous=True, CD0=0.015,
     fem_model_type="tube",
     E=70e9, G=30e9, yield_stress=500e6, safety_factor=2.5, mrho=3000.0
 )
 ```
+
+Default to num_x=7, num_y=35 for optimization. Coarser meshes can converge
+to a different optimum because induced drag and structural loads are under-
+resolved. Only reduce if the user asks for speed or runtime is a problem
+(try num_y=21, num_x=5 as a fallback). See the oas-cli-guide SKILL.md mesh
+resolution table.
 
 ### Step 2 -- Baseline analysis
 

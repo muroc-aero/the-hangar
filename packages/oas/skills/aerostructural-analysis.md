@@ -27,7 +27,7 @@ Save the returned `session_id`.
 ```
 create_surface(
     name="wing", wing_type="CRM",
-    num_x=2, num_y=7, symmetry=True,
+    num_x=7, num_y=35, symmetry=True,
     with_viscous=True, CD0=0.015,
     fem_model_type="tube",
     E=70e9, G=30e9, yield_stress=500e6, safety_factor=2.5, mrho=3000.0
@@ -38,13 +38,17 @@ Critical requirements:
 - `fem_model_type` must be `"tube"` or `"wingbox"` -- aero-only surfaces will error
 - Material properties (`E`, `G`, `yield_stress`, `mrho`) must be provided
 - `num_y` must be odd (3, 5, 7, 9, ...)
+- Default to num_x=7, num_y=35 (publication quality). The server default
+  (num_x=2, num_y=7) is a unit-test mesh that under-resolves spanwise loads
+  and structural stress distributions. Only reduce mesh if the user asks for
+  speed or runtime is a problem. See the oas-cli-guide SKILL.md mesh table.
 
 Log the mesh decision:
 ```
 log_decision(
     decision_type="mesh_resolution",
-    reasoning="<why this num_x/num_y>",
-    selected_action="num_x=2, num_y=7"
+    reasoning="num_y=35 publication-quality mesh, matches upstream OAS examples",
+    selected_action="num_x=7, num_y=35"
 )
 ```
 

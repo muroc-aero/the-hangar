@@ -49,8 +49,8 @@ def call(tool, **args):
     return resp["result"]
 
 # Step 1: define the wing
-call("create_surface", name="wing", wing_type="CRM", num_y=7, symmetry=True,
-     with_viscous=True, CD0=0.015)
+call("create_surface", name="wing", wing_type="CRM", num_x=7, num_y=35,
+     symmetry=True, with_viscous=True, CD0=0.015)
 
 # Step 2: single-point aero analysis
 result = call("run_aero_analysis", surfaces=["wing"], alpha=5.0,
@@ -171,7 +171,7 @@ in a single self-contained file:
 ```json
 [
   {"tool": "create_surface", "args": {"name": "wing", "wing_type": "CRM",
-                                       "num_y": 7, "symmetry": true,
+                                       "num_x": 7, "num_y": 35, "symmetry": true,
                                        "with_viscous": true}},
   {"tool": "run_aero_analysis", "args": {"surfaces": ["wing"], "alpha": 5.0,
                                           "Mach_number": 0.84, "velocity": 248.136,

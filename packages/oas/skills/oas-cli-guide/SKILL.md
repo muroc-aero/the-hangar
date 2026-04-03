@@ -81,10 +81,37 @@ density=0.38 kg/m^3
 reynolds_number=1e6    # REQUIRED — server rejects if omitted
 alpha=5.0 degrees
 
-num_x=2, num_y=7       # fast mesh (num_y must be ODD)
+num_x=7, num_y=35      # default mesh (num_y must be ODD)
 wing_type="CRM"        # realistic transport wing
 symmetry=True          # model half-span
 ```
+
+## Mesh resolution guide
+
+**Default to publication-quality mesh (num_x=7, num_y=35).** This matches
+the upstream OAS rectangular wing examples and produces mesh-converged
+results. Only drop to a coarser mesh if the user explicitly asks for fast
+iteration or if analysis runtime is causing problems.
+
+| Tier | num_y | num_x | When to use |
+|------|-------|-------|-------------|
+| Fast iteration | 7 | 2 | User asks for speed, or solver debugging |
+| Reduced | 13-21 | 3-5 | Runtime is too slow at full resolution |
+| **Publication (default)** | **35** | **7** | **All normal analyses** |
+| Extra-fine | 51 | 11 | Mesh convergence verification |
+
+The upstream OAS examples universally use 35x7 or higher for demonstration
+analyses. The server default (num_x=2, num_y=7) is a unit-test mesh that
+under-resolves spanwise loads and induced drag -- do not use it for results
+you plan to interpret.
+
+For multi-surface configurations (wing + tail), the tail can use fewer
+spanwise points than the wing (e.g. num_y=21 for tail when wing is num_y=35).
+
+**When to reduce mesh**: if an analysis or optimization is taking too long,
+drop to num_y=21, num_x=5 first. Only go to num_y=7 for pure input debugging.
+Published OAS mesh convergence studies (Aerospace 2022, 9(7):378) found 23x5
+sufficient for <3% CD error on a wing, so 21x5 is a reasonable fallback.
 
 ## Error handling
 
