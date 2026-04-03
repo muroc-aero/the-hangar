@@ -173,6 +173,14 @@ def assemble_plan(
     # Merge modular files
     plan = _merge_yaml_files(plan_dir)
 
+    # Inject placeholder version/content_hash so schema validation passes.
+    # These are overwritten with real values after validation succeeds.
+    if "metadata" in plan:
+        if "version" not in plan["metadata"]:
+            plan["metadata"]["version"] = 1  # placeholder
+        if "content_hash" not in plan["metadata"]:
+            plan["metadata"]["content_hash"] = ""
+
     # Validate against schema
     errors = validate_plan(plan)
     if errors:
