@@ -41,6 +41,8 @@ def export_plan_to_script(
 
     if comp_type == "oas/AerostructPoint":
         script = _export_oas_aerostruct(plan, comp, operating_points)
+    elif comp_type == "paraboloid/Paraboloid":
+        script = _export_paraboloid(plan, operating_points)
     else:
         raise NotImplementedError(
             f"Export not yet supported for component type: {comp_type}"
@@ -210,6 +212,53 @@ def _export_oas_aerostruct(
     script = "\n".join(lines) + "\n"
 
     return script
+
+
+def _export_paraboloid(plan: dict, operating_points: dict) -> str:
+    """Generate a standalone script for the paraboloid problem."""
+    meta = plan.get("metadata", {})
+    x = operating_points.get("x", 0.0)
+    y = operating_points.get("y", 0.0)
+
+    lines = [
+        '#!/usr/bin/env python',
+        f'"""Standalone paraboloid analysis. Plan: {meta.get("name", "unknown")}"""',
+        '',
+        'import openmdao.api as om',
+        '',
+        '',
+        'class Paraboloid(om.ExplicitComponent):',
+        '    def setup(self):',
+        '        self.add_input("x", val=0.0)',
+        '        self.add_input("y", val=0.0)',
+        '        self.add_output("f_xy", val=0.0)',
+        '        self.declare_partials("*", "*")',
+        '',
+        '    def compute(self, inputs, outputs):',
+        '        x, y = inputs["x"], inputs["y"]',
+        '        outputs["f_xy"] = (x - 3.0)**2 + x * y + (y + 4.0)**2 - 3.0',
+        '',
+        '    def compute_partials(self, inputs, J):',
+        '        x, y = inputs["x"], inputs["y"]',
+        '        J["f_xy", "x"] = 2.0 * x - 6.0 + y',
+        '        J["f_xy", "y"] = 2.0 * y + 8.0 + x',
+        '',
+        '',
+        'def main():',
+        '    prob = om.Problem(reports=False)',
+        '    prob.model.add_subsystem("paraboloid", Paraboloid(), promotes=["*"])',
+        '    prob.setup()',
+        f'    prob.set_val("x", {x})',
+        f'    prob.set_val("y", {y})',
+        '    prob.run_model()',
+        '    f = prob.get_val("f_xy")[0]',
+        '    print(f"f_xy = {f:.6f}")',
+        '',
+        '',
+        'if __name__ == "__main__":',
+        '    main()',
+    ]
+    return "\n".join(lines) + "\n"
 
 
 def _format_surface_config(sc: dict) -> str:

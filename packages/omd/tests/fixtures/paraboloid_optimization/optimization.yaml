@@ -1,0 +1,15 @@
+design_variables:
+  - name: x
+    lower: -50.0
+    upper: 50.0
+  - name: y
+    lower: -50.0
+    upper: 50.0
+
+objective:
+  name: paraboloid.f_xy
+
+optimizer:
+  type: SLSQP
+  options:
+    maxiter: 50

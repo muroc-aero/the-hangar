@@ -190,6 +190,16 @@ def _extract_summary(prob, metadata: dict, mode: str) -> dict:
     point_name = metadata.get("point_name", "AS_point_0")
     summary: dict = {"mode": mode}
 
+    # Generic output extraction (paraboloid, etc.)
+    for output_name in metadata.get("output_names", []):
+        try:
+            val = prob.get_val(output_name)
+            key = output_name.split(".")[-1]
+            summary[key] = float(val.flat[0]) if hasattr(val, "flat") else float(val)
+        except Exception:
+            pass
+
+    # OAS-specific outputs
     try:
         summary["CL"] = float(prob.get_val(f"{point_name}.CL")[0])
     except Exception:
@@ -208,13 +218,18 @@ def _extract_summary(prob, metadata: dict, mode: str) -> dict:
 
     # Surface-specific results
     for surf_name in metadata.get("surface_names", []):
-        try:
-            mass = float(np.sum(prob.get_val(
-                f"{point_name}.{surf_name}_perf.structural_mass"
-            )))
-            summary[f"{surf_name}_structural_mass"] = mass
-        except Exception:
-            pass
+        # Structural mass: available on the geometry group output
+        for mass_path in (
+            f"{surf_name}.structural_mass",
+            f"{point_name}.total_perf.{surf_name}_structural_mass",
+        ):
+            try:
+                mass = float(np.sum(prob.get_val(mass_path)))
+                summary[f"{surf_name}_structural_mass"] = mass
+                break
+            except Exception:
+                pass
+        # Failure index
         try:
             failure = float(np.max(prob.get_val(
                 f"{point_name}.{surf_name}_perf.failure"

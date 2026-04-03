@@ -34,6 +34,7 @@ _DEFAULT_AERO_SURFACE: dict[str, Any] = {
 }
 
 _DEFAULT_STRUCT_PROPS: dict[str, Any] = {
+    "safety_factor": 1.5,
     "fem_origin": 0.35,
     "wing_weight_ratio": 2.0,
     "struct_weight_relief": False,
@@ -193,10 +194,11 @@ def _plan_config_to_surface_dict(surface_config: dict) -> dict:
     fem_model_type = surface_config.get("fem_model_type", "tube")
     surface["fem_model_type"] = fem_model_type
 
-    # Material properties
+    # Material properties (coerce to float -- YAML may parse scientific
+    # notation like 70.0e9 as strings depending on the notation used)
     for prop in ("E", "G", "yield_stress", "mrho", "safety_factor"):
         if prop in surface_config:
-            surface[prop] = surface_config[prop]
+            surface[prop] = float(surface_config[prop])
 
     # Map yield_stress to OAS "yield" key
     if "yield_stress" in surface and "yield" not in surface:

@@ -70,8 +70,15 @@ def _register_builtins() -> None:
     Uses try/except so omd core works even without optional
     upstream packages installed.
     """
+    # Paraboloid: pure OpenMDAO, always available
+    from hangar.omd.factories.paraboloid import build_paraboloid
+    register_factory("paraboloid/Paraboloid", build_paraboloid)
+
+    # OAS factories: optional, require openaerostruct
     try:
         from hangar.omd.factories.oas import build_oas_aerostruct
+        from hangar.omd.factories.oas_aero import build_oas_aeropoint
         register_factory("oas/AerostructPoint", build_oas_aerostruct)
+        register_factory("oas/AeroPoint", build_oas_aeropoint)
     except ImportError:
-        logger.info("OpenAeroStruct not available, OAS factory not registered")
+        logger.info("OpenAeroStruct not available, OAS factories not registered")

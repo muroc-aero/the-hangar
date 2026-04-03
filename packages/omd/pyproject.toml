@@ -31,5 +31,8 @@ openaerostruct = { path = "../../upstream/OpenAeroStruct", editable = true }
 asyncio_mode = "auto"
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-    "parity: parity tests vs direct OAS API",
+    "parity: parity tests vs direct API",
+    "eval: evaluation test cases",
+    "golden_physics: tier 1 physics invariant tests",
+    "golden_numerics: tier 2 numeric baseline tests",
 ]

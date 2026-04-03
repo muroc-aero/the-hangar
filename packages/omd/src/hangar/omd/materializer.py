@@ -126,6 +126,13 @@ def materialize(
     # Setup the problem
     prob.setup()
 
+    # Set initial values from metadata (factory-provided)
+    for name, val in metadata.get("initial_values", {}).items():
+        try:
+            prob.set_val(name, val)
+        except Exception:
+            pass
+
     # Configure recorder after setup
     rec_path = _configure_recorder(prob, recording_level, recorder_path)
     metadata["recorder_path"] = rec_path
@@ -356,20 +363,23 @@ def _configure_recorder(
     level_opts = RECORDING_LEVELS.get(recording_level, RECORDING_LEVELS["driver"])
 
     if recording_level in ("driver", "solver", "full"):
-        recorder.options["record_desvars"] = level_opts.get("record_desvars", True)
-        recorder.options["record_objectives"] = level_opts.get("record_objectives", True)
-        recorder.options["record_constraints"] = level_opts.get("record_constraints", True)
-        recorder.options["record_responses"] = level_opts.get("record_responses", True)
+        # Recording options are set on the driver, not the recorder
+        for opt_key in ("record_desvars", "record_objectives",
+                        "record_constraints", "record_responses"):
+            if opt_key in level_opts:
+                try:
+                    prob.driver.recording_options[opt_key] = level_opts[opt_key]
+                except (AttributeError, KeyError):
+                    pass
         prob.driver.add_recorder(recorder)
 
     if recording_level in ("solver", "full"):
-        # Add recorder to nonlinear solver if it exists
         try:
             prob.model.nonlinear_solver.add_recorder(recorder)
         except AttributeError:
             pass
 
-    # Always record final state
+    # Always record final state on the problem
     prob.add_recorder(recorder)
 
     return recorder_path

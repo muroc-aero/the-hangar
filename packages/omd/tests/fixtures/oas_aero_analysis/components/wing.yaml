@@ -1,0 +1,13 @@
+id: wing
+type: oas/AeroPoint
+config:
+  surfaces:
+    - name: wing
+      wing_type: rect
+      num_x: 2
+      num_y: 7
+      span: 10.0
+      root_chord: 1.0
+      symmetry: true
+      with_viscous: true
+      CD0: 0.015

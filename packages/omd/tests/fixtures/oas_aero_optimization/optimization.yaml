@@ -1,0 +1,17 @@
+design_variables:
+  - name: wing.twist_cp
+    lower: -10.0
+    upper: 15.0
+
+constraints:
+  - name: aero_point_0.CL
+    equals: 0.5
+
+objective:
+  name: aero_point_0.CD
+  scaler: 10000.0
+
+optimizer:
+  type: SLSQP
+  options:
+    maxiter: 100

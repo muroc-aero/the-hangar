@@ -34,6 +34,7 @@ PLAN_SCHEMA: dict[str, Any] = {
                 "name": {"type": "string", "minLength": 1},
                 "version": {"type": "integer", "minimum": 1},
                 "description": {"type": "string"},
+                "content_hash": {"type": "string"},
             },
         },
         "requirements": {
