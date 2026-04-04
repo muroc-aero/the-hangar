@@ -130,10 +130,12 @@ def provenance_cmd(plan_id: str, fmt: str, diff_versions: tuple | None,
               default="driver", help="Recording verbosity")
 @click.option("--db", "db_path", type=click.Path(), default=None,
               help="Path to analysis database")
+@click.option("--quiet", is_flag=True, default=False,
+              help="Suppress convergence table output")
 def run_cmd(plan_path: str, mode: str, recording_level: str,
-            db_path: str | None) -> None:
+            db_path: str | None, quiet: bool) -> None:
     """Materialize and run an analysis plan."""
-    from hangar.omd.run import run_plan
+    from hangar.omd.run import run_plan, format_convergence_table
 
     db = Path(db_path) if db_path else None
     result = run_plan(Path(plan_path), mode=mode,
@@ -160,6 +162,80 @@ def run_cmd(plan_path: str, mode: str, recording_level: str,
             f"  Recording: {rec.get('case_count', 0)} cases, "
             f"{rec.get('storage_bytes', 0) / 1024:.1f} KB"
         )
+
+    # Print convergence table for optimization runs
+    if mode == "optimize" and not quiet:
+        from hangar.omd.db import recordings_dir
+        rec_path = recordings_dir() / f"{result['run_id']}.sql"
+        if rec_path.exists():
+            table = format_convergence_table(rec_path)
+            if table:
+                click.echo()
+                click.echo(table)
+
+
+@cli.command("plot")
+@click.argument("run_id", required=False, default=None)
+@click.option("--type", "plot_type",
+              type=click.Choice(["all", "planform", "lift", "struct",
+                                 "convergence", "twist", "thickness"]),
+              default="all", help="Plot type(s) to generate")
+@click.option("--output", "-o", type=click.Path(), default=None,
+              help="Output directory for PNGs")
+@click.option("--recorder-db", type=click.Path(exists=True), default=None,
+              help="Direct path to recorder .sql/.db file")
+@click.option("--surface", default=None, help="Surface name filter")
+def plot_cmd(run_id: str | None, plot_type: str, output: str | None,
+             recorder_db: str | None, surface: str | None) -> None:
+    """Generate analysis plots from a completed run.
+
+    Provide either a RUN_ID (resolved from omd recordings) or
+    --recorder-db for a direct recorder file path.
+    """
+    from hangar.omd.db import recordings_dir
+    from hangar.omd.plotting import generate_plots, PLOT_TYPES
+
+    # Resolve recorder path
+    if recorder_db:
+        rec_path = Path(recorder_db)
+    elif run_id:
+        rec_dir = recordings_dir()
+        rec_path = rec_dir / f"{run_id}.sql"
+        if not rec_path.exists():
+            click.echo(f"Recorder not found: {rec_path}", err=True)
+            raise SystemExit(1)
+    else:
+        click.echo("Provide either a RUN_ID or --recorder-db", err=True)
+        raise SystemExit(1)
+
+    # Resolve output directory
+    if output:
+        out_dir = Path(output)
+    elif run_id:
+        from hangar.omd.db import omd_data_root
+        out_dir = omd_data_root() / "plots" / run_id
+    else:
+        out_dir = Path(".")
+
+    # Determine plot types
+    if plot_type == "all":
+        types = list(PLOT_TYPES.keys())
+    else:
+        types = [plot_type]
+
+    saved = generate_plots(
+        rec_path,
+        plot_types=types,
+        surface_name=surface,
+        output_dir=out_dir,
+    )
+
+    if saved:
+        click.echo(f"Plots saved to {out_dir}/")
+        for ptype, path in saved.items():
+            click.echo(f"  {path.name}")
+    else:
+        click.echo("No plots generated (data may not be available for requested types)")
 
 
 def main() -> None:

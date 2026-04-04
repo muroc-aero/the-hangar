@@ -10,6 +10,7 @@ dependencies = [
     "click>=8.0",
     "jsonschema>=4.0",
     "pyyaml>=6.0",
+    "matplotlib>=3.5",
 ]
 
 [project.scripts]

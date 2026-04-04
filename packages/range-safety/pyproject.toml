@@ -5,6 +5,7 @@ description = "Plan validation and post-run assertions for MDAO workflows"
 requires-python = ">=3.11"
 dependencies = [
     "hangar-sdk[all]",
+    "hangar-omd",
     "jsonschema>=4.0",
     "pyyaml>=6.0",
     "click>=8.0",
@@ -22,6 +23,7 @@ packages = ["src/hangar"]
 
 [tool.uv.sources]
 hangar-sdk = { workspace = true }
+hangar-omd = { workspace = true }
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

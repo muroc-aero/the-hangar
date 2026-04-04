@@ -83,6 +83,12 @@ def run_plan(
         storage_ref=plan_storage_ref,
     )
 
+    # Replan provenance: link to parent version if this is a revision
+    parent_version = plan.get("metadata", {}).get("parent_version")
+    if parent_version:
+        parent_entity_id = f"{plan_id}/v{parent_version}"
+        add_prov_edge("wasDerivedFrom", plan_entity_id, parent_entity_id)
+
     # Record execute activity start
     started_at = datetime.now(timezone.utc).isoformat()
     record_activity(
@@ -167,6 +173,102 @@ def run_plan(
     # Provenance: run wasGeneratedBy execute
     add_prov_edge("wasGeneratedBy", run_id, activity_id)
 
+    # Update activity as completed
+    record_activity(
+        activity_id=activity_id,
+        activity_type="execute",
+        agent="omd",
+        started_at=started_at,
+        completed_at=datetime.now(timezone.utc).isoformat(),
+        status="completed",
+    )
+
+    return {
+        "run_id": run_id,
+        "status": status,
+        "summary": summary,
+        "errors": [],
+    }
+
+
+def format_convergence_table(recorder_path: Path) -> str | None:
+    """Format a convergence summary table from recorder data.
+
+    Reads driver cases and produces a text table showing objective
+    and constraint values per iteration. Returns None if fewer than
+    2 driver cases are available.
+
+    Args:
+        recorder_path: Path to OpenMDAO recorder file.
+
+    Returns:
+        Formatted table string, or None if not enough data.
+    """
+    import openmdao.api as om
+    import numpy as np
+
+    try:
+        reader = om.CaseReader(str(recorder_path))
+        driver_cases = reader.list_cases("driver", recurse=False, out_stream=None)
+    except Exception:
+        return None
+
+    if len(driver_cases) < 2:
+        return None
+
+    # Sample iterations for display (show at most 10 rows)
+    n = len(driver_cases)
+    if n <= 10:
+        indices = list(range(n))
+    else:
+        # Always show first, last, and evenly-spaced middle
+        step = max(1, (n - 1) // 8)
+        indices = list(range(0, n, step))
+        if indices[-1] != n - 1:
+            indices.append(n - 1)
+
+    # Find the objective variable (first scalar that changes)
+    first_case = reader.get_case(driver_cases[0])
+    last_case = reader.get_case(driver_cases[-1])
+
+    first_outputs = first_case.list_outputs(out_stream=None, return_format="dict")
+    last_outputs = last_case.list_outputs(out_stream=None, return_format="dict")
+
+    obj_name = None
+    for name in first_outputs:
+        if name not in last_outputs:
+            continue
+        v0 = first_outputs[name].get("val", first_outputs[name].get("value"))
+        v1 = last_outputs[name].get("val", last_outputs[name].get("value"))
+        if v0 is not None and v1 is not None:
+            a0 = np.atleast_1d(v0)
+            a1 = np.atleast_1d(v1)
+            if a0.size == 1 and a1.size == 1:
+                f0, f1 = float(a0.flat[0]), float(a1.flat[0])
+                if f0 != f1:
+                    obj_name = name
+                    break
+
+    if obj_name is None:
+        return None
+
+    # Build table
+    lines = ["Optimization progress:"]
+    header = f"  {'Iter':>5}  {'Objective':>18}  {'Variable':>s}"
+    lines.append(header.replace("Variable", obj_name.split(".")[-1]))
+    lines.append(f"  {'----':>5}  {'------------------':>18}")
+
+    for idx in indices:
+        case = reader.get_case(driver_cases[idx])
+        outputs = case.list_outputs(out_stream=None, return_format="dict")
+        val = outputs.get(obj_name, {}).get("val")
+        if val is None:
+            val = outputs.get(obj_name, {}).get("value")
+        if val is not None:
+            fval = float(np.atleast_1d(val).flat[0])
+            lines.append(f"  {idx:>5}  {fval:>18.6e}")
+
+    return "\n".join(lines)
     # Update activity as completed
     record_activity(
         activity_id=activity_id,

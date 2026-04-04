@@ -710,6 +710,7 @@ dependencies = [
     { name = "click" },
     { name = "hangar-sdk", extra = ["all"] },
     { name = "jsonschema" },
+    { name = "matplotlib" },
     { name = "openaerostruct" },
     { name = "openmdao" },
     { name = "pyyaml" },
@@ -720,6 +721,7 @@ requires-dist = [
     { name = "click", specifier = ">=8.0" },
     { name = "hangar-sdk", extras = ["all"], editable = "packages/sdk" },
     { name = "jsonschema", specifier = ">=4.0" },
+    { name = "matplotlib", specifier = ">=3.5" },
     { name = "openaerostruct", editable = "upstream/OpenAeroStruct" },
     { name = "openmdao", specifier = ">=3.35,!=3.40" },
     { name = "pyyaml", specifier = ">=6.0" },
@@ -754,6 +756,7 @@ version = "0.1.0"
 source = { editable = "packages/range-safety" }
 dependencies = [
     { name = "click" },
+    { name = "hangar-omd" },
     { name = "hangar-sdk", extra = ["all"] },
     { name = "jsonschema" },
     { name = "pyyaml" },
@@ -762,6 +765,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8.0" },
+    { name = "hangar-omd", editable = "packages/omd" },
     { name = "hangar-sdk", extras = ["all"], editable = "packages/sdk" },
     { name = "jsonschema", specifier = ">=4.0" },
     { name = "pyyaml", specifier = ">=6.0" },

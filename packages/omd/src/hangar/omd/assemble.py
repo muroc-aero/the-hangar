@@ -201,6 +201,10 @@ def assemble_plan(
         plan["metadata"]["version"] = new_version
         plan["metadata"]["content_hash"] = content_hash
 
+        # Track parent version for replan provenance
+        if new_version > 1:
+            plan["metadata"]["parent_version"] = new_version - 1
+
     # Write assembled plan
     output.parent.mkdir(parents=True, exist_ok=True)
     with open(output, "w") as f:

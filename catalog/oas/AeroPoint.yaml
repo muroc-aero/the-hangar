@@ -1,0 +1,164 @@
+# Component catalog entry: OAS AeroPoint
+# Reference data for plan authoring -- not executable code.
+
+type: oas/AeroPoint
+source: openaerostruct
+description: >
+  Aerodynamic analysis point for lifting surfaces using vortex lattice
+  method (VLM). Aero-only -- no structural coupling.
+import_path: openaerostruct.aerodynamics.aero_groups.AeroPoint
+geometry_path: openaerostruct.geometry.geometry_group.Geometry
+
+inputs:
+  surface_config:
+    name:
+      type: string
+      required: true
+      description: Surface identifier used in variable paths
+    wing_type:
+      type: string
+      enum: [rect, CRM, uCRM_based]
+      default: rect
+      description: Planform shape template
+    num_x:
+      type: integer
+      minimum: 2
+      default: 2
+      description: Chordwise mesh panels
+    num_y:
+      type: integer
+      minimum: 3
+      required: true
+      description: Spanwise mesh points (MUST be odd)
+    span:
+      type: number
+      units: m
+      description: Full wingspan (tip-to-tip before symmetry halving)
+    root_chord:
+      type: number
+      units: m
+      description: Root chord length
+    symmetry:
+      type: boolean
+      default: true
+      description: Exploit bilateral symmetry (half-model)
+    twist_cp:
+      type: array
+      items: number
+      units: deg
+      description: Twist angle control points (root-to-tip)
+    chord_cp:
+      type: array
+      items: number
+      description: Chord scaling control points (root-to-tip)
+    t_over_c_cp:
+      type: array
+      items: number
+      description: Thickness-to-chord ratio control points (for viscous drag)
+    sweep:
+      type: number
+      units: deg
+      default: 0.0
+      description: Leading-edge sweep angle
+    dihedral:
+      type: number
+      units: deg
+      default: 0.0
+      description: Dihedral angle
+    taper:
+      type: number
+      default: 1.0
+      description: Taper ratio (tip chord / root chord)
+    with_viscous:
+      type: boolean
+      default: true
+      description: Include viscous drag estimation
+    with_wave:
+      type: boolean
+      default: false
+      description: Include wave drag estimation
+    CL0:
+      type: number
+      default: 0.0
+      description: Zero-alpha lift coefficient offset
+    CD0:
+      type: number
+      default: 0.0
+      description: Parasitic drag coefficient offset
+    groundplane:
+      type: boolean
+      default: false
+      description: Enable ground effect (requires symmetry=true)
+
+  flight_conditions:
+    velocity:
+      type: number
+      units: m/s
+      default: 248.136
+      description: Freestream velocity
+    alpha:
+      type: number
+      units: deg
+      default: 5.0
+      description: Angle of attack
+    Mach_number:
+      type: number
+      default: 0.84
+    re:
+      type: number
+      units: 1/m
+      default: 1.0e6
+      description: Reynolds number per unit length
+    rho:
+      type: number
+      units: kg/m^3
+      default: 0.38
+      description: Air density
+
+outputs:
+  CL:
+    units: dimensionless
+    description: Total lift coefficient
+  CD:
+    units: dimensionless
+    description: Total drag coefficient
+  CM:
+    units: dimensionless
+    description: Pitching moment coefficient (array)
+  L_over_D:
+    units: dimensionless
+    description: Lift-to-drag ratio
+
+partials: analytic
+
+recommended_solvers:
+  nonlinear:
+    type: NonlinearBlockGS
+    options:
+      maxiter: 1
+  linear:
+    type: DirectSolver
+
+recommended_dvs:
+  - name: twist_cp
+    lower: -10.0
+    upper: 15.0
+    units: deg
+    description: Twist distribution (aerodynamic shaping)
+  - name: alpha
+    lower: -5.0
+    upper: 15.0
+    description: Angle of attack
+
+recommended_constraints:
+  - name: CL
+    equals: 0.5
+    description: Lift coefficient target (trim or design CL)
+
+known_issues:
+  - "num_y must be odd (3, 5, 7, ...) or OAS raises an error"
+  - "CRM mesh returns (mesh, twist_cp) tuple -- rect returns mesh only"
+  - "OAS silently ignores unrecognized design variable names"
+  - "Optimizer converging in 1-2 iterations usually means DV bounds are wrong"
+  - "Control point arrays are root-to-tip ordered"
+  - "Aero-only analysis does not include structural weight or deformation"

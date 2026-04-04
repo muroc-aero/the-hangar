@@ -35,6 +35,7 @@ PLAN_SCHEMA: dict[str, Any] = {
                 "version": {"type": "integer", "minimum": 1},
                 "description": {"type": "string"},
                 "content_hash": {"type": "string"},
+                "parent_version": {"type": "integer", "minimum": 1},
             },
         },
         "requirements": {
@@ -206,9 +207,21 @@ PLAN_SCHEMA: dict[str, Any] = {
             "items": {
                 "type": "object",
                 "properties": {
+                    "id": {"type": "string"},
                     "decision": {"type": "string"},
                     "reason": {"type": "string"},
+                    "rationale": {"type": "string"},
                     "timestamp": {"type": "string"},
+                    "stage": {"type": "string"},
+                    "references": {
+                        "type": "array",
+                        "items": {
+                            "oneOf": [
+                                {"type": "string"},
+                                {"type": "object"},
+                            ],
+                        },
+                    },
                 },
             },
         },

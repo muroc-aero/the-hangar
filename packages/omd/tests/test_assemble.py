@@ -143,6 +143,19 @@ def test_assemble_plan_custom_output(tmp_path):
     assert out_path.exists()
 
 
+def test_assemble_plan_parent_version(tmp_path):
+    """Second assembly sets parent_version pointing to v1."""
+    plan_dir = _make_plan_dir(tmp_path)
+
+    r1 = assemble_plan(plan_dir)
+    assert r1["version"] == 1
+    assert "parent_version" not in r1["plan"].get("metadata", {})
+
+    r2 = assemble_plan(plan_dir)
+    assert r2["version"] == 2
+    assert r2["plan"]["metadata"]["parent_version"] == 1
+
+
 def test_assemble_plan_validation_error(tmp_path):
     plan_dir = tmp_path / "bad-plan"
     plan_dir.mkdir()
