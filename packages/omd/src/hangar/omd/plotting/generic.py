@@ -183,10 +183,16 @@ def plot_dv_evolution(
     Args:
         recorder_path: Path to OpenMDAO recorder file.
 
+    Keyword Args:
+        vector_dv_mode: How to display vector DVs. ``"all"`` (default)
+            shows individual elements plus the mean. ``"mean"`` shows
+            only the mean of the vector.
+
     Returns:
         matplotlib Figure.
     """
     run_id = kwargs.get("run_id", "")
+    vector_dv_mode = kwargs.get("vector_dv_mode", "all")
 
     import openmdao.api as om
     reader = om.CaseReader(str(recorder_path))
@@ -249,21 +255,30 @@ def plot_dv_evolution(
 
     # Plot vector DV elements with their mean
     for dv_name in sorted(vector_dv_names):
-        # Individual elements (solid, thin)
-        elem_keys = [k for k in element_traces if k.startswith(f"{dv_name}[")]
-        for key in sorted(elem_keys):
-            values = element_traces[key]
-            color = colors[color_idx % len(colors)]
-            ax.plot(iterations[:len(values)], values, "-o", markersize=2,
-                    linewidth=1.0, label=key, color=color)
-            color_idx += 1
+        if vector_dv_mode == "all":
+            # Individual elements (solid, thin)
+            elem_keys = [k for k in element_traces if k.startswith(f"{dv_name}[")]
+            for key in sorted(elem_keys):
+                values = element_traces[key]
+                color = colors[color_idx % len(colors)]
+                ax.plot(iterations[:len(values)], values, "-o", markersize=2,
+                        linewidth=1.0, label=key, color=color)
+                color_idx += 1
 
-        # Mean trace (dashed, thicker, black)
+        # Mean trace
         if dv_name in mean_traces:
             values = mean_traces[dv_name]
-            ax.plot(iterations[:len(values)], values, "--", markersize=0,
-                    linewidth=2.0, label=f"{dv_name} (mean)", color="black",
-                    alpha=0.6)
+            if vector_dv_mode == "all":
+                # Dashed overlay when elements are also shown
+                ax.plot(iterations[:len(values)], values, "--", markersize=0,
+                        linewidth=2.0, label=f"{dv_name} (mean)", color="black",
+                        alpha=0.6)
+            else:
+                # Primary trace when mean-only
+                color = colors[color_idx % len(colors)]
+                ax.plot(iterations[:len(values)], values, "-o", markersize=3,
+                        linewidth=1.5, label=f"{dv_name} (mean)", color=color)
+                color_idx += 1
 
     # Plot scalar DVs
     for label, values in sorted(scalar_traces.items()):

@@ -675,22 +675,27 @@ def plot_opt_history(run_id: str, optimization_history: dict, case_name: str = "
 # ---------------------------------------------------------------------------
 
 
-def plot_opt_dv_evolution(run_id: str, optimization_history: dict, case_name: str = "", *, save_dir: str | Path | None = None) -> PlotResult:
+def plot_opt_dv_evolution(
+    run_id: str, optimization_history: dict, case_name: str = "", *,
+    save_dir: str | Path | None = None,
+    vector_dv_mode: str = "all",
+) -> PlotResult:
     """Plot design variable evolution over optimizer iterations.
-
-    For vector DVs (e.g. twist_cp), plots the mean of the DV vector per
-    iteration.  For scalar DVs, plots the scalar value directly.
 
     Parameters
     ----------
     optimization_history:
         Dict from ``results.optimization_history`` with key
         ``dv_history`` (dict of DV name -> list of per-iteration values).
+    vector_dv_mode:
+        How to display vector DVs (e.g. chord_cp, twist_cp):
+        ``"all"`` -- show individual elements plus the mean (default).
+        ``"mean"`` -- show only the mean of the vector.
     """
     _require_mpl()
     import matplotlib.pyplot as plt
 
-    title = f"DV Evolution — {case_name}" if case_name else "Design Variable Evolution"
+    title = f"DV Evolution -- {case_name}" if case_name else "Design Variable Evolution"
     fig, ax = _make_fig(run_id, title)
 
     dv_history = optimization_history.get("dv_history", {})
@@ -716,24 +721,25 @@ def plot_opt_dv_evolution(run_id: str, optimization_history: dict, case_name: st
         is_vector = isinstance(history[0], (list, np.ndarray)) and len(np.asarray(history[0]).ravel()) > 1
 
         if is_vector:
-            # Plot individual elements (thin, solid) + mean (dashed, thick)
-            n_elem = min(len(np.asarray(history[0]).ravel()), 10)
-            for ei in range(n_elem):
-                try:
-                    vals = [float(np.asarray(v).ravel()[ei]) for v in history]
-                except Exception:
-                    continue
-                initial_val = vals[0] if vals else 0.0
-                if abs(initial_val) > 1e-12:
-                    vals_norm = [x / initial_val for x in vals]
-                else:
-                    vals_norm = [1.0] * len(vals)
-                color = colors[color_idx % len(colors)]
-                ax.plot(iters, vals_norm, "-o", markersize=2, linewidth=0.8,
-                        label=f"{dv_name}[{ei}]", color=color, alpha=0.7)
-                color_idx += 1
+            # Individual elements (only when mode is "all")
+            if vector_dv_mode == "all":
+                n_elem = min(len(np.asarray(history[0]).ravel()), 10)
+                for ei in range(n_elem):
+                    try:
+                        vals = [float(np.asarray(v).ravel()[ei]) for v in history]
+                    except Exception:
+                        continue
+                    initial_val = vals[0] if vals else 0.0
+                    if abs(initial_val) > 1e-12:
+                        vals_norm = [x / initial_val for x in vals]
+                    else:
+                        vals_norm = [1.0] * len(vals)
+                    color = colors[color_idx % len(colors)]
+                    ax.plot(iters, vals_norm, "-o", markersize=2, linewidth=0.8,
+                            label=f"{dv_name}[{ei}]", color=color, alpha=0.7)
+                    color_idx += 1
 
-            # Mean trace (dashed, black)
+            # Mean trace
             try:
                 means = [float(np.asarray(v).mean()) for v in history]
                 initial_val = means[0] if means else 0.0
@@ -741,8 +747,16 @@ def plot_opt_dv_evolution(run_id: str, optimization_history: dict, case_name: st
                     means_norm = [m / initial_val for m in means]
                 else:
                     means_norm = [1.0] * len(means)
-                ax.plot(iters, means_norm, "--", markersize=0, linewidth=2.0,
-                        label=f"{dv_name} (mean)", color="black", alpha=0.5)
+                if vector_dv_mode == "all":
+                    # Dashed overlay when elements are also shown
+                    ax.plot(iters, means_norm, "--", markersize=0, linewidth=2.0,
+                            label=f"{dv_name} (mean)", color="black", alpha=0.5)
+                else:
+                    # Primary trace when mean-only
+                    color = colors[color_idx % len(colors)]
+                    ax.plot(iters, means_norm, "-o", markersize=3, linewidth=1.5,
+                            label=f"{dv_name} (mean)", color=color)
+                    color_idx += 1
             except Exception:
                 pass
         else:
