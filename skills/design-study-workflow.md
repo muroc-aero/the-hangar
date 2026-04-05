@@ -31,16 +31,42 @@ Document these decisions before proceeding.
 3. Run the appropriate analysis (aero or aerostruct) at the design condition
 4. Record baseline metrics: CL, CD, L/D, structural mass, fuel burn
 5. Save the baseline `run_id` for later comparison
-6. Log the baseline interpretation as a decision
+6. **Required:** Log the baseline interpretation:
+   ```
+   log_decision(
+       decision_type="result_interpretation",
+       reasoning="Baseline performance: CL=X, CD=Y, L/D=Z. These values
+                  are consistent with expectations for this class of wing.",
+       selected_action="Accept baseline; proceed with variations",
+       prior_call_id=<baseline_run_call_id>
+   )
+   ```
 
 ### Phase 3 -- Design variations
 
 For each variation in the study:
-1. Modify the relevant parameter(s)
-2. Re-create the surface with updated geometry
-3. Run the same analysis at the same flight condition
-4. Record the `run_id` and key metrics
-5. Log the rationale for this variation
+1. **Required:** Log the variation rationale before running:
+   ```
+   log_decision(
+       decision_type="variation_rationale",
+       reasoning="Testing sweep=30 deg to evaluate wave drag sensitivity.
+                  Hypothesis: moderate sweep increase improves transonic L/D.",
+       selected_action="Run analysis with sweep=30 deg, all else held constant"
+   )
+   ```
+2. Modify the relevant parameter(s)
+3. Re-create the surface with updated geometry
+4. Run the same analysis at the same flight condition
+5. Record the `run_id` and key metrics
+6. **Required:** Log result interpretation:
+   ```
+   log_decision(
+       decision_type="result_interpretation",
+       reasoning="Sweep=30 yields CD=X (delta from baseline), L/D=Y.",
+       selected_action="Record; compare in synthesis phase",
+       prior_call_id=<variation_run_call_id>
+   )
+   ```
 
 Typical variation strategies:
 - **Parametric sweep:** vary one parameter across a range (e.g. sweep 0--40 deg)
@@ -54,6 +80,17 @@ Typical variation strategies:
 3. Identify trends (e.g. "increasing sweep reduces induced drag but increases
    structural mass")
 4. Determine the best design point and justify why
+5. **Required:** Log the synthesis decision:
+   ```
+   log_decision(
+       decision_type="result_interpretation",
+       reasoning="Across N variations, sweep=30 gives best L/D with acceptable
+                  structural mass increase (+X%). Diminishing returns above 30 deg
+                  due to wave drag. Recommended design point: sweep=30.",
+       selected_action="Select sweep=30 as recommended design",
+       confidence="high"
+   )
+   ```
 
 ### Phase 5 -- Reporting
 

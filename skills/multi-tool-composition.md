@@ -44,8 +44,21 @@ Run one tool, extract results, feed into the next.
 ```
 1. OAS: run_aerostruct_analysis -> get CD, structural_mass, fuelburn
 2. Extract: drag = CD * q * S_ref
-3. Propulsion: size_engine(thrust_required=drag * safety_margin)
-4. Mission: compute_range(fuel_available, sfc)
+3. Log handoff decision (required -- see below)
+4. Propulsion: size_engine(thrust_required=drag * safety_margin)
+5. Mission: compute_range(fuel_available, sfc)
+```
+
+**Required:** Before each tool-to-tool handoff, log a decision:
+```
+log_decision(
+    decision_type="tool_handoff",
+    reasoning="OAS aerostruct results: CD=0.032, structural_mass=27200 kg.
+               Extracting drag force = CD * q * S_ref = 45.2 kN for propulsion sizing.
+               Units: force in Newtons, mass in kg.",
+    selected_action="Pass drag=45.2 kN to propulsion tool as thrust_required",
+    prior_call_id=<oas_analysis_call_id>
+)
 ```
 
 Key: clearly identify the interface variables and their units.
@@ -60,8 +73,20 @@ depends on engine size, engine size depends on drag):
 2. OAS: run with W0 including engine_weight -> get drag, fuelburn
 3. Propulsion: size engine for drag -> get new engine_weight
 4. Check: has engine_weight converged? (|new - old| < tolerance)
-5. If not, update W0 and go to step 2
-6. If yes, record final converged state
+5. If not, log handoff decision (required) and go to step 2
+6. If yes, log convergence decision (required) and record final state
+```
+
+**Required:** At convergence (step 6), log a decision:
+```
+log_decision(
+    decision_type="coupling_convergence",
+    reasoning="Weight-drag coupling converged in 4 iterations.
+               Final engine_weight=4820 kg, delta=12 kg (<1% tolerance).
+               Drag=44.8 kN, fuelburn=12340 kg.",
+    selected_action="Accept converged state; proceed to reporting",
+    confidence="high"
+)
 ```
 
 Typically converges in 3--5 outer iterations for weight-drag coupling.
@@ -94,16 +119,15 @@ For each span in [25, 30, 35, 40] m:
 Each tool server maintains its own provenance. For cross-tool studies:
 
 1. Start a session in each tool server involved
-2. Log cross-tool decisions in the primary tool's session:
-   ```
-   log_decision(
-       decision_type="result_interpretation",
-       reasoning="OAS drag result CD=0.032 used as thrust requirement for engine sizing",
-       selected_action="Pass drag to propulsion tool"
-   )
-   ```
-3. Export each tool's provenance graph separately
-4. Reference run_ids from other tools in decision logs to create a cross-tool
+2. **Required:** Log a decision at every tool-to-tool handoff and at coupling
+   convergence (see patterns above for templates). At minimum:
+   - `decision_type="tool_handoff"` before passing data between tools
+   - `decision_type="coupling_convergence"` when iterative loops converge
+   - `decision_type="result_interpretation"` when combining results from
+     independent analyses (Pattern 3)
+3. Reference `prior_call_id` from the source analysis in each handoff decision
+4. Export each tool's provenance graph separately
+5. Reference run_ids from other tools in decision logs to create a cross-tool
    audit trail
 
 ## Interface variable conventions

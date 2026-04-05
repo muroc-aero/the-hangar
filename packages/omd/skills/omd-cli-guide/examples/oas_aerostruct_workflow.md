@@ -8,9 +8,19 @@ Step-by-step coupled aero+struct analysis via omd-cli.
 omd-cli assemble packages/omd/examples/oas_aerostruct_rect/lane_b/aerostruct_analysis/
 omd-cli run .../plan.yaml --mode analysis
 omd-cli results <run_id> --summary
+omd-cli provenance <plan_id> --format text
 ```
 
 Expected: CL > 0, CD > 0, structural_mass > 0, failure < 0 (safe).
+
+**Required decision:** After reviewing results, add to `decisions.yaml`:
+```yaml
+- decision_type: result_interpretation
+  agent: have-agent
+  reasoning: "CL=X, CD=Y, structural_mass=Z kg, failure=W (<0, safe).
+              Newton solver converged. Results physically reasonable."
+  selected_action: "Accept aerostruct analysis"
+```
 
 ## Key Parameters
 

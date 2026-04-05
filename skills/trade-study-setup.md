@@ -55,10 +55,28 @@ Alternative C: Al 7075 wingbox, sweep=25, taper=0.3
 ### 4. Execute the runs
 
 For each point in the matrix:
-1. Create the surface with the appropriate parameters
-2. Run the analysis (keep flight conditions and constraints constant)
-3. Record the `run_id` and key metrics
-4. Log a decision if any run produces unexpected results
+1. **Required:** Log the configuration rationale before running:
+   ```
+   log_decision(
+       decision_type="variation_rationale",
+       reasoning="Configuration: sweep=30, taper=0.3. Part of single-variable
+                  sweep to isolate effect of sweep on transonic drag.",
+       selected_action="Run analysis at this configuration"
+   )
+   ```
+2. Create the surface with the appropriate parameters
+3. Run the analysis (keep flight conditions and constraints constant)
+4. Record the `run_id` and key metrics
+5. **Required:** Log result interpretation for each run:
+   ```
+   log_decision(
+       decision_type="result_interpretation",
+       reasoning="Configuration sweep=30: CD=X, L/D=Y, mass=Z kg.
+                  Delta from baseline: CD -3%, mass +5%.",
+       selected_action="Record for comparison",
+       prior_call_id=<run_call_id>
+   )
+   ```
 
 ### 5. Build the comparison
 
@@ -78,6 +96,17 @@ When objectives conflict (e.g. lower drag vs lower weight):
 - Plot the tradeoff (CD vs structural mass for each configuration)
 - Identify Pareto-optimal designs (no design dominates them on all metrics)
 - Recommend based on the user's priority weighting
+- **Required:** Log the tradeoff interpretation:
+  ```
+  log_decision(
+      decision_type="result_interpretation",
+      reasoning="Pareto front contains configs A, C, D. Config A minimizes drag
+                 but has highest mass. Config D balances drag and mass.
+                 Recommended: Config D given equal priority weighting.",
+      selected_action="Recommend Config D as best compromise",
+      confidence="high"
+  )
+  ```
 
 ### 7. Document assumptions and limitations
 
@@ -93,7 +122,7 @@ Every trade study should note:
 - Use the same mesh resolution for all runs in a trade
 - Keep the same flight condition (Mach, altitude, weight) across all runs
 - Re-create surfaces fresh for each configuration (do not rely on incremental changes)
-- Use provenance tracking to maintain an audit trail
+- Use provenance tracking to maintain an audit trail -- log decisions at every step
 - Name runs descriptively: `run_name="sweep_30_taper_03"`
 
 ## Cross-tool trades

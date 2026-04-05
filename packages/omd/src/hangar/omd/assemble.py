@@ -219,6 +219,10 @@ def assemble_plan(
     plan_id = plan.get("metadata", {}).get("id", "unknown")
     store_path = _copy_to_plan_store(plan_id, new_version, output)
 
+    # Record decision entities in provenance DB
+    plan_entity_id = f"{plan_id}/v{new_version}"
+    _record_decisions(plan_id, new_version, plan_entity_id, plan)
+
     return {
         "plan": plan,
         "version": new_version,
@@ -227,6 +231,48 @@ def assemble_plan(
         "store_path": str(store_path) if store_path else None,
         "errors": [],
     }
+
+
+def _record_decisions(
+    plan_id: str,
+    version: int,
+    plan_entity_id: str,
+    plan: dict,
+) -> None:
+    """Record decision entries from the plan as provenance entities.
+
+    Each entry in plan["decisions"] becomes a decision entity linked
+    to the plan entity via a wasAttributedTo edge.
+    """
+    decisions = plan.get("decisions")
+    if not decisions or not isinstance(decisions, list):
+        return
+
+    try:
+        from hangar.omd.db import (
+            init_analysis_db,
+            record_entity,
+            add_prov_edge,
+        )
+
+        init_analysis_db()
+
+        for i, decision in enumerate(decisions):
+            if not isinstance(decision, dict):
+                continue
+            decision_id = f"{plan_id}/v{version}/decision-{i}"
+            record_entity(
+                entity_id=decision_id,
+                entity_type="decision",
+                created_by=decision.get("agent", "have-agent"),
+                plan_id=plan_id,
+                version=version,
+                metadata=json.dumps(decision),
+            )
+            add_prov_edge("wasAttributedTo", decision_id, plan_entity_id)
+    except Exception:
+        # Don't fail assembly if provenance recording fails
+        pass
 
 
 def _copy_to_plan_store(plan_id: str, version: int, source: Path) -> Path | None:

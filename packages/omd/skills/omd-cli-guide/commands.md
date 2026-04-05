@@ -150,10 +150,12 @@ Edges:
 
 ## viewer
 
-Start the interactive SDK provenance viewer as a live HTTP server. This is
-a different viewer from the static HTML above -- it shows **tool-call-level**
-provenance from MCP server sessions (recorded by `@capture_tool`), not the
-plan-lifecycle provenance from the omd analysis DB.
+Start the provenance viewer as a live HTTP server. Serves two views:
+
+- `/omd-provenance` -- omd plan-lifecycle provenance (plans, runs, assessments)
+  from the analysis DB. Lists all plans; click one to see its Cytoscape.js DAG.
+- `/viewer` -- SDK tool-call-level provenance from MCP server sessions
+  (populated when running via `uv run python -m hangar.omd.server`).
 
 ```bash
 omd-cli viewer [--port PORT] [--db PATH]
@@ -165,19 +167,20 @@ omd-cli viewer [--port PORT] [--db PATH]
 
 **Usage:**
 1. Run `omd-cli viewer` in one terminal
-2. Open `http://localhost:7654/` in a browser
-3. Select a session from the dropdown or drag-drop a provenance JSON file
+2. Open `http://localhost:7654/omd-provenance` in a browser to see plan DAGs
+3. Click a plan ID to view its full Cytoscape.js provenance graph
 4. Press Ctrl+C in the terminal to stop the server
 
-**When this has data:** The SDK provenance DB is populated when tools run
-through the MCP server (e.g. `uv run python -m hangar.omd.server`). If you
-have only used the CLI (`omd-cli run`), this viewer will be empty -- use
-`omd-cli provenance --format html` instead.
+**When to offer this to the user:** After any `omd-cli run`, tell the user
+they can start the viewer to browse all plan provenance interactively. For a
+quick one-off, the static HTML export (see `provenance` command above) works
+without needing a running server.
 
-### Summary: which viewer to use
+### Summary: how to view provenance
 
 | Situation | Command | What it shows |
 |-----------|---------|---------------|
-| After `omd-cli run` | `omd-cli provenance <plan_id> --format html -o dag.html` | Plan/run/assessment DAG (static file) |
-| After MCP server session | `omd-cli viewer` | Tool call sequence + decisions (live server) |
+| Browse all plans interactively | `omd-cli viewer`, open `/omd-provenance` | Plan/run/assessment DAGs (live server) |
+| One-off static file | `omd-cli provenance <plan_id> --format html -o dag.html` | Single plan DAG (static HTML) |
 | Quick terminal check | `omd-cli provenance <plan_id> --format text` | Text timeline |
+| MCP session tool calls | `omd-cli viewer`, open `/viewer` | Tool call sequence + decisions |
