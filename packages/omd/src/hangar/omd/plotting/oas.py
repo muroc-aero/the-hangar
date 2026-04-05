@@ -1,8 +1,8 @@
 """OAS-specific plot types for aero and aerostructural analyses.
 
 Reads data from OpenMDAO recorder files and produces matplotlib
-figures matching the upstream OpenAeroStruct plot_wing.py and
-plot_wingbox.py visualization capabilities.
+figures matching the oas-cli (sdk/viz/plotting.py) style and
+data presentation conventions.
 """
 
 from __future__ import annotations
@@ -17,14 +17,20 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from hangar.omd.plotting._common import (
+    detect_surface_name,
     find_first_output,
     find_outputs,
     get_reader_and_final_case,
+    get_span_eta,
     mirror_spanwise,
     compute_elliptical_lift,
 )
 
 logger = logging.getLogger(__name__)
+
+# Match oas-cli figure sizing (sdk/viz/plotting.py constants)
+_FIG_WIDTH = 6.0   # inches -> 900 px at 150 DPI
+_FIG_HEIGHT = 3.6  # inches -> 540 px at 150 DPI
 
 
 # ---------------------------------------------------------------------------
@@ -36,10 +42,13 @@ def plot_planform(
     recorder_path: Path,
     *,
     surface_name: str | None = None,
-    mirror: bool = True,
+    mirror: bool = False,
     **kwargs,
 ) -> plt.Figure:
-    """Plot a top-down view of the wing mesh.
+    """Plot a top-down view of the wing planform (LE/TE outline).
+
+    Matches the oas-cli planform style: LE and TE as separate traces
+    with root/tip chord connecting lines and optional deformed overlay.
 
     Args:
         recorder_path: Path to OpenMDAO recorder file.
@@ -51,35 +60,70 @@ def plot_planform(
     """
     reader, case = get_reader_and_final_case(recorder_path)
 
-    patterns = [
-        f"*{surface_name}.def_mesh" if surface_name else "*def_mesh",
-        f"*{surface_name}*.mesh" if surface_name else "*.mesh",
-    ]
-    name, mesh = find_first_output(case, *patterns)
+    surf = surface_name or "*"
 
-    if mesh is None:
+    # Try deformed mesh first (aerostruct), then undeformed
+    _, def_mesh_raw = find_first_output(
+        case,
+        f"*{surf}.def_mesh",
+        f"*{surf}*def_mesh",
+    )
+    _, mesh_raw = find_first_output(
+        case,
+        f"*{surf}*.mesh",
+        "*.mesh",
+    )
+
+    # Use deformed as primary display if available, else undeformed
+    primary_raw = mesh_raw
+    if primary_raw is None:
         raise ValueError("Could not find mesh data in recorder")
 
-    mesh = np.array(mesh)
-    logger.info("Planform plot using variable: %s, shape: %s", name, mesh.shape)
+    mesh = np.array(primary_raw)
+    logger.info("Planform plot using mesh shape: %s", mesh.shape)
 
     if mirror and mesh.ndim == 3:
         mesh = _mirror_mesh(mesh)
 
-    fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+    fig, ax = plt.subplots(figsize=(_FIG_WIDTH, _FIG_HEIGHT))
 
     if mesh.ndim == 3:
-        for j in range(mesh.shape[1]):
-            ax.plot(mesh[:, j, 1], mesh[:, j, 0], "b-", linewidth=0.5)
-        for i in range(mesh.shape[0]):
-            ax.plot(mesh[i, :, 1], mesh[i, :, 0], "b-", linewidth=0.5)
+        nx, ny, _ = mesh.shape
 
-    ax.set_xlabel("Span (m)")
-    ax.set_ylabel("Chord (m)")
-    ax.set_title("Wing Planform")
+        # Leading edge and trailing edge outlines
+        le = mesh[0, :, :]   # shape (ny, 3)
+        te = mesh[-1, :, :]
+
+        ax.plot(le[:, 1], le[:, 0], "b-", linewidth=1.5, label="LE (undeformed)")
+        ax.plot(te[:, 1], te[:, 0], "b--", linewidth=1.0, label="TE (undeformed)")
+        # Root chord
+        ax.plot([le[0, 1], te[0, 1]], [le[0, 0], te[0, 0]], "b-", linewidth=0.8)
+        # Tip chord
+        ax.plot([le[-1, 1], te[-1, 1]], [le[-1, 0], te[-1, 0]], "b-", linewidth=0.8)
+
+        # Deformed mesh overlay
+        if def_mesh_raw is not None:
+            def_mesh = np.array(def_mesh_raw)
+            if mirror and def_mesh.ndim == 3:
+                def_mesh = _mirror_mesh(def_mesh)
+            if def_mesh.ndim == 3:
+                def_le = def_mesh[0, :, :]
+                def_te = def_mesh[-1, :, :]
+                ax.plot(def_le[:, 1], def_le[:, 0], "r-", linewidth=1.5,
+                        label="LE (deformed)", alpha=0.7)
+                ax.plot(def_te[:, 1], def_te[:, 0], "r--", linewidth=1.0, alpha=0.7)
+
+        ax.set_title(f"Mesh: {nx}x{ny} nodes", fontsize=8)
+
+    ax.set_xlabel("Spanwise y  [m]")
+    ax.set_ylabel("Chordwise x  [m]")
+    if not mirror:
+        ax.text(0.02, 0.02, "Half-span shown (symmetry)", transform=ax.transAxes,
+                fontsize=7, color="gray", va="bottom")
+    ax.legend(fontsize=7, loc="upper left")
     ax.set_aspect("equal")
     ax.grid(True, alpha=0.3)
-    fig.tight_layout()
+    fig.tight_layout(rect=[0, 0, 1, 0.93])
 
     return fig
 
@@ -99,7 +143,7 @@ def plot_lift_distribution(
     """Plot spanwise lift distribution with elliptical reference.
 
     Shows half-span by default (root to tip, matching upstream OAS
-    plot_wing.py convention). Set mirror=True for full-span view.
+    plot_wing.py and oas-cli convention).
 
     Args:
         recorder_path: Path to OpenMDAO recorder file.
@@ -121,13 +165,13 @@ def plot_lift_distribution(
     )
 
     # Also get mesh for span coordinates and widths for normalization
-    _, mesh = find_first_output(case, f"*{surf}*.mesh", "*.mesh")
+    _, mesh_raw = find_first_output(case, f"*{surf}*.mesh", "*.mesh")
     _, widths = find_first_output(case, f"*{surf}.widths", f"*{surf}*widths")
     _, alpha_val = find_first_output(case, "*alpha*")
     _, rho_val = find_first_output(case, "prob_vars.rho", "*rho*")
     _, v_val = find_first_output(case, "prob_vars.v", "*v*")
 
-    fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+    fig, ax = plt.subplots(figsize=(_FIG_WIDTH, _FIG_HEIGHT))
 
     if values is not None and name and "sec_forces" in name:
         values = np.array(values)
@@ -153,21 +197,12 @@ def plot_lift_distribution(
             )
 
             # Build span fractions from mesh (normalized to 0=root, 1=tip)
-            if mesh is not None:
-                m = np.array(mesh)
+            if mesh_raw is not None:
+                m = np.array(mesh_raw)
                 if m.ndim == 3:
-                    span_coords = np.abs(m[0, :, 1])
-                    span_half = span_coords.max()
-                    if span_half > 1e-10:
-                        eta = span_coords / span_half  # 0=root, 1=tip
-                        # Panel midpoints
-                        span_mid = 0.5 * (eta[:-1] + eta[1:])
-                        # If mesh goes tip-to-root, reverse to root-to-tip
-                        if span_mid[0] > span_mid[-1]:
-                            span_mid = span_mid[::-1]
-                            lift = lift[::-1]
-                    else:
-                        span_mid = np.linspace(0, 1, len(lift))
+                    _, span_mid, was_reversed = get_span_eta(m)
+                    if was_reversed:
+                        lift = lift[::-1]
                 else:
                     span_mid = np.linspace(0, 1, len(lift))
             else:
@@ -185,10 +220,14 @@ def plot_lift_distribution(
                 ell_full = ell_half
 
             ax.plot(span_mid_full, lift_full, "b-o", markersize=3, linewidth=1.5, label="lift")
-            ax.plot(span_mid_full, ell_full, "g--", linewidth=1.5, label="elliptical")
+            ax.plot(span_mid_full, ell_full, "--", color="g", linewidth=1.5, label="elliptical")
 
             ax.set_ylabel("Normalised lift  l(y)/q  [m]")
-            ax.legend(fontsize=8)
+            ax.legend(fontsize=7)
+
+            # Subtitle with data range
+            d_min, d_max = float(lift.min()), float(lift.max())
+            ax.set_title(f"[{d_min:.3f}, {d_max:.3f}]", fontsize=8)
         else:
             # Fallback: raw z-force
             if forces.ndim == 2:
@@ -220,17 +259,17 @@ def plot_lift_distribution(
     if mirror:
         ax.set_xlabel("Span Fraction")
     else:
-        ax.set_xlabel("Normalised spanwise station  eta = 2y/b  (0 = root, 1 = tip)")
+        ax.set_xlabel("Normalised spanwise station eta = 2y/b  [--]   (0 = root, 1 = tip)")
         ax.set_xlim(0, 1)
-    ax.set_title("Lift Distribution")
+
     ax.grid(True, alpha=0.3)
-    fig.tight_layout()
+    fig.tight_layout(rect=[0, 0, 1, 0.93])
 
     return fig
 
 
 # ---------------------------------------------------------------------------
-# Structural deformation
+# Structural deformation (deflection profile)
 # ---------------------------------------------------------------------------
 
 
@@ -238,10 +277,13 @@ def plot_structural_deformation(
     recorder_path: Path,
     *,
     surface_name: str | None = None,
-    mirror: bool = True,
+    mirror: bool = False,
     **kwargs,
 ) -> plt.Figure:
-    """Plot structural deformation (initial vs deformed mesh).
+    """Plot structural deflection profile (z-displacement vs normalized span).
+
+    Matches oas-cli deflection_profile: shows vertical displacement from
+    undeformed reference, not absolute z-position.
 
     Args:
         recorder_path: Path to OpenMDAO recorder file.
@@ -255,57 +297,66 @@ def plot_structural_deformation(
 
     surf = surface_name or "*"
 
-    _, def_mesh = find_first_output(
+    _, def_mesh_raw = find_first_output(
         case,
         f"*{surf}.def_mesh",
         f"*{surf}*def_mesh",
     )
-    _, orig_mesh = find_first_output(
+    _, orig_mesh_raw = find_first_output(
         case,
         f"*{surf}.mesh",
         f"{surf}.mesh",
     )
 
-    if def_mesh is None:
+    if def_mesh_raw is None:
         raise ValueError("Could not find deformed mesh in recorder")
 
-    def_mesh = np.array(def_mesh)
+    def_mesh = np.array(def_mesh_raw)
 
-    fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+    fig, ax = plt.subplots(figsize=(_FIG_WIDTH, _FIG_HEIGHT))
 
     if def_mesh.ndim == 3:
-        span = def_mesh[0, :, 1]
+        # Compute displacement from reference (not absolute position)
         z_def = def_mesh[0, :, 2]
-
-        if mirror:
-            span_def, z_def = mirror_spanwise(span, z_def)
-        else:
-            span_def = span
-
-        ax.plot(span_def, z_def, "r-o", markersize=3, label="Deformed")
-
-        if orig_mesh is not None:
-            orig_mesh = np.array(orig_mesh)
+        if orig_mesh_raw is not None:
+            orig_mesh = np.array(orig_mesh_raw)
             if orig_mesh.ndim == 3:
                 z_orig = orig_mesh[0, :, 2]
-                if mirror:
-                    span_orig, z_orig = mirror_spanwise(span, z_orig)
-                else:
-                    span_orig = span
-                ax.plot(span_orig, z_orig, "b--o", markersize=3, label="Undeformed")
+                deflection = z_def - z_orig
+            else:
+                deflection = z_def
+        else:
+            deflection = z_def
 
-    ax.set_xlabel("Span (m)")
-    ax.set_ylabel("Vertical Displacement (m)")
-    ax.set_title("Structural Deformation")
-    ax.legend()
+        # Use normalized span coordinates
+        mesh_for_eta = np.array(orig_mesh_raw) if orig_mesh_raw is not None else def_mesh
+        if mesh_for_eta.ndim == 3:
+            node_eta, _, was_reversed = get_span_eta(mesh_for_eta)
+            if was_reversed:
+                deflection = deflection[::-1]
+        else:
+            node_eta = np.linspace(0, 1, len(deflection))
+
+        if mirror:
+            node_eta, deflection = mirror_spanwise(node_eta, deflection)
+
+        # Use detected surface name for legend (not the glob pattern)
+        label = surface_name or detect_surface_name(case) or "wing"
+        ax.plot(node_eta, deflection, "-o", markersize=3, linewidth=1.5, label=label)
+
+    ax.axhline(0, color="gray", linewidth=0.8, linestyle="--", alpha=0.5)
+    ax.set_xlabel("Normalised spanwise station eta  [--]   (0 = root, 1 = tip)")
+    ax.set_ylabel("Vertical deflection  [m]")
+    ax.set_title("Deflection Profile", fontsize=8)
+    ax.legend(fontsize=7)
     ax.grid(True, alpha=0.3)
-    fig.tight_layout()
+    fig.tight_layout(rect=[0, 0, 1, 0.93])
 
     return fig
 
 
 # ---------------------------------------------------------------------------
-# Twist
+# Twist & Chord overlay
 # ---------------------------------------------------------------------------
 
 
@@ -313,10 +364,12 @@ def plot_twist(
     recorder_path: Path,
     *,
     surface_name: str | None = None,
-    mirror: bool = True,
+    mirror: bool = False,
     **kwargs,
 ) -> plt.Figure:
-    """Plot spanwise twist distribution.
+    """Plot spanwise twist and chord distribution on dual y-axes.
+
+    Matches oas-cli twist_chord_overlay style.
 
     Args:
         recorder_path: Path to OpenMDAO recorder file.
@@ -342,43 +395,67 @@ def plot_twist(
     twist = np.array(twist).flatten()
     logger.info("Twist plot using variable: %s, shape: %s", name, twist.shape)
 
-    # Try to get chord from mesh for dual-axis plot
-    _, mesh = find_first_output(case, f"*{surf}*.mesh", "*.mesh")
+    # Get mesh for span coordinates and chord
+    _, mesh_raw = find_first_output(case, f"*{surf}*.mesh", "*.mesh")
+
     chord = None
-    if mesh is not None:
-        m = np.array(mesh)
+    span_twist = np.linspace(0, 1, len(twist))
+    span_chord = None
+
+    if mesh_raw is not None:
+        m = np.array(mesh_raw)
         if m.ndim == 3:
-            le = m[0, :, 0]
-            te = m[-1, :, 0]
-            chord = np.abs(te - le)
+            node_eta, _, was_reversed = get_span_eta(m)
 
-    span_frac = np.linspace(0, 1, len(twist))
+            # Chord from mesh
+            le_x = m[0, :, 0]
+            te_x = m[-1, :, 0]
+            chord = np.abs(te_x - le_x)
+            if was_reversed:
+                chord = chord[::-1]
+            span_chord = node_eta
+
+            # Twist span: use node_eta if twist length matches nodes,
+            # otherwise linspace
+            if len(twist) == len(node_eta):
+                span_twist = node_eta
+                if was_reversed:
+                    twist = twist[::-1]
+
     if mirror:
-        span_frac, twist = mirror_spanwise(span_frac, twist)
+        span_twist, twist = mirror_spanwise(span_twist, twist)
 
-    fig, ax = plt.subplots(1, 1, figsize=(10, 6))
-    ax.plot(span_frac, twist, "b-o", markersize=4, label="Twist")
-    ax.set_xlabel("Span Fraction (root to tip)")
-    ax.set_ylabel("Twist (deg)", color="b")
-    ax.tick_params(axis="y", labelcolor="b")
-    ax.set_title("Twist & Chord Distribution")
-    ax.grid(True, alpha=0.3)
-    ax.axhline(y=0, color="gray", linewidth=0.5, linestyle="--")
+    fig, ax1 = plt.subplots(figsize=(_FIG_WIDTH, _FIG_HEIGHT))
+
+    color_tw = "tab:blue"
+    ax1.plot(span_twist, twist, color=color_tw, linewidth=1.5,
+             marker="o", markersize=3, label="Twist")
+    ax1.set_xlabel("Normalised spanwise station eta  [--]   (0 = root, 1 = tip)")
+    ax1.set_ylabel("Twist  [deg]", color=color_tw)
+    ax1.tick_params(axis="y", labelcolor=color_tw)
+    ax1.grid(True, alpha=0.3)
+    ax1.axhline(y=0, color="gray", linewidth=0.5, linestyle="--")
 
     # Chord on secondary axis
-    if chord is not None:
-        chord_frac = np.linspace(0, 1, len(chord))
+    ax2 = ax1.twinx()
+    color_ch = "tab:red"
+    if chord is not None and span_chord is not None:
+        c_plot = chord
+        s_plot = span_chord
         if mirror:
-            chord_frac, chord = mirror_spanwise(chord_frac, chord)
-        ax2 = ax.twinx()
-        ax2.plot(chord_frac, chord, "r-s", markersize=3, label="Chord")
-        ax2.set_ylabel("Chord (m)", color="r")
-        ax2.tick_params(axis="y", labelcolor="r")
-        lines1, labels1 = ax.get_legend_handles_labels()
-        lines2, labels2 = ax2.get_legend_handles_labels()
-        ax.legend(lines1 + lines2, labels1 + labels2, loc="best")
+            s_plot, c_plot = mirror_spanwise(span_chord, chord)
+        ax2.plot(s_plot, c_plot, color=color_ch, linewidth=1.5,
+                 marker="s", markersize=3, label="Chord")
+        ax2.set_ylabel("Chord  [m]", color=color_ch)
+        ax2.tick_params(axis="y", labelcolor=color_ch)
 
-    fig.tight_layout()
+    # Combined legend
+    lines1, labels1 = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    if lines1 or lines2:
+        ax1.legend(lines1 + lines2, labels1 + labels2, fontsize=7, loc="best")
+
+    fig.tight_layout(rect=[0, 0, 1, 0.93])
 
     return fig
 
@@ -392,7 +469,7 @@ def plot_thickness(
     recorder_path: Path,
     *,
     surface_name: str | None = None,
-    mirror: bool = True,
+    mirror: bool = False,
     **kwargs,
 ) -> plt.Figure:
     """Plot spanwise spar thickness distribution (tube model).
@@ -421,23 +498,39 @@ def plot_thickness(
     thickness = np.array(thickness).flatten()
     logger.info("Thickness plot using variable: %s, shape: %s", name, thickness.shape)
 
-    span_frac = np.linspace(0, 1, len(thickness))
+    # Get mesh for span coordinates
+    _, mesh_raw = find_first_output(case, f"*{surf}*.mesh", "*.mesh")
+    if mesh_raw is not None:
+        m = np.array(mesh_raw)
+        if m.ndim == 3:
+            _, elem_eta, was_reversed = get_span_eta(m)
+            if len(thickness) == len(elem_eta):
+                span_frac = elem_eta
+                if was_reversed:
+                    thickness = thickness[::-1]
+            else:
+                span_frac = np.linspace(0, 1, len(thickness))
+        else:
+            span_frac = np.linspace(0, 1, len(thickness))
+    else:
+        span_frac = np.linspace(0, 1, len(thickness))
+
     if mirror:
         span_frac, thickness = mirror_spanwise(span_frac, thickness)
 
-    fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+    fig, ax = plt.subplots(figsize=(_FIG_WIDTH, _FIG_HEIGHT))
     ax.plot(span_frac, thickness * 1000, "b-o", markersize=4)
-    ax.set_xlabel("Span Fraction (root to tip)")
+    ax.set_xlabel("Normalised spanwise station eta  [--]   (0 = root, 1 = tip)")
     ax.set_ylabel("Thickness (mm)")
-    ax.set_title("Spanwise Spar Thickness Distribution")
+    ax.set_title("Spanwise Spar Thickness Distribution", fontsize=8)
     ax.grid(True, alpha=0.3)
-    fig.tight_layout()
+    fig.tight_layout(rect=[0, 0, 1, 0.93])
 
     return fig
 
 
 # ---------------------------------------------------------------------------
-# Von Mises stress (new)
+# Von Mises stress
 # ---------------------------------------------------------------------------
 
 
@@ -446,14 +539,13 @@ def plot_vonmises(
     *,
     surface_name: str | None = None,
     yield_stress: float | None = None,
-    mirror: bool = True,
+    mirror: bool = False,
     **kwargs,
 ) -> plt.Figure:
     """Plot spanwise von Mises stress with yield limit.
 
     Shows the peak von Mises stress across the cross-section at each
-    spanwise station. Adds a horizontal dashed line at the yield stress
-    if provided.
+    spanwise station. Units in MPa matching oas-cli convention.
 
     Args:
         recorder_path: Path to OpenMDAO recorder file.
@@ -486,12 +578,32 @@ def plot_vonmises(
     else:
         vm_peak = vm.flatten()
 
-    span_frac = np.linspace(0, 1, len(vm_peak))
-    if mirror:
-        span_frac, vm_peak = mirror_spanwise(span_frac, vm_peak)
+    # Convert to MPa
+    vm_peak_mpa = vm_peak / 1e6
 
-    fig, ax = plt.subplots(1, 1, figsize=(10, 6))
-    ax.plot(span_frac, vm_peak, "b-o", markersize=4, label="Von Mises")
+    # Get mesh for span coordinates
+    _, mesh_raw = find_first_output(case, f"*{surf}*.mesh", "*.mesh")
+    if mesh_raw is not None:
+        m = np.array(mesh_raw)
+        if m.ndim == 3:
+            _, elem_eta, was_reversed = get_span_eta(m)
+            if len(vm_peak_mpa) == len(elem_eta):
+                span_frac = elem_eta
+                if was_reversed:
+                    vm_peak_mpa = vm_peak_mpa[::-1]
+            else:
+                span_frac = np.linspace(0, 1, len(vm_peak_mpa))
+        else:
+            span_frac = np.linspace(0, 1, len(vm_peak_mpa))
+    else:
+        span_frac = np.linspace(0, 1, len(vm_peak_mpa))
+
+    if mirror:
+        span_frac, vm_peak_mpa = mirror_spanwise(span_frac, vm_peak_mpa)
+
+    fig, ax = plt.subplots(figsize=(_FIG_WIDTH, _FIG_HEIGHT))
+    vm_label = surface_name or detect_surface_name(case) or "wing"
+    ax.plot(span_frac, vm_peak_mpa, linewidth=2, label=vm_label)
 
     # Yield stress limit line
     if yield_stress is None:
@@ -511,24 +623,29 @@ def plot_vonmises(
             pass
 
     if yield_stress is not None:
+        yield_mpa = yield_stress / 1e6
+        # OAS default safety factor is 2.5 for tube model (matches oas-cli)
+        safety_factor = kwargs.get("safety_factor", 2.5)
+        allowable_mpa = yield_mpa / safety_factor
         ax.axhline(
-            y=yield_stress, color="r", linewidth=2, linestyle="--",
-            label=f"Yield stress ({yield_stress:.0e} Pa)",
+            y=allowable_mpa, color="r", linewidth=2, linestyle="--",
         )
-        ax.set_ylim(0, yield_stress * 1.1)
+        ax.set_ylim(0, max(float(vm_peak_mpa.max()), allowable_mpa) * 1.1)
+        ax.text(0.075, 1.03, "failure limit", transform=ax.transAxes,
+                color="r", fontsize=8)
 
-    ax.set_xlabel("Span Fraction")
-    ax.set_ylabel("Von Mises Stress (Pa)")
-    ax.set_title("Spanwise Von Mises Stress")
-    ax.legend()
+    ax.set_xlabel("Normalised spanwise station eta  [--]   (0 = root, 1 = tip)")
+    ax.set_ylabel("von Mises stress  [MPa]")
+    ax.set_title("Stress Distribution", fontsize=8)
+    ax.legend(fontsize=7)
     ax.grid(True, alpha=0.3)
-    fig.tight_layout()
+    fig.tight_layout(rect=[0, 0, 1, 0.93])
 
     return fig
 
 
 # ---------------------------------------------------------------------------
-# Skin + spar thickness (wingbox model, new)
+# Skin + spar thickness (wingbox model)
 # ---------------------------------------------------------------------------
 
 
@@ -536,7 +653,7 @@ def plot_skin_spar(
     recorder_path: Path,
     *,
     surface_name: str | None = None,
-    mirror: bool = True,
+    mirror: bool = False,
     **kwargs,
 ) -> plt.Figure:
     """Plot spanwise skin and spar thickness (wingbox models).
@@ -566,38 +683,65 @@ def plot_skin_spar(
     if skin is None and spar is None:
         raise ValueError("Could not find skin/spar thickness data in recorder")
 
-    fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+    # Get mesh for span coordinates
+    _, mesh_raw = find_first_output(case, f"*{surf}*.mesh", "*.mesh")
+
+    fig, ax = plt.subplots(figsize=(_FIG_WIDTH, _FIG_HEIGHT))
 
     if skin is not None:
         skin = np.array(skin).flatten()
-        span_frac = np.linspace(0, 1, len(skin))
-        if mirror:
-            sf, sk = mirror_spanwise(span_frac, skin)
+        if mesh_raw is not None:
+            m = np.array(mesh_raw)
+            if m.ndim == 3:
+                _, elem_eta, was_reversed = get_span_eta(m)
+                if len(skin) == len(elem_eta):
+                    sf = elem_eta
+                    if was_reversed:
+                        skin = skin[::-1]
+                else:
+                    sf = np.linspace(0, 1, len(skin))
+            else:
+                sf = np.linspace(0, 1, len(skin))
         else:
-            sf, sk = span_frac, skin
-        ax.plot(sf, sk * 1000, "b-o", markersize=4, label="Skin")
+            sf = np.linspace(0, 1, len(skin))
+
+        if mirror:
+            sf, skin = mirror_spanwise(sf, skin)
+        ax.plot(sf, skin * 1000, "b-o", markersize=4, label="Skin")
 
     if spar is not None:
         spar = np.array(spar).flatten()
-        span_frac = np.linspace(0, 1, len(spar))
-        if mirror:
-            sf, sp = mirror_spanwise(span_frac, spar)
+        if mesh_raw is not None:
+            m = np.array(mesh_raw)
+            if m.ndim == 3:
+                _, elem_eta, was_reversed = get_span_eta(m)
+                if len(spar) == len(elem_eta):
+                    sf = elem_eta
+                    if was_reversed:
+                        spar = spar[::-1]
+                else:
+                    sf = np.linspace(0, 1, len(spar))
+            else:
+                sf = np.linspace(0, 1, len(spar))
         else:
-            sf, sp = span_frac, spar
-        ax.plot(sf, sp * 1000, "g-s", markersize=4, label="Spar")
+            sf = np.linspace(0, 1, len(spar))
 
-    ax.set_xlabel("Span Fraction")
+        if mirror:
+            sf, spar = mirror_spanwise(sf, spar)
+        ax.plot(sf, spar * 1000, "g-s", markersize=4, label="Spar")
+
+    ax.set_xlabel("Normalised spanwise station eta  [--]   (0 = root, 1 = tip)")
     ax.set_ylabel("Thickness (mm)")
-    ax.set_title("Skin and Spar Thickness")
-    ax.legend()
+    ax.set_title("Skin and Spar Thickness", fontsize=8)
+    ax.legend(fontsize=7)
     ax.grid(True, alpha=0.3)
-    fig.tight_layout()
+    fig.tight_layout(rect=[0, 0, 1, 0.93])
 
     return fig
 
 
 # ---------------------------------------------------------------------------
-# Thickness-to-chord ratio (new)
+# Thickness-to-chord ratio
 # ---------------------------------------------------------------------------
 
 
@@ -605,7 +749,7 @@ def plot_t_over_c(
     recorder_path: Path,
     *,
     surface_name: str | None = None,
-    mirror: bool = True,
+    mirror: bool = False,
     **kwargs,
 ) -> plt.Figure:
     """Plot spanwise thickness-to-chord ratio distribution.
@@ -633,17 +777,235 @@ def plot_t_over_c(
     toc = np.array(toc).flatten()
     logger.info("t/c plot using variable: %s, shape: %s", name, toc.shape)
 
-    span_frac = np.linspace(0, 1, len(toc))
+    # Get mesh for span coordinates
+    _, mesh_raw = find_first_output(case, f"*{surf}*.mesh", "*.mesh")
+    if mesh_raw is not None:
+        m = np.array(mesh_raw)
+        if m.ndim == 3:
+            _, elem_eta, was_reversed = get_span_eta(m)
+            if len(toc) == len(elem_eta):
+                span_frac = elem_eta
+                if was_reversed:
+                    toc = toc[::-1]
+            else:
+                span_frac = np.linspace(0, 1, len(toc))
+        else:
+            span_frac = np.linspace(0, 1, len(toc))
+    else:
+        span_frac = np.linspace(0, 1, len(toc))
+
     if mirror:
         span_frac, toc = mirror_spanwise(span_frac, toc)
 
-    fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+    fig, ax = plt.subplots(figsize=(_FIG_WIDTH, _FIG_HEIGHT))
     ax.plot(span_frac, toc, "k-o", markersize=4)
-    ax.set_xlabel("Span Fraction")
+    ax.set_xlabel("Normalised spanwise station eta  [--]   (0 = root, 1 = tip)")
     ax.set_ylabel("Thickness to Chord Ratio")
-    ax.set_title("Spanwise t/c Distribution")
+    ax.set_title("Spanwise t/c Distribution", fontsize=8)
     ax.grid(True, alpha=0.3)
-    fig.tight_layout()
+    fig.tight_layout(rect=[0, 0, 1, 0.93])
+
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# 3D Mesh visualization
+# ---------------------------------------------------------------------------
+
+# Figure sizing for 3D (matches oas-cli _FIG_3D constants)
+_FIG_3D_WIDTH = 8.0    # inches -> 1200 px at 150 DPI
+_FIG_3D_HEIGHT = 5.33  # inches -> ~800 px at 150 DPI
+
+
+def _draw_tube_structure(ax, mesh, radius, thickness, fem_origin):
+    """Draw coloured cylindrical FEM tube elements along the spar.
+
+    Adapted from oas-cli sdk/viz/plotting.py and upstream plot_wing.py.
+    Each element is a short cylinder segment coloured by normalised thickness.
+    """
+    import matplotlib.cm as cm
+
+    radius = np.asarray(radius)
+    thickness = np.asarray(thickness)
+    t_max = float(thickness.max()) if thickness.max() > 0 else 1.0
+    colors = thickness / t_max
+
+    num_circ = 12
+    p = np.linspace(0, 2 * np.pi, num_circ)
+
+    chords = mesh[-1, :, 0] - mesh[0, :, 0]
+    comp = fem_origin * chords + mesh[0, :, 0]
+
+    for i in range(len(thickness)):
+        r = np.array((radius[i], radius[i]))
+        R, P = np.meshgrid(r, p)
+        X, Z = R * np.cos(P), R * np.sin(P)
+
+        X[:, 0] += comp[i]
+        X[:, 1] += comp[i + 1]
+        Z[:, 0] += fem_origin * (mesh[-1, i, 2] - mesh[0, i, 2]) + mesh[0, i, 2]
+        Z[:, 1] += fem_origin * (mesh[-1, i + 1, 2] - mesh[0, i + 1, 2]) + mesh[0, i + 1, 2]
+
+        Y = np.empty(X.shape)
+        Y[:] = np.linspace(mesh[0, i, 1], mesh[0, i + 1, 1], 2)
+
+        col = np.full(X.shape, colors[i])
+        ax.plot_surface(X, Y, Z, rstride=1, cstride=1,
+                        facecolors=cm.viridis(col), linewidth=0)
+
+
+def _draw_wingbox_structure(ax, mesh, spar_thickness, skin_thickness, fem_origin):
+    """Draw coloured rectangular spar panels for wingbox FEM model.
+
+    Draws flat rectangular panels along the spar location, coloured by
+    spar thickness.
+    """
+    import matplotlib.cm as cm
+
+    spar_t = np.asarray(spar_thickness)
+    t_max = float(spar_t.max()) if spar_t.max() > 0 else 1.0
+    colors = spar_t / t_max
+
+    chords = mesh[-1, :, 0] - mesh[0, :, 0]
+    comp = fem_origin * chords + mesh[0, :, 0]
+
+    for i in range(len(spar_t)):
+        half_h = max(chords[i], chords[i + 1]) * 0.08
+        x_c0, x_c1 = comp[i], comp[i + 1]
+        z0 = fem_origin * (mesh[-1, i, 2] - mesh[0, i, 2]) + mesh[0, i, 2]
+        z1 = fem_origin * (mesh[-1, i + 1, 2] - mesh[0, i + 1, 2]) + mesh[0, i + 1, 2]
+        y0, y1 = mesh[0, i, 1], mesh[0, i + 1, 1]
+
+        xs = np.array([[x_c0, x_c1], [x_c0, x_c1]])
+        ys = np.array([[y0, y1], [y0, y1]])
+        zs = np.array([[z0 - half_h, z1 - half_h], [z0 + half_h, z1 + half_h]])
+
+        col = np.full(xs.shape, colors[i])
+        ax.plot_surface(xs, ys, zs, rstride=1, cstride=1,
+                        facecolors=cm.viridis(col), linewidth=0)
+
+
+def plot_mesh_3d(
+    recorder_path: Path,
+    *,
+    surface_name: str | None = None,
+    show_deflection: bool = True,
+    deflection_scale: float = 2.0,
+    **kwargs,
+) -> plt.Figure:
+    """Plot 3D wireframe mesh with optional structural FEM overlay.
+
+    Matches the oas-cli mesh_3d plot: wireframe with tube/wingbox
+    elements coloured by thickness, optional deformed mesh overlay.
+
+    Args:
+        recorder_path: Path to OpenMDAO recorder file.
+        surface_name: Surface name (auto-detected if None).
+        show_deflection: Whether to overlay the deformed mesh.
+        deflection_scale: Exaggeration factor for deflection.
+
+    Returns:
+        matplotlib Figure.
+    """
+    reader, case = get_reader_and_final_case(recorder_path)
+
+    surf = surface_name or "*"
+
+    # Get undeformed mesh
+    _, mesh_raw = find_first_output(case, f"*{surf}*.mesh", "*.mesh")
+    if mesh_raw is None:
+        raise ValueError("Could not find mesh data in recorder")
+
+    mesh = np.array(mesh_raw)
+    if mesh.ndim != 3:
+        raise ValueError(f"Expected 3D mesh array, got shape {mesh.shape}")
+
+    # Get deformed mesh (aerostruct only)
+    _, def_mesh_raw = find_first_output(
+        case,
+        f"*{surf}.def_mesh",
+        f"*{surf}*def_mesh",
+    )
+
+    has_def = show_deflection and def_mesh_raw is not None
+
+    fig = plt.figure(figsize=(_FIG_3D_WIDTH, _FIG_3D_HEIGHT))
+    ax = fig.add_subplot(111, projection="3d")
+
+    x = mesh[:, :, 0]
+    y = mesh[:, :, 1]
+    z = mesh[:, :, 2]
+
+    if has_def:
+        def_mesh = np.array(def_mesh_raw)
+        def_mesh_vis = (def_mesh - mesh) * deflection_scale + def_mesh
+        x_def = def_mesh_vis[:, :, 0]
+        y_def = def_mesh_vis[:, :, 1]
+        z_def = def_mesh_vis[:, :, 2]
+        ax.plot_wireframe(x_def, y_def, z_def, rstride=1, cstride=1,
+                          color="k", linewidth=0.8)
+        ax.plot_wireframe(x, y, z, rstride=1, cstride=1, color="k",
+                          alpha=0.3, linewidth=0.5)
+    else:
+        ax.plot_wireframe(x, y, z, rstride=1, cstride=1, color="k",
+                          linewidth=0.8)
+
+    # Structural FEM rendering
+    struct_mesh = def_mesh_vis if has_def else mesh
+    struct_label = None
+
+    # Try to find structural data for tube model
+    _, radius_raw = find_first_output(case, f"*{surf}.radius", f"*radius")
+    _, thickness_raw = find_first_output(case, f"*{surf}.thickness", f"*thickness")
+
+    if radius_raw is not None:
+        radius = np.asarray(radius_raw).flatten()
+        thickness = np.asarray(thickness_raw).flatten() if thickness_raw is not None else radius
+        fem_origin = 0.35  # OAS default
+        _draw_tube_structure(ax, struct_mesh, radius, thickness, fem_origin)
+        struct_label = "tube (colour = thickness)"
+    else:
+        # Try wingbox
+        _, spar_raw = find_first_output(case, f"*{surf}.spar_thickness", f"*spar_thickness")
+        _, skin_raw = find_first_output(case, f"*{surf}.skin_thickness", f"*skin_thickness")
+        if spar_raw is not None:
+            spar_t = np.asarray(spar_raw).flatten()
+            skin_t = np.asarray(skin_raw).flatten() if skin_raw is not None else spar_t
+            fem_origin = 0.35
+            _draw_wingbox_structure(ax, struct_mesh, spar_t, skin_t, fem_origin)
+            struct_label = "wingbox (colour = spar thickness)"
+
+    # Equal aspect ratio scaling
+    all_pts = mesh
+    if has_def:
+        all_pts = np.concatenate([mesh, def_mesh_vis], axis=0)
+    x_min, x_max = float(all_pts[:, :, 0].min()), float(all_pts[:, :, 0].max())
+    y_min, y_max = float(all_pts[:, :, 1].min()), float(all_pts[:, :, 1].max())
+    z_min, z_max = float(all_pts[:, :, 2].min()), float(all_pts[:, :, 2].max())
+    ranges = [x_max - x_min, y_max - y_min, max(z_max - z_min, 0.5)]
+    max_range = max(ranges) / 2.0
+    x_mid = (x_max + x_min) / 2.0
+    y_mid = (y_max + y_min) / 2.0
+    z_mid = (z_max + z_min) / 2.0
+    ax.auto_scale_xyz(
+        [x_mid - max_range, x_mid + max_range],
+        [y_mid - max_range, y_mid + max_range],
+        [z_mid - max_range, z_mid + max_range],
+    )
+    ax.set_axis_off()
+    ax.view_init(elev=25, azim=-135)
+
+    # Subtitle
+    nx, ny, _ = mesh.shape
+    sub = f"Mesh: {nx}x{ny} nodes"
+    if struct_label:
+        sub += f"  |  {struct_label}"
+    if has_def:
+        max_defl = float(np.max(np.abs(np.array(def_mesh_raw)[:, :, 2] - mesh[:, :, 2])))
+        sub += f"  |  max z-deflection: {max_defl:.4f} m (x{deflection_scale} exaggerated)"
+    ax.set_title(sub, fontsize=8, y=-0.02)
+
+    fig.subplots_adjust(left=0, right=1, bottom=0.02, top=0.90)
 
     return fig
 
@@ -681,6 +1043,7 @@ OAS_AERO_PLOTS: dict[str, callable] = {
     "planform": plot_planform,
     "lift": plot_lift_distribution,
     "twist": plot_twist,
+    "mesh_3d": plot_mesh_3d,
 }
 
 OAS_AEROSTRUCT_PLOTS: dict[str, callable] = {

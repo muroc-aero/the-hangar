@@ -19,9 +19,11 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from hangar.omd.plotting._common import (  # noqa: F401 -- re-export
+    detect_surface_name,
     find_outputs,
     find_first_output,
     get_reader_and_final_case,
+    get_span_eta,
     mirror_spanwise,
     compute_elliptical_lift,
 )
@@ -39,6 +41,7 @@ from hangar.omd.plotting.oas import (  # noqa: F401 -- re-export
     plot_vonmises,
     plot_skin_spar,
     plot_t_over_c,
+    plot_mesh_3d,
     OAS_AERO_PLOTS,
     OAS_AEROSTRUCT_PLOTS,
 )

@@ -327,6 +327,21 @@ def _resolve_var_path(
         if name in dv_map:
             return dv_map[name]
 
+        # Performance outputs (constraints/objectives): {point}.{surf}_perf.{name}
+        perf_outputs = {"CL", "CD", "CDi", "CDv", "CDw", "CM"}
+        if name in perf_outputs:
+            return f"{point_name}.{surf}_perf.{name}"
+
+    # Aerostruct-specific outputs
+    aerostruct_outputs = {
+        "failure": f"{point_name}.{surface_names[0]}_perf.failure" if surface_names else name,
+        "fuelburn": "fuelburn",
+        "structural_mass": f"{surface_names[0]}.structural_mass" if surface_names else name,
+        "L_equals_W": f"{point_name}.L_equals_W" if point_name else name,
+    }
+    if name in aerostruct_outputs:
+        return aerostruct_outputs[name]
+
     return name
 
 

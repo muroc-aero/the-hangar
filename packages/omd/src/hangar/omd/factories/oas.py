@@ -217,7 +217,11 @@ def _plan_config_to_surface_dict(surface_config: dict) -> dict:
     # Control point arrays (root-to-tip, matching OAS convention)
     num_y = surface_config["num_y"]
     sym = surface_config.get("symmetry", True)
-    n_cp = (num_y + 1) // 2 if sym else num_y
+    num_twist_cp = surface_config.get("num_twist_cp")
+    if num_twist_cp is not None:
+        n_cp = num_twist_cp
+    else:
+        n_cp = (num_y + 1) // 2 if sym else num_y
 
     if "twist_cp" in surface_config:
         surface["twist_cp"] = np.array(surface_config["twist_cp"])

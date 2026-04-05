@@ -79,6 +79,76 @@ def get_reader_and_final_case(recorder_path: Path):
 
 
 # ---------------------------------------------------------------------------
+# Surface name detection
+# ---------------------------------------------------------------------------
+
+
+def detect_surface_name(case) -> str | None:
+    """Detect the surface name from a Case's outputs.
+
+    Looks for mesh variables and extracts the surface name from
+    the variable path (e.g., ``wing.mesh`` -> ``wing``).
+    """
+    try:
+        outputs = case.list_outputs(out_stream=None, return_format="dict")
+        for name in outputs:
+            # Pattern: {surface}.mesh or {surface}.geometry.mesh.*
+            if name.endswith(".mesh") and ".geometry.mesh." not in name:
+                parts = name.rsplit(".", 1)
+                if parts:
+                    return parts[0].split(".")[-1]
+        # Fallback: look for {surface}.geometry.twist
+        for name in outputs:
+            if ".geometry.twist" in name:
+                return name.split(".geometry.twist")[0].split(".")[-1]
+    except Exception:
+        pass
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Span coordinate extraction
+# ---------------------------------------------------------------------------
+
+
+def get_span_eta(
+    mesh: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, bool]:
+    """Extract normalized span coordinates from a mesh and detect ordering.
+
+    OAS symmetric meshes have y-coords from negative (tip) to 0 (root).
+    This function normalizes to eta in [0, 1] with 0=root, 1=tip, and
+    reports whether the original data was reversed.
+
+    Args:
+        mesh: Array of shape (num_x, num_y, 3).
+
+    Returns:
+        node_eta: Normalized [0,1] span coords at nodes (root=0, tip=1).
+        elem_eta: Midpoints for element-based quantities (length ny-1).
+        was_reversed: True if the raw ordering was tip-to-root and was flipped.
+    """
+    y_coords = mesh[0, :, 1]
+    y_abs = np.abs(y_coords)
+    y_max = y_abs.max()
+    if y_max < 1e-10:
+        n = len(y_coords)
+        node_eta = np.linspace(0, 1, n)
+        elem_eta = 0.5 * (node_eta[:-1] + node_eta[1:])
+        return node_eta, elem_eta, False
+
+    node_eta = y_abs / y_max
+
+    # Detect if ordering is tip-to-root (descending eta)
+    was_reversed = node_eta[0] > node_eta[-1]
+    if was_reversed:
+        node_eta = node_eta[::-1]
+
+    elem_eta = 0.5 * (node_eta[:-1] + node_eta[1:])
+    return node_eta, elem_eta, was_reversed
+
+
+# ---------------------------------------------------------------------------
 # Data transforms
 # ---------------------------------------------------------------------------
 
