@@ -45,6 +45,8 @@ def plot_convergence(
     Returns:
         matplotlib Figure.
     """
+    run_id = kwargs.get("run_id", "")
+
     import openmdao.api as om
     reader = om.CaseReader(str(recorder_path))
 
@@ -64,7 +66,7 @@ def plot_convergence(
     for i, case_id in enumerate(driver_cases):
         case = reader.get_case(case_id)
 
-        # Auto-detect objective from outputs
+        # Auto-detect objective
         if obj_name is None:
             try:
                 objectives = case.get_objectives(scaled=False)
@@ -93,8 +95,7 @@ def plot_convergence(
                             obj_name = name
                             break
 
-        # Get objective value via get_objectives (not list_outputs, which
-        # has different key naming)
+        # Get objective value
         if obj_name:
             try:
                 objectives = case.get_objectives(scaled=False)
@@ -161,7 +162,10 @@ def plot_convergence(
         ax2.legend(fontsize=6, loc="center right")
 
     ax.grid(True, alpha=0.3)
-    fig.suptitle("Optimization Convergence", fontsize=10, y=0.98)
+    title = "Optimization Convergence"
+    if run_id:
+        title += f"\n({run_id})"
+    fig.suptitle(title, fontsize=9, y=0.98)
     fig.tight_layout(rect=[0, 0, 1, 0.93])
 
     return fig
@@ -173,8 +177,8 @@ def plot_dv_evolution(
 ) -> plt.Figure:
     """Plot design variable values across optimization iterations.
 
-    Shows one line per DV (or per DV element for arrays). Displays
-    actual values (not normalized) so the absolute scale is visible.
+    Shows individual elements for vector DVs plus a mean trace (dashed).
+    Scalar DVs get a single line. All plotted as actual values.
 
     Args:
         recorder_path: Path to OpenMDAO recorder file.
@@ -182,6 +186,8 @@ def plot_dv_evolution(
     Returns:
         matplotlib Figure.
     """
+    run_id = kwargs.get("run_id", "")
+
     import openmdao.api as om
     reader = om.CaseReader(str(recorder_path))
 
@@ -202,8 +208,14 @@ def plot_dv_evolution(
     if not desvars:
         raise ValueError("No design variables found in recorder")
 
-    # Collect DV values across iterations
-    dv_history: dict[str, list[float]] = {}
+    # Collect DV values across iterations, tracking which are vector DVs
+    # element_traces: individual elements for vector DVs
+    # mean_traces: mean for vector DVs (dashed overlay)
+    # scalar_traces: scalar DVs
+    element_traces: dict[str, list[float]] = {}
+    mean_traces: dict[str, list[float]] = {}
+    scalar_traces: dict[str, list[float]] = {}
+    vector_dv_names: set[str] = set()
     iterations = list(range(len(driver_cases)))
 
     for case_id in driver_cases:
@@ -217,27 +229,62 @@ def plot_dv_evolution(
             arr = np.atleast_1d(val)
             short = dv_name.split(".")[-1]
             if arr.size == 1:
-                dv_history.setdefault(short, []).append(float(arr.flat[0]))
+                scalar_traces.setdefault(short, []).append(float(arr.flat[0]))
             else:
+                vector_dv_names.add(short)
+                # Individual elements (cap at 10)
                 for idx in range(min(arr.size, 10)):
                     key = f"{short}[{idx}]"
-                    dv_history.setdefault(key, []).append(float(arr.flat[idx]))
+                    element_traces.setdefault(key, []).append(float(arr.flat[idx]))
+                # Mean
+                mean_traces.setdefault(short, []).append(float(arr.mean()))
 
-    if not dv_history:
+    all_traces = {**element_traces, **scalar_traces}
+    if not all_traces:
         raise ValueError("Could not extract DV history from recorder")
 
     fig, ax = plt.subplots(figsize=(_FIG_WIDTH, _FIG_HEIGHT))
+    colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+    color_idx = 0
 
-    for label, values in dv_history.items():
+    # Plot vector DV elements with their mean
+    for dv_name in sorted(vector_dv_names):
+        # Individual elements (solid, thin)
+        elem_keys = [k for k in element_traces if k.startswith(f"{dv_name}[")]
+        for key in sorted(elem_keys):
+            values = element_traces[key]
+            color = colors[color_idx % len(colors)]
+            ax.plot(iterations[:len(values)], values, "-o", markersize=2,
+                    linewidth=1.0, label=key, color=color)
+            color_idx += 1
+
+        # Mean trace (dashed, thicker, black)
+        if dv_name in mean_traces:
+            values = mean_traces[dv_name]
+            ax.plot(iterations[:len(values)], values, "--", markersize=0,
+                    linewidth=2.0, label=f"{dv_name} (mean)", color="black",
+                    alpha=0.6)
+
+    # Plot scalar DVs
+    for label, values in sorted(scalar_traces.items()):
+        color = colors[color_idx % len(colors)]
         ax.plot(iterations[:len(values)], values, "-o", markersize=3,
-                linewidth=1.5, label=label)
+                linewidth=1.5, label=label, color=color)
+        color_idx += 1
+
+    n_dvs = len(vector_dv_names) + len(scalar_traces)
+    n_total = len(element_traces) + len(scalar_traces)
 
     ax.set_xlabel("Optimizer iteration")
     ax.set_ylabel("Design Variable Value")
-    ax.set_title(f"{len(dv_history)} design variable(s)", fontsize=8)
-    ax.legend(fontsize=7, loc="best")
+    ax.set_title(f"{n_dvs} design variable(s), {n_total} trace(s)", fontsize=8)
+    ax.legend(fontsize=6, loc="best")
     ax.grid(True, alpha=0.3)
-    fig.suptitle("Design Variable Evolution", fontsize=10, y=0.98)
+
+    title = "Design Variable Evolution"
+    if run_id:
+        title += f"\n({run_id})"
+    fig.suptitle(title, fontsize=9, y=0.98)
     fig.tight_layout(rect=[0, 0, 1, 0.93])
 
     return fig

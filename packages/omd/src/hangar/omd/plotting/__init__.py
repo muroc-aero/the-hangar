@@ -97,6 +97,9 @@ def generate_plots(
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # Extract run_id from recorder filename for plot subtitles
+    run_id = recorder_path.stem  # e.g. "run-20260405T110441-53360153"
+
     saved: dict[str, Path] = {}
 
     for ptype in plot_types:
@@ -106,12 +109,15 @@ def generate_plots(
             continue
 
         try:
-            kwargs: dict = {}
+            kwargs: dict = {"run_id": run_id}
             # Pass surface_name if the function accepts it
             import inspect
             sig = inspect.signature(func)
             if "surface_name" in sig.parameters:
                 kwargs["surface_name"] = surface_name
+            # Only pass run_id if function accepts it
+            if "run_id" not in sig.parameters and "kwargs" not in str(sig):
+                kwargs.pop("run_id", None)
 
             fig = func(recorder_path, **kwargs)
             out_path = output_dir / f"{ptype}.png"

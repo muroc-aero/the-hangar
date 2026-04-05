@@ -708,26 +708,58 @@ def plot_opt_dv_evolution(run_id: str, optimization_history: dict, case_name: st
         return _fig_to_response(fig, run_id, "opt_dv_evolution")
 
     colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
-    for idx, (dv_name, history) in enumerate(dv_history.items()):
+    color_idx = 0
+    for dv_name, history in dv_history.items():
         if not history:
             continue
-        color = colors[idx % len(colors)]
         iters = list(range(len(history)))
-        # history[i] is either a scalar or a list (vector DV)
-        try:
-            means = [float(np.asarray(v).mean()) for v in history]
-        except Exception:
-            continue
-        # Normalize to initial value so mixed-unit DVs share one axis
-        initial_val = means[0] if means else 0.0
-        if abs(initial_val) > 1e-12:
-            means_norm = [m / initial_val for m in means]
+        is_vector = isinstance(history[0], (list, np.ndarray)) and len(np.asarray(history[0]).ravel()) > 1
+
+        if is_vector:
+            # Plot individual elements (thin, solid) + mean (dashed, thick)
+            n_elem = min(len(np.asarray(history[0]).ravel()), 10)
+            for ei in range(n_elem):
+                try:
+                    vals = [float(np.asarray(v).ravel()[ei]) for v in history]
+                except Exception:
+                    continue
+                initial_val = vals[0] if vals else 0.0
+                if abs(initial_val) > 1e-12:
+                    vals_norm = [x / initial_val for x in vals]
+                else:
+                    vals_norm = [1.0] * len(vals)
+                color = colors[color_idx % len(colors)]
+                ax.plot(iters, vals_norm, "-o", markersize=2, linewidth=0.8,
+                        label=f"{dv_name}[{ei}]", color=color, alpha=0.7)
+                color_idx += 1
+
+            # Mean trace (dashed, black)
+            try:
+                means = [float(np.asarray(v).mean()) for v in history]
+                initial_val = means[0] if means else 0.0
+                if abs(initial_val) > 1e-12:
+                    means_norm = [m / initial_val for m in means]
+                else:
+                    means_norm = [1.0] * len(means)
+                ax.plot(iters, means_norm, "--", markersize=0, linewidth=2.0,
+                        label=f"{dv_name} (mean)", color="black", alpha=0.5)
+            except Exception:
+                pass
         else:
-            means_norm = [1.0] * len(means)
-        label = dv_name
-        if isinstance(history[0], list) and len(history[0]) > 1:
-            label = f"{dv_name} (mean)"
-        ax.plot(iters, means_norm, "-o", markersize=3, linewidth=1.5, label=label, color=color)
+            # Scalar DV
+            try:
+                means = [float(np.asarray(v).mean()) for v in history]
+            except Exception:
+                continue
+            initial_val = means[0] if means else 0.0
+            if abs(initial_val) > 1e-12:
+                means_norm = [m / initial_val for m in means]
+            else:
+                means_norm = [1.0] * len(means)
+            color = colors[color_idx % len(colors)]
+            ax.plot(iters, means_norm, "-o", markersize=3, linewidth=1.5,
+                    label=dv_name, color=color)
+            color_idx += 1
 
     ax.axhline(1.0, color="gray", linewidth=0.8, linestyle="--", alpha=0.7)
     ax.set_xlabel("Optimizer iteration  [—]")
