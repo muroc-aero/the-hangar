@@ -622,11 +622,12 @@ cy.on('tap', 'node', function(evt) {{
 def _omd_plan_detail_handler(
     qs: dict[str, list[str]],
 ) -> tuple[int, str, bytes]:
-    """Serve a plan detail page showing objects, relationships, and versions."""
+    """Serve a plan detail page as a knowledge graph."""
     import json as _json
     import yaml
     from pathlib import Path
     from hangar.omd.db import init_analysis_db, query_entity, _get_conn
+    from hangar.omd.plan_graph import build_plan_graph
 
     plan_id = (qs.get("plan_id") or [None])[0]
     version = (qs.get("version") or [None])[0]
@@ -645,7 +646,6 @@ def _omd_plan_detail_handler(
     ).fetchall()
     versions = [dict(r) for r in rows]
 
-    # Pick the requested version or latest
     if version:
         ver = int(version)
     elif versions:
@@ -653,7 +653,6 @@ def _omd_plan_detail_handler(
     else:
         return 404, "application/json", b'{"error":"Plan not found"}'
 
-    # Load the plan YAML
     entity = query_entity(f"{plan_id}/v{ver}")
     plan = None
     if entity and entity.get("storage_ref"):
@@ -665,89 +664,29 @@ def _omd_plan_detail_handler(
     if not plan:
         return 404, "application/json", b'{"error":"Plan YAML not found"}'
 
-    # Build graph nodes from plan content
-    nodes = []
-    edges = []
+    # Build knowledge graph via the modular builder
+    graph = build_plan_graph(plan, plan_id, ver)
 
-    # Plan root node
-    nodes.append({"data": {
-        "id": "plan", "label": f"{plan_id}\\nv{ver}",
-        "node_type": "plan",
-    }})
+    # Convert to Cytoscape elements
+    cy_elements = []
+    for node in graph["nodes"]:
+        props_json = _json.dumps(node["properties"], default=str)
+        cy_elements.append({"data": {
+            "id": node["id"],
+            "label": node["label"],
+            "node_type": node["type"],
+            "properties": props_json,
+        }})
+    for edge in graph["edges"]:
+        cy_elements.append({"data": {
+            "source": edge["source"],
+            "target": edge["target"],
+            "relation": edge["relation"],
+        }})
 
-    # Operating point
-    op = plan.get("operating_points", {})
-    if op:
-        label = f"M={op.get('Mach_number','?')} a={op.get('alpha','?')}\\nV={op.get('velocity','?')} m/s"
-        nodes.append({"data": {"id": "op", "label": label, "node_type": "operating_point"}})
-        edges.append({"data": {"source": "plan", "target": "op"}})
+    elements_json = _json.dumps(cy_elements)
 
-    # Components and surfaces
-    for comp in plan.get("components", []):
-        cid = comp["id"]
-        ctype = comp.get("type", "?")
-        nodes.append({"data": {"id": f"comp-{cid}", "label": f"{cid}\\n({ctype})", "node_type": "component"}})
-        edges.append({"data": {"source": "plan", "target": f"comp-{cid}"}})
-
-        for surf in comp.get("config", {}).get("surfaces", []):
-            sname = surf.get("name", cid)
-            wtype = surf.get("wing_type", "")
-            span = surf.get("span", "")
-            fem = surf.get("fem_model_type", "")
-            slabel = f"{sname}\\n{wtype} {span}m {fem}"
-            nodes.append({"data": {"id": f"surf-{sname}", "label": slabel, "node_type": "surface"}})
-            edges.append({"data": {"source": f"comp-{cid}", "target": f"surf-{sname}"}})
-
-    # Solvers
-    solvers = plan.get("solvers", {})
-    if solvers:
-        nl = solvers.get("nonlinear", {}).get("type", "")
-        ln = solvers.get("linear", {}).get("type", "")
-        nodes.append({"data": {"id": "solvers", "label": f"{nl}\\n+ {ln}", "node_type": "solver"}})
-        edges.append({"data": {"source": "plan", "target": "solvers"}})
-
-    # Optimization
-    if plan.get("design_variables") or plan.get("objective"):
-        obj = plan.get("objective", {})
-        obj_name = obj.get("name", "?").split(".")[-1] if isinstance(obj, dict) else "?"
-        nodes.append({"data": {"id": "objective", "label": f"min {obj_name}", "node_type": "objective"}})
-        edges.append({"data": {"source": "plan", "target": "objective"}})
-
-        for dv in plan.get("design_variables", []):
-            dv_name = dv.get("name", "?").split(".")[-1]
-            dvid = f"dv-{dv_name}"
-            lower = dv.get("lower", "")
-            upper = dv.get("upper", "")
-            nodes.append({"data": {"id": dvid, "label": f"DV: {dv_name}\\n[{lower}, {upper}]", "node_type": "dv"}})
-            edges.append({"data": {"source": "objective", "target": dvid}})
-
-        for con in plan.get("constraints", []):
-            con_name = con.get("name", "?").split(".")[-1]
-            conid = f"con-{con_name}"
-            eq = con.get("equals")
-            label = f"con: {con_name}" + (f"\\n= {eq}" if eq is not None else "")
-            nodes.append({"data": {"id": conid, "label": label, "node_type": "constraint"}})
-            edges.append({"data": {"source": "objective", "target": conid}})
-
-    # Decisions
-    for dec in plan.get("decisions", []):
-        did = dec.get("id", "dec")
-        text = dec.get("decision", "")[:35]
-        reason = dec.get("reason", "")[:40]
-        nodes.append({"data": {"id": f"dec-{did}", "label": f"{text}", "node_type": "decision",
-                                "reason": reason}})
-        stage = dec.get("stage", "")
-        # Link to the most relevant node based on stage
-        target = "plan"
-        if "mesh" in stage:
-            target = next((n["data"]["id"] for n in nodes if n["data"].get("node_type") == "surface"), "plan")
-        elif "material" in stage or "structural" in stage or "fem" in stage:
-            target = next((n["data"]["id"] for n in nodes if n["data"].get("node_type") == "surface"), "plan")
-        edges.append({"data": {"source": f"dec-{did}", "target": target, "label": "justifies"}})
-
-    elements = _json.dumps(nodes + edges)
-
-    # Version timeline HTML
+    # Version timeline
     ver_html = ""
     for v in versions:
         vnum = v["version"]
@@ -757,7 +696,15 @@ def _omd_plan_detail_handler(
             f'class="btn"{active}>v{vnum}</a> '
         )
 
-    html = f"""<!DOCTYPE html>
+    html = _render_plan_detail_html(plan_id, ver, elements_json, ver_html)
+    return 200, "text/html; charset=utf-8", html.encode()
+
+
+def _render_plan_detail_html(
+    plan_id: str, ver: int, elements_json: str, ver_html: str,
+) -> str:
+    """Render the plan detail Cytoscape.js HTML page."""
+    return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -780,18 +727,22 @@ def _omd_plan_detail_handler(
   #versions .label {{ font-size: 11px; color: #888; }}
   #main {{ display: flex; flex: 1; min-height: 0; }}
   #cy {{ flex: 1; }}
-  #panel {{ width: 300px; background: #1a1d27; border-left: 1px solid #2d3047;
+  #panel {{ width: 320px; background: #1a1d27; border-left: 1px solid #2d3047;
             overflow-y: auto; padding: 12px; font-size: 12px; line-height: 1.6; }}
   #panel h3 {{ font-size: 13px; color: #9cb8ff; margin: 8px 0 4px; }}
+  #panel h3:first-child {{ margin-top: 0; }}
   .kv {{ margin-bottom: 3px; }}
   .kv .key {{ color: #888; font-size: 11px; }}
   .kv .val {{ color: #d0d8f0; word-break: break-word; }}
+  .mono {{ font-family: monospace; font-size: 10px; color: #a0a8c0; }}
+  .edge-tag {{ display: inline-block; padding: 1px 6px; border-radius: 3px;
+               font-size: 10px; background: #1a2030; color: #6090b0; margin: 1px; }}
 </style>
 </head>
 <body>
 <div id="toolbar">
-  <h1>Plan Detail</h1>
-  <span class="sub">{plan_id}</span>
+  <h1>Plan Knowledge Graph</h1>
+  <span class="sub">{plan_id} v{ver}</span>
   <div style="flex:1"></div>
   <div id="versions"><span class="label">Versions:</span> {ver_html}</div>
   <button class="btn" id="btn-fit">Fit</button>
@@ -799,14 +750,14 @@ def _omd_plan_detail_handler(
 <div id="main">
   <div id="cy"></div>
   <div id="panel">
-    <p style="color:#666">Click a node to inspect it.</p>
+    <p style="color:#666;font-size:12px">Click a node to inspect its properties.</p>
   </div>
 </div>
 <script>
 cytoscape.use(cytoscapeDagre);
 var cy = cytoscape({{
   container: document.getElementById('cy'),
-  elements: {elements},
+  elements: {elements_json},
   style: [
     {{ selector: 'node[node_type="plan"]', style: {{
          'shape': 'round-rectangle', 'width': 160, 'height': 44,
@@ -814,29 +765,47 @@ var cy = cytoscape({{
          'label': 'data(label)', 'text-wrap': 'wrap', 'font-size': 11,
          'color': '#a0ccff', 'text-valign': 'center', 'text-halign': 'center',
     }} }},
-    {{ selector: 'node[node_type="component"]', style: {{
-         'shape': 'round-rectangle', 'width': 130, 'height': 36,
-         'background-color': '#0a1e2e', 'border-width': 2, 'border-color': '#3ac8fa',
-         'label': 'data(label)', 'text-wrap': 'wrap', 'font-size': 10,
-         'color': '#80d8ff', 'text-valign': 'center', 'text-halign': 'center',
-    }} }},
     {{ selector: 'node[node_type="surface"]', style: {{
-         'shape': 'round-rectangle', 'width': 140, 'height': 36,
+         'shape': 'round-rectangle', 'width': 120, 'height': 36,
          'background-color': '#0a1828', 'border-width': 2, 'border-color': '#70b8ff',
-         'label': 'data(label)', 'text-wrap': 'wrap', 'font-size': 9,
+         'label': 'data(label)', 'text-wrap': 'wrap', 'font-size': 10,
          'color': '#90ccff', 'text-valign': 'center', 'text-halign': 'center',
     }} }},
-    {{ selector: 'node[node_type="operating_point"]', style: {{
+    {{ selector: 'node[node_type="material"]', style: {{
+         'shape': 'round-rectangle', 'width': 110, 'height': 32,
+         'background-color': '#1a1028', 'border-width': 2, 'border-color': '#a080c0',
+         'label': 'data(label)', 'text-wrap': 'wrap', 'font-size': 9,
+         'color': '#c0a0e0', 'text-valign': 'center', 'text-halign': 'center',
+    }} }},
+    {{ selector: 'node[node_type="fem_model"]', style: {{
+         'shape': 'round-rectangle', 'width': 100, 'height': 28,
+         'background-color': '#101820', 'border-width': 2, 'border-color': '#5080a0',
+         'label': 'data(label)', 'text-wrap': 'wrap', 'font-size': 9,
+         'color': '#80a0c0', 'text-valign': 'center', 'text-halign': 'center',
+    }} }},
+    {{ selector: 'node[node_type="mesh"]', style: {{
+         'shape': 'round-rectangle', 'width': 100, 'height': 28,
+         'background-color': '#0e1828', 'border-width': 2, 'border-color': '#6090b0',
+         'label': 'data(label)', 'text-wrap': 'wrap', 'font-size': 9,
+         'color': '#80b0d0', 'text-valign': 'center', 'text-halign': 'center',
+    }} }},
+    {{ selector: 'node[node_type="flight_condition"]', style: {{
          'shape': 'round-rectangle', 'width': 130, 'height': 36,
          'background-color': '#0a1820', 'border-width': 2, 'border-color': '#50c0f0',
          'label': 'data(label)', 'text-wrap': 'wrap', 'font-size': 9,
          'color': '#80d8ff', 'text-valign': 'center', 'text-halign': 'center',
     }} }},
     {{ selector: 'node[node_type="solver"]', style: {{
-         'shape': 'round-rectangle', 'width': 120, 'height': 32,
+         'shape': 'round-rectangle', 'width': 130, 'height': 36,
          'background-color': '#101820', 'border-width': 2, 'border-color': '#5080a0',
          'label': 'data(label)', 'text-wrap': 'wrap', 'font-size': 9,
          'color': '#80a0c0', 'text-valign': 'center', 'text-halign': 'center',
+    }} }},
+    {{ selector: 'node[node_type="linear_solver"]', style: {{
+         'shape': 'round-rectangle', 'width': 100, 'height': 28,
+         'background-color': '#101820', 'border-width': 2, 'border-color': '#406080',
+         'label': 'data(label)', 'text-wrap': 'wrap', 'font-size': 9,
+         'color': '#6090b0', 'text-valign': 'center', 'text-halign': 'center',
     }} }},
     {{ selector: 'node[node_type="objective"]', style: {{
          'shape': 'round-rectangle', 'width': 120, 'height': 32,
@@ -844,7 +813,7 @@ var cy = cytoscape({{
          'label': 'data(label)', 'text-wrap': 'wrap', 'font-size': 10,
          'color': '#70e0f0', 'text-valign': 'center', 'text-halign': 'center',
     }} }},
-    {{ selector: 'node[node_type="dv"]', style: {{
+    {{ selector: 'node[node_type="design_variable"]', style: {{
          'shape': 'round-rectangle', 'width': 120, 'height': 32,
          'background-color': '#0a1828', 'border-width': 2, 'border-color': '#50a0f0',
          'label': 'data(label)', 'text-wrap': 'wrap', 'font-size': 9,
@@ -863,16 +832,32 @@ var cy = cytoscape({{
          'color': '#e0c060', 'text-valign': 'center', 'text-halign': 'center',
          'text-max-width': '90px',
     }} }},
+    {{ selector: 'node[node_type="requirement"]', style: {{
+         'shape': 'round-rectangle', 'width': 130, 'height': 32,
+         'background-color': '#1a0a20', 'border-width': 2, 'border-color': '#a060c0',
+         'label': 'data(label)', 'text-wrap': 'wrap', 'font-size': 9,
+         'color': '#c080e0', 'text-valign': 'center', 'text-halign': 'center',
+    }} }},
     {{ selector: 'node:selected', style: {{ 'border-width': 3, 'border-color': '#9ab0ff' }} }},
+    /* Edge styles by relation type */
     {{ selector: 'edge', style: {{
          'width': 2, 'line-color': '#2a3a5a', 'target-arrow-color': '#2a3a5a',
          'target-arrow-shape': 'triangle', 'curve-style': 'bezier',
+         'label': 'data(relation)', 'font-size': 8, 'color': '#3a5070',
+         'text-rotation': 'autorotate',
     }} }},
-    {{ selector: 'edge[label="justifies"]', style: {{
-         'line-style': 'dashed', 'line-color': '#a08030', 'target-arrow-color': '#a08030',
-    }} }},
+    {{ selector: 'edge[relation="has_geometry"], edge[relation="has_material"], edge[relation="has_fem"]',
+       style: {{ 'line-color': '#3a5a7a', 'target-arrow-color': '#3a5a7a' }} }},
+    {{ selector: 'edge[relation="acts_on"]',
+       style: {{ 'width': 3, 'line-color': '#50a0f0', 'target-arrow-color': '#50a0f0' }} }},
+    {{ selector: 'edge[relation="bounds"]',
+       style: {{ 'line-color': '#30c090', 'target-arrow-color': '#30c090' }} }},
+    {{ selector: 'edge[relation="justifies"]',
+       style: {{ 'line-style': 'dashed', 'line-color': '#d0a030', 'target-arrow-color': '#d0a030' }} }},
+    {{ selector: 'edge[relation="traces_to"]',
+       style: {{ 'line-style': 'dotted', 'line-color': '#a060c0', 'target-arrow-color': '#a060c0' }} }},
   ],
-  layout: {{ name: 'dagre', rankDir: 'TB', nodeSep: 40, rankSep: 70 }},
+  layout: {{ name: 'dagre', rankDir: 'TB', nodeSep: 40, rankSep: 70, edgeSep: 10 }},
 }});
 cy.fit(30);
 document.getElementById('btn-fit').addEventListener('click', function() {{ cy.fit(30); }});
@@ -882,15 +867,46 @@ function escHtml(s) {{ return s == null ? '' : String(s).replace(/&/g,'&amp;').r
 cy.on('tap', 'node', function(evt) {{
   var d = evt.target.data();
   var panel = document.getElementById('panel');
-  var html = '<h3>' + escHtml(d.label.split('\\n')[0]) + '</h3>';
-  html += '<div class="kv"><span class="key">type </span><span class="val">' + escHtml(d.node_type) + '</span></div>';
-  if (d.reason) html += '<div class="kv"><span class="key">reason </span><span class="val">' + escHtml(d.reason) + '</span></div>';
+  var html = '<h3>' + escHtml(d.node_type) + '</h3>';
+  html += '<div class="kv"><span class="key">id </span><span class="val mono">' + escHtml(d.id) + '</span></div>';
+
+  /* Render all properties from the graph data */
+  if (d.properties) {{
+    try {{
+      var props = JSON.parse(d.properties);
+      for (var key in props) {{
+        var val = props[key];
+        if (val == null) continue;
+        var display = (typeof val === 'object') ? JSON.stringify(val) : String(val);
+        html += '<div class="kv"><span class="key">' + escHtml(key) + ' </span><span class="val">' + escHtml(display) + '</span></div>';
+      }}
+    }} catch(e) {{}}
+  }}
+
+  /* Show connected edges with relation types */
+  var conns = evt.target.connectedEdges();
+  if (conns.length > 0) {{
+    html += '<h3>Relationships</h3>';
+    conns.forEach(function(e) {{
+      var ed = e.data();
+      var direction = ed.source === d.id ? 'out' : 'in';
+      var other = direction === 'out' ? ed.target : ed.source;
+      var arrow = direction === 'out' ? '&rarr;' : '&larr;';
+      html += '<div class="kv"><span class="edge-tag">' + escHtml(ed.relation) + '</span> ' + arrow + ' <span class="val mono">' + escHtml(other) + '</span></div>';
+    }});
+  }}
+
   panel.innerHTML = html;
+}});
+
+cy.on('tap', function(evt) {{
+  if (evt.target === cy) {{
+    document.getElementById('panel').innerHTML = '<p style="color:#666;font-size:12px">Click a node to inspect its properties.</p>';
+  }}
 }});
 </script>
 </body>
 </html>"""
-    return 200, "text/html; charset=utf-8", html.encode()
 
 
 @cli.command("viewer")

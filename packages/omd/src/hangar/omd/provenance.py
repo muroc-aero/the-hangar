@@ -92,6 +92,12 @@ def provenance_timeline(
     return "\n".join(lines)
 
 
+def _html_escape(s: str) -> str:
+    """Escape HTML special characters."""
+    import html
+    return html.escape(str(s)) if s else ""
+
+
 def _entity_label(etype: str, eid: str, entity: dict, meta: dict) -> str:
     """Generate a compact, human-readable label for a provenance entity."""
     if etype == "plan":
@@ -288,6 +294,25 @@ def provenance_dag_html(
 
     elements_json = json.dumps(nodes + edges)
 
+    # Build decisions summary table from decision entities
+    decision_rows = ""
+    for entity in dag["entities"]:
+        if entity.get("entity_type") != "decision":
+            continue
+        meta_str = entity.get("metadata") or "{}"
+        try:
+            meta = json.loads(meta_str)
+        except (json.JSONDecodeError, TypeError):
+            meta = {}
+        stage = meta.get("stage", "")
+        decision = meta.get("decision", "")
+        reason = meta.get("reason", meta.get("rationale", ""))
+        decision_rows += (
+            f"<tr><td>{_html_escape(stage)}</td>"
+            f"<td>{_html_escape(decision)}</td>"
+            f"<td>{_html_escape(reason)}</td></tr>"
+        )
+
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -400,6 +425,18 @@ def provenance_dag_html(
   }}
   .n2-btn:hover {{ background: #1e3560; }}
 
+  #decisions-bar {{
+    background: #141620; border-top: 1px solid #2d3047; flex-shrink: 0;
+    max-height: 160px; overflow-y: auto; padding: 8px 14px;
+  }}
+  #decisions-bar.collapsed {{ max-height: 32px; overflow: hidden; }}
+  #decisions-bar .toggle {{ cursor: pointer; font-size: 12px; color: #8eb6ff;
+    display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }}
+  #decisions-bar table {{ width: 100%; border-collapse: collapse; font-size: 11px; }}
+  #decisions-bar th {{ text-align: left; color: #6080a0; padding: 2px 8px;
+    border-bottom: 1px solid #2d3047; font-weight: 600; }}
+  #decisions-bar td {{ padding: 3px 8px; color: #c0c8e0; border-bottom: 1px solid #1a1d27; }}
+
   #empty-state {{
     position: absolute; inset: 0; display: flex; flex-direction: column;
     align-items: center; justify-content: center; color: #555; pointer-events: none;
@@ -435,6 +472,14 @@ def provenance_dag_html(
     <div id="panel-body"><p style="color:#666;font-size:12px">Click a node to inspect it.</p></div>
   </div>
 </div>
+
+{"" if not decision_rows else f'''<div id="decisions-bar">
+  <div class="toggle" onclick="this.parentElement.classList.toggle('collapsed')">Decisions</div>
+  <table>
+    <tr><th>Stage</th><th>Decision</th><th>Reason</th></tr>
+    {decision_rows}
+  </table>
+</div>'''}
 
 <script>
 cytoscape.use(cytoscapeDagre);
