@@ -49,6 +49,29 @@ def register_plot_types(analysis_type: str, plot_types: list[str]) -> None:
 # needing a direct dependency on downstream packages.
 _PLOT_GENERATORS: dict[str, Callable] = {}
 
+# Custom route registry: tool packages can register additional GET handlers
+# so the viewer server serves tool-specific pages without the SDK depending
+# on downstream packages.  Handler signature:
+#   (query_params: dict[str, list[str]]) -> (status_code, content_type, body_bytes)
+_CUSTOM_ROUTES: dict[str, Callable] = {}
+
+
+def register_viewer_route(
+    path: str,
+    handler: Callable,
+) -> None:
+    """Register a custom GET route on the viewer server.
+
+    Parameters
+    ----------
+    path:
+        URL path (e.g. ``"/omd-provenance"``).  Must start with ``/``.
+    handler:
+        Callable accepting ``(qs: dict[str, list[str]])`` and returning
+        ``(status_code: int, content_type: str, body: bytes)``.
+    """
+    _CUSTOM_ROUTES[path] = handler
+
 
 def register_plot_generator(
     plot_types: frozenset[str] | set[str],
@@ -427,6 +450,16 @@ class _ProvHandler(BaseHTTPRequestHandler):
                     self._error(404, f"Artifact not found: run_id={run_id!r}")
                 else:
                     self._html(html)
+            except Exception as exc:
+                self._error(500, str(exc))
+        elif path in _CUSTOM_ROUTES:
+            try:
+                status, content_type, body = _CUSTOM_ROUTES[path](qs)
+                self.send_response(status)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
             except Exception as exc:
                 self._error(500, str(exc))
         else:

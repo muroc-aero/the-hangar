@@ -87,16 +87,49 @@ Useful for sharing, archiving, or debugging.
 
 ## provenance
 
-View the provenance chain for a plan.
+View the provenance chain for a plan. There are two viewing modes:
+
+### Static HTML viewer (plan-lifecycle provenance)
+
+Generates a standalone Cytoscape.js HTML file from the omd analysis DB.
+Shows plan entities, execute/assess/replan activities, run records, assessment
+entities, and PROV edges. The file opens in any browser with no server needed.
 
 ```bash
-omd-cli provenance <plan_id> [--format text|html|json] [--diff V1 V2] [--output PATH] [--db PATH]
+omd-cli provenance <plan_id> --format html -o <output.html>
 ```
 
-**Options:**
-- `--format` -- `text` (timeline), `html` (Cytoscape.js DAG), or `json` (raw data)
+Then open the file in a browser. On WSL:
+```bash
+explorer.exe "$(wslpath -w <output.html>)"
+```
+
+**When to offer this to the user:** After any `omd-cli run` or when the user
+asks to see the provenance graph. Generate the file and tell the user the path
+so they can open it. This is the primary way to visualize omd provenance.
+
+### Text timeline
+
+```bash
+omd-cli provenance <plan_id> --format text
+```
+
+Human-readable timeline of entities and activities. Good for quick checks
+in the terminal.
+
+### Version diff
+
+```bash
+omd-cli provenance <plan_id> --diff V1 V2
+```
+
+Compare two plan versions: shows metadata diff and which keys changed.
+
+**Full options:**
+- `--format` -- `text` (timeline) or `html` (Cytoscape.js DAG)
 - `--diff V1 V2` -- compare two plan versions
 - `--output`, `-o` -- output file path (required for html format)
+- `--db` -- path to analysis DB
 
 **Example output (text):**
 ```
@@ -105,8 +138,46 @@ Provenance timeline for: plan-paraboloid-analysis
   [2026-04-03T13:04:57] plan v1 (plan-paraboloid-analysis/v1) by have-agent
   [2026-04-03T13:04:57] EXECUTE (act-execute-run-...) by omd -- completed
   [2026-04-03T13:04:58] run_record (run-...) by omd
+  [2026-04-03T13:04:58] ASSESS (act-assess-run-...) by omd -- completed
+  [2026-04-03T13:04:58] assessment (assessment-run-...) by omd
 
 Edges:
   run-... --wasGeneratedBy--> act-execute-run-...
   act-execute-run-... --used--> plan-paraboloid-analysis/v1
+  act-assess-run-... --used--> run-...
+  assessment-run-... --wasGeneratedBy--> act-assess-run-...
 ```
+
+## viewer
+
+Start the interactive SDK provenance viewer as a live HTTP server. This is
+a different viewer from the static HTML above -- it shows **tool-call-level**
+provenance from MCP server sessions (recorded by `@capture_tool`), not the
+plan-lifecycle provenance from the omd analysis DB.
+
+```bash
+omd-cli viewer [--port PORT] [--db PATH]
+```
+
+**Options:**
+- `--port` -- port to serve on (default: 7654)
+- `--db` -- path to SDK provenance database
+
+**Usage:**
+1. Run `omd-cli viewer` in one terminal
+2. Open `http://localhost:7654/` in a browser
+3. Select a session from the dropdown or drag-drop a provenance JSON file
+4. Press Ctrl+C in the terminal to stop the server
+
+**When this has data:** The SDK provenance DB is populated when tools run
+through the MCP server (e.g. `uv run python -m hangar.omd.server`). If you
+have only used the CLI (`omd-cli run`), this viewer will be empty -- use
+`omd-cli provenance --format html` instead.
+
+### Summary: which viewer to use
+
+| Situation | Command | What it shows |
+|-----------|---------|---------------|
+| After `omd-cli run` | `omd-cli provenance <plan_id> --format html -o dag.html` | Plan/run/assessment DAG (static file) |
+| After MCP server session | `omd-cli viewer` | Tool call sequence + decisions (live server) |
+| Quick terminal check | `omd-cli provenance <plan_id> --format text` | Text timeline |

@@ -144,6 +144,15 @@ omd-cli results <run_id> --summary
 
 # View provenance
 omd-cli provenance <plan_id> --format text
+omd-cli provenance <plan_id> --format html -o dag.html
+
+# Start interactive Cytoscape.js provenance viewer
+omd-cli viewer
+
+# Export static provenance DAG HTML
+omd-cli provenance <plan_id> --format html -o dag.html
+# On WSL, open in Windows browser:
+explorer.exe "$(wslpath -w dag.html)"
 
 # Export standalone Python script
 omd-cli export plan.yaml --output script.py

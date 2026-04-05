@@ -266,6 +266,100 @@ def plot_cmd(run_id: str | None, plot_type: str, output: str | None,
         click.echo("No plots generated (data may not be available for requested types)")
 
 
+def _omd_provenance_handler(
+    qs: dict[str, list[str]],
+) -> tuple[int, str, bytes]:
+    """Serve the omd provenance DAG as HTML via the SDK viewer server."""
+    from hangar.omd.provenance import provenance_dag_html
+    from pathlib import Path
+
+    plan_id = (qs.get("plan_id") or [None])[0]
+    if not plan_id:
+        # Return a simple index listing available plan IDs
+        from hangar.omd.db import init_analysis_db, get_db_path
+        init_analysis_db()
+        import sqlite3
+        db = sqlite3.connect(str(get_db_path()))
+        rows = db.execute(
+            "SELECT DISTINCT plan_id FROM entities WHERE plan_id IS NOT NULL"
+        ).fetchall()
+        db.close()
+        plan_ids = sorted({r[0] for r in rows})
+        links = "".join(
+            f'<li><a href="/omd-provenance?plan_id={pid}">{pid}</a></li>'
+            for pid in plan_ids
+        )
+        html = (
+            "<!DOCTYPE html><html><head><title>omd provenance</title>"
+            "<style>"
+            "body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;"
+            "background:#0f1117;color:#e0e0e0;padding:24px;}"
+            "h1{font-size:18px;font-weight:600;color:#8eb6ff;margin-bottom:16px;}"
+            "ul{list-style:none;padding:0;}"
+            "li{margin:6px 0;}"
+            "a{color:#8eb6ff;text-decoration:none;font-size:14px;"
+            "padding:6px 12px;display:inline-block;border-radius:5px;"
+            "border:1px solid #2d3047;background:#1a1d27;}"
+            "a:hover{background:#252839;border-color:#4a5070;}"
+            "</style></head>"
+            f"<body><h1>omd Provenance</h1><ul>{links}</ul></body></html>"
+        )
+        return 200, "text/html; charset=utf-8", html.encode()
+
+    # Generate the DAG HTML to a temporary path, read it back
+    import tempfile
+    with tempfile.NamedTemporaryFile(suffix=".html", delete=False) as tmp:
+        tmp_path = Path(tmp.name)
+    try:
+        provenance_dag_html(plan_id, tmp_path)
+        body = tmp_path.read_bytes()
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+    return 200, "text/html; charset=utf-8", body
+
+
+@cli.command("viewer")
+@click.option("--port", type=int, default=7654,
+              help="Port for viewer server")
+@click.option("--db", "db_path", type=click.Path(), default=None,
+              help="Path to SDK provenance database")
+def viewer_cmd(port: int, db_path: str | None) -> None:
+    """Start the provenance DAG viewer server.
+
+    Serves the SDK provenance viewer at http://localhost:PORT/viewer
+    and the omd plan/analysis provenance DAG at
+    http://localhost:PORT/omd-provenance.
+    """
+    import os
+    import signal
+    import threading
+
+    # Allow port override via env var (consistent with SDK convention)
+    os.environ.setdefault("HANGAR_PROV_PORT", str(port))
+    if db_path:
+        os.environ["HANGAR_PROV_DB"] = db_path
+
+    from hangar.sdk.viz.viewer_server import register_viewer_route, start_viewer_server
+
+    register_viewer_route("/omd-provenance", _omd_provenance_handler)
+
+    actual_port = start_viewer_server()
+    if actual_port is None:
+        click.echo(f"Failed to start viewer (port {port} may be in use)", err=True)
+        raise SystemExit(1)
+
+    click.echo(f"SDK viewer:       http://localhost:{actual_port}/viewer")
+    click.echo(f"omd provenance:   http://localhost:{actual_port}/omd-provenance")
+    click.echo("Press Ctrl+C to stop.")
+
+    # Block until interrupted -- the server runs in a daemon thread
+    stop = threading.Event()
+    signal.signal(signal.SIGINT, lambda *_: stop.set())
+    signal.signal(signal.SIGTERM, lambda *_: stop.set())
+    stop.wait()
+
+
 def main() -> None:
     """Entry point for omd-cli."""
     cli()

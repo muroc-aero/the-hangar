@@ -118,10 +118,20 @@ def provenance_dag_html(
     nodes = []
     for entity in dag["entities"]:
         etype = entity.get("entity_type", "unknown")
+        eid = entity["entity_id"]
+        # Build a compact label: show the short id or version info
+        if etype == "plan":
+            version = entity.get("version")
+            label = f"v{version}" if version else eid.split("/")[-1]
+        elif etype == "run_record":
+            # Show just the timestamp portion of the run id
+            label = eid.replace("run-", "")[:15]
+        else:
+            label = etype
         nodes.append({
             "data": {
-                "id": entity["entity_id"],
-                "label": f"{etype}\n{entity['entity_id']}",
+                "id": eid,
+                "label": label,
                 "type": "entity",
                 "entity_type": etype,
                 "created_at": entity.get("created_at", ""),
@@ -165,120 +175,260 @@ def provenance_dag_html(
     elements_json = json.dumps(nodes + edges)
 
     html = f"""<!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Provenance DAG: {plan_id}</title>
-    <script src="https://unpkg.com/cytoscape@3/dist/cytoscape.min.js"></script>
-    <script src="https://unpkg.com/dagre@0.8/dist/dagre.min.js"></script>
-    <script src="https://unpkg.com/cytoscape-dagre@2/cytoscape-dagre.js"></script>
-    <style>
-        body {{ margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-               background: #f5f5f5; }}
-        #header {{ padding: 12px 20px; background: #fff; border-bottom: 1px solid #ddd;
-                   display: flex; align-items: center; gap: 12px; }}
-        #header h1 {{ font-size: 16px; color: #333; margin: 0; }}
-        #legend {{ font-size: 11px; color: #666; display: flex; gap: 16px; }}
-        .legend-item {{ display: flex; align-items: center; gap: 4px; }}
-        .legend-dot {{ width: 10px; height: 10px; border-radius: 50%; display: inline-block; }}
-        #cy {{ width: 100%; height: calc(100vh - 90px); }}
-        #detail-panel {{ position: absolute; bottom: 0; left: 0; right: 0;
-                         background: #fff; border-top: 2px solid #ddd;
-                         padding: 12px 20px; font-size: 13px; display: none;
-                         max-height: 200px; overflow-y: auto; }}
-        #detail-panel h3 {{ margin: 0 0 8px 0; font-size: 14px; }}
-        #detail-panel .field {{ margin: 2px 0; }}
-        #detail-panel .field-label {{ color: #666; }}
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>omd Provenance: {plan_id}</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dagre/0.8.5/dagre.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/cytoscape-dagre.min.js"></script>
+<style>
+  *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #0f1117; color: #e0e0e0;
+    height: 100vh; display: flex; flex-direction: column; overflow: hidden;
+  }}
+
+  #toolbar {{
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 14px; background: #1a1d27;
+    border-bottom: 1px solid #2d3047; flex-shrink: 0;
+  }}
+  #toolbar h1 {{ font-size: 15px; font-weight: 600; color: #8eb6ff; }}
+  #toolbar .plan-id {{ font-size: 13px; color: #6080b0; margin-left: 4px; }}
+  .btn {{
+    padding: 5px 12px; border-radius: 5px; border: 1px solid #3a3e54;
+    background: #252839; color: #c0c8e8; cursor: pointer; font-size: 12px;
+  }}
+  .btn:hover {{ background: #2e3245; }}
+
+  #legend {{
+    display: flex; gap: 14px; font-size: 11px; color: #888; align-items: center;
+  }}
+  .legend-item {{ display: flex; align-items: center; gap: 4px; }}
+  .legend-dot {{
+    width: 10px; height: 10px; border-radius: 2px; display: inline-block;
+  }}
+
+  #main {{ display: flex; flex: 1; min-height: 0; }}
+
+  #cy-container {{ flex: 1; position: relative; min-width: 0; }}
+  #cy {{ width: 100%; height: 100%; }}
+
+  #panel {{
+    width: 320px; background: #1a1d27; border-left: 1px solid #2d3047;
+    display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0;
+  }}
+  #panel-header {{
+    padding: 10px 14px; font-size: 12px; font-weight: 600; color: #8eb6ff;
+    border-bottom: 1px solid #2d3047; background: #1e2130;
+  }}
+  #panel-body {{
+    flex: 1; overflow-y: auto; padding: 12px 14px; font-size: 12px; line-height: 1.6;
+  }}
+  #panel-body h3 {{ font-size: 13px; color: #9cb8ff; margin: 10px 0 6px 0; }}
+  #panel-body h3:first-child {{ margin-top: 0; }}
+  .kv {{ margin-bottom: 4px; }}
+  .kv .key {{ color: #888; font-size: 11px; }}
+  .kv .val {{ color: #d0d8f0; word-break: break-word; }}
+  .badge {{
+    display: inline-block; padding: 2px 7px; border-radius: 10px;
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+  }}
+  .badge-plan       {{ background: #1a2a4a; color: #8eb6ff; }}
+  .badge-run        {{ background: #102a3a; color: #5ac8fa; }}
+  .badge-assessment {{ background: #1a3a2a; color: #4cdf88; }}
+  .badge-activity   {{ background: #1a2030; color: #7aa0d0; }}
+  .badge-completed  {{ background: #1a3a2a; color: #4cdf88; }}
+  .badge-failed     {{ background: #4a1a1a; color: #ff6b6b; }}
+  .mono {{ font-family: monospace; font-size: 10px; color: #a0a8c0; }}
+
+  #empty-state {{
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; color: #555; pointer-events: none;
+  }}
+  #empty-state p {{ font-size: 14px; }}
+</style>
 </head>
 <body>
-    <div id="header">
-        <h1>Provenance DAG: {plan_id}</h1>
-        <div id="legend">
-            <span class="legend-item"><span class="legend-dot" style="background:#7b2d8e"></span> Plan</span>
-            <span class="legend-item"><span class="legend-dot" style="background:#4a90d9"></span> Run</span>
-            <span class="legend-item"><span class="legend-dot" style="background:#e6a23c"></span> Activity</span>
-            <span class="legend-item"><span class="legend-dot" style="background:#27ae60"></span> Pass</span>
-            <span class="legend-item"><span class="legend-dot" style="background:#e74c3c"></span> Fail</span>
-        </div>
-    </div>
-    <div id="cy"></div>
-    <div id="detail-panel"></div>
-    <script>
-        var cy = cytoscape({{
-            container: document.getElementById('cy'),
-            elements: {elements_json},
-            style: [
-                /* Plan entities: purple */
-                {{ selector: 'node[entity_type="plan"]',
-                   style: {{ 'background-color': '#7b2d8e', 'label': 'data(label)',
-                            'text-wrap': 'wrap', 'font-size': '10px', 'color': '#333',
-                            'text-valign': 'bottom', 'text-margin-y': 5,
-                            'width': 36, 'height': 36 }} }},
-                /* Run entities: blue */
-                {{ selector: 'node[entity_type="run_record"]',
-                   style: {{ 'background-color': '#4a90d9', 'label': 'data(label)',
-                            'text-wrap': 'wrap', 'font-size': '10px', 'color': '#333',
-                            'text-valign': 'bottom', 'text-margin-y': 5,
-                            'width': 36, 'height': 36 }} }},
-                /* Assessment/validation: green or red by status */
-                {{ selector: 'node[entity_type="assessment"]',
-                   style: {{ 'background-color': '#27ae60', 'label': 'data(label)',
-                            'text-wrap': 'wrap', 'font-size': '10px',
-                            'width': 30, 'height': 30 }} }},
-                {{ selector: 'node[entity_type="validation_report"]',
-                   style: {{ 'background-color': '#e6a23c', 'label': 'data(label)',
-                            'text-wrap': 'wrap', 'font-size': '10px',
-                            'width': 30, 'height': 30 }} }},
-                /* Fallback entity style */
-                {{ selector: 'node[type="entity"]',
-                   style: {{ 'background-color': '#95a5a6', 'label': 'data(label)',
-                            'text-wrap': 'wrap', 'font-size': '10px',
-                            'width': 30, 'height': 30 }} }},
-                /* Activities: orange diamonds */
-                {{ selector: 'node[type="activity"]',
-                   style: {{ 'background-color': '#e6a23c', 'shape': 'diamond',
-                            'label': 'data(label)', 'text-wrap': 'wrap',
-                            'font-size': '10px', 'color': '#333',
-                            'text-valign': 'bottom', 'text-margin-y': 5,
-                            'width': 32, 'height': 32 }} }},
-                /* Failed activities: red border */
-                {{ selector: 'node[status="failed"]',
-                   style: {{ 'border-width': 3, 'border-color': '#e74c3c' }} }},
-                /* Normal edges: solid */
-                {{ selector: 'edge',
-                   style: {{ 'width': 2, 'line-color': '#999',
-                            'target-arrow-color': '#999', 'target-arrow-shape': 'triangle',
-                            'curve-style': 'bezier', 'label': 'data(label)',
-                            'font-size': '8px', 'color': '#777' }} }},
-                /* wasDerivedFrom edges: dashed purple */
-                {{ selector: 'edge[relation="wasDerivedFrom"]',
-                   style: {{ 'line-style': 'dashed', 'line-color': '#7b2d8e',
-                            'target-arrow-color': '#7b2d8e', 'width': 2.5 }} }}
-            ],
-            layout: {{ name: 'dagre', rankDir: 'TB', padding: 50, spacingFactor: 1.5 }}
-        }});
 
-        /* Click handler: show details panel */
-        var panel = document.getElementById('detail-panel');
-        cy.on('tap', 'node', function(evt) {{
-            var d = evt.target.data();
-            var html = '<h3>' + d.id + '</h3>';
-            var fields = ['entity_type', 'activity_type', 'status', 'agent',
-                          'created_at', 'started_at', 'completed_at',
-                          'created_by', 'version', 'content_hash', 'storage_ref'];
-            for (var i = 0; i < fields.length; i++) {{
-                if (d[fields[i]]) {{
-                    html += '<div class="field"><span class="field-label">' +
-                            fields[i] + ':</span> ' + d[fields[i]] + '</div>';
-                }}
-            }}
-            panel.innerHTML = html;
-            panel.style.display = 'block';
-        }});
-        cy.on('tap', function(evt) {{
-            if (evt.target === cy) panel.style.display = 'none';
-        }});
-    </script>
+<div id="toolbar">
+  <h1>omd Provenance</h1>
+  <span class="plan-id">{plan_id}</span>
+  <div style="flex:1"></div>
+  <div id="legend">
+    <span class="legend-item"><span class="legend-dot" style="background:#4a9eff"></span> Plan</span>
+    <span class="legend-item"><span class="legend-dot" style="background:#3ac8fa"></span> Run</span>
+    <span class="legend-item"><span class="legend-dot" style="background:#5a8abf"></span> Activity</span>
+    <span class="legend-item"><span class="legend-dot" style="background:#2ad0a0"></span> Assessment</span>
+  </div>
+  <button class="btn" id="btn-fit">Fit</button>
+</div>
+
+<div id="main">
+  <div id="cy-container">
+    <div id="cy"></div>
+  </div>
+  <div id="panel">
+    <div id="panel-header">Node Details</div>
+    <div id="panel-body"><p style="color:#666;font-size:12px">Click a node to inspect it.</p></div>
+  </div>
+</div>
+
+<script>
+cytoscape.use(cytoscapeDagre);
+
+var cy = cytoscape({{
+  container: document.getElementById('cy'),
+  elements: {elements_json},
+  style: [
+    /* Plan entities: bright electric blue */
+    {{ selector: 'node[entity_type="plan"]',
+       style: {{
+         'shape': 'round-rectangle', 'width': 140, 'height': 40,
+         'background-color': '#0d1f3c', 'border-width': 2, 'border-color': '#4a9eff',
+         'label': 'data(label)', 'text-wrap': 'wrap', 'font-size': 10,
+         'color': '#a0ccff', 'text-valign': 'center', 'text-halign': 'center',
+         'text-max-width': '130px',
+       }} }},
+    /* Run record entities: cyan-blue */
+    {{ selector: 'node[entity_type="run_record"]',
+       style: {{
+         'shape': 'round-rectangle', 'width': 140, 'height': 40,
+         'background-color': '#0a1e2e', 'border-width': 2, 'border-color': '#3ac8fa',
+         'label': 'data(label)', 'text-wrap': 'wrap', 'font-size': 10,
+         'color': '#80d8ff', 'text-valign': 'center', 'text-halign': 'center',
+         'text-max-width': '130px',
+       }} }},
+    /* Assessment: teal-green */
+    {{ selector: 'node[entity_type="assessment"]',
+       style: {{
+         'shape': 'round-rectangle', 'width': 120, 'height': 36,
+         'background-color': '#0a2a20', 'border-width': 2, 'border-color': '#2ad0a0',
+         'label': 'data(label)', 'text-wrap': 'wrap', 'font-size': 10,
+         'color': '#70e8c0', 'text-valign': 'center', 'text-halign': 'center',
+         'text-max-width': '110px',
+       }} }},
+    /* Validation report: slate blue */
+    {{ selector: 'node[entity_type="validation_report"]',
+       style: {{
+         'shape': 'round-rectangle', 'width': 120, 'height': 36,
+         'background-color': '#141a2e', 'border-width': 2, 'border-color': '#6080c0',
+         'label': 'data(label)', 'text-wrap': 'wrap', 'font-size': 10,
+         'color': '#90a8d0', 'text-valign': 'center', 'text-halign': 'center',
+         'text-max-width': '110px',
+       }} }},
+    /* Fallback entity */
+    {{ selector: 'node[type="entity"]',
+       style: {{
+         'shape': 'round-rectangle', 'width': 120, 'height': 36,
+         'background-color': '#111828', 'border-width': 1, 'border-color': '#3a4a6a',
+         'label': 'data(label)', 'text-wrap': 'wrap', 'font-size': 10,
+         'color': '#8898b8', 'text-valign': 'center', 'text-halign': 'center',
+         'text-max-width': '110px',
+       }} }},
+    /* Activities: steel blue diamonds */
+    {{ selector: 'node[type="activity"]',
+       style: {{
+         'shape': 'diamond', 'width': 110, 'height': 60,
+         'background-color': '#0e1a2e', 'border-width': 2, 'border-color': '#5a8abf',
+         'label': 'data(label)', 'text-wrap': 'wrap', 'font-size': 10,
+         'color': '#90b0d8', 'text-valign': 'center', 'text-halign': 'center',
+         'text-max-width': '90px',
+       }} }},
+    /* Failed activities: red border */
+    {{ selector: 'node[status="failed"]',
+       style: {{ 'border-width': 3, 'border-color': '#ff4a4a', 'background-color': '#2a0a0a' }} }},
+    /* Selected node highlight */
+    {{ selector: 'node:selected',
+       style: {{ 'border-width': 3, 'border-color': '#9ab0ff' }} }},
+    /* Edges: default */
+    {{ selector: 'edge',
+       style: {{
+         'width': 2, 'line-color': '#2a3a5a', 'target-arrow-color': '#2a3a5a',
+         'target-arrow-shape': 'triangle', 'curve-style': 'taxi',
+         'arrow-scale': 1.2, 'label': 'data(label)',
+         'font-size': 9, 'color': '#4a6080', 'text-rotation': 'autorotate',
+       }} }},
+    /* wasGeneratedBy: bright blue */
+    {{ selector: 'edge[relation="wasGeneratedBy"]',
+       style: {{ 'line-color': '#3080d0', 'target-arrow-color': '#3080d0' }} }},
+    /* used: teal */
+    {{ selector: 'edge[relation="used"]',
+       style: {{ 'line-color': '#2a90a0', 'target-arrow-color': '#2a90a0' }} }},
+    /* wasDerivedFrom: dashed light blue */
+    {{ selector: 'edge[relation="wasDerivedFrom"]',
+       style: {{
+         'line-style': 'dashed', 'line-dash-pattern': [6, 3],
+         'line-color': '#5a80c0', 'target-arrow-color': '#5a80c0', 'width': 2.5,
+       }} }},
+  ],
+  layout: {{ name: 'dagre', rankDir: 'TB', nodeSep: 40, rankSep: 80, edgeSep: 10 }},
+}});
+
+cy.fit(30);
+
+/* Fit button */
+document.getElementById('btn-fit').addEventListener('click', function() {{ cy.fit(30); }});
+
+/* Click handler: show details in side panel */
+function escHtml(s) {{
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}}
+
+cy.on('tap', 'node', function(evt) {{
+  var d = evt.target.data();
+  var body = document.getElementById('panel-body');
+  var html = '';
+
+  if (d.type === 'entity') {{
+    var etype = d.entity_type || 'entity';
+    var badgeClass = etype === 'plan' ? 'badge-plan'
+                   : etype === 'run_record' ? 'badge-run'
+                   : etype === 'assessment' ? 'badge-assessment'
+                   : 'badge-activity';
+    html += '<h3>' + escHtml(etype) + ' <span class="badge ' + badgeClass + '">' + escHtml(etype) + '</span></h3>';
+    html += '<div class="kv"><span class="key">id </span><span class="val mono">' + escHtml(d.id) + '</span></div>';
+    if (d.created_at)   html += '<div class="kv"><span class="key">created_at </span><span class="val">' + escHtml(d.created_at) + '</span></div>';
+    if (d.created_by)   html += '<div class="kv"><span class="key">created_by </span><span class="val">' + escHtml(d.created_by) + '</span></div>';
+    if (d.version)      html += '<div class="kv"><span class="key">version </span><span class="val">' + escHtml(d.version) + '</span></div>';
+    if (d.content_hash) html += '<div class="kv"><span class="key">content_hash </span><span class="val mono">' + escHtml(d.content_hash) + '</span></div>';
+    if (d.storage_ref)  html += '<div class="kv"><span class="key">storage_ref </span><span class="val mono">' + escHtml(d.storage_ref) + '</span></div>';
+  }} else {{
+    var status = d.status || 'unknown';
+    var statusClass = status === 'completed' ? 'badge-completed' : status === 'failed' ? 'badge-failed' : 'badge-activity';
+    html += '<h3>' + escHtml((d.activity_type || 'activity').toUpperCase()) + ' <span class="badge ' + statusClass + '">' + escHtml(status) + '</span></h3>';
+    html += '<div class="kv"><span class="key">id </span><span class="val mono">' + escHtml(d.id) + '</span></div>';
+    if (d.agent)        html += '<div class="kv"><span class="key">agent </span><span class="val">' + escHtml(d.agent) + '</span></div>';
+    if (d.started_at)   html += '<div class="kv"><span class="key">started_at </span><span class="val">' + escHtml(d.started_at) + '</span></div>';
+    if (d.completed_at) html += '<div class="kv"><span class="key">completed_at </span><span class="val">' + escHtml(d.completed_at) + '</span></div>';
+  }}
+
+  /* Show connected edges */
+  var conns = evt.target.connectedEdges();
+  if (conns.length > 0) {{
+    html += '<h3>Edges</h3>';
+    conns.forEach(function(e) {{
+      var ed = e.data();
+      var direction = ed.source === d.id ? 'out' : 'in';
+      var other = direction === 'out' ? ed.target : ed.source;
+      var arrow = direction === 'out' ? '&rarr;' : '&larr;';
+      html += '<div class="kv"><span class="key">' + escHtml(ed.relation) + ' ' + arrow + ' </span><span class="val mono">' + escHtml(other) + '</span></div>';
+    }});
+  }}
+
+  body.innerHTML = html;
+}});
+
+cy.on('tap', function(evt) {{
+  if (evt.target === cy) {{
+    document.getElementById('panel-body').innerHTML = '<p style="color:#666;font-size:12px">Click a node to inspect it.</p>';
+  }}
+}});
+</script>
 </body>
 </html>"""
 
