@@ -33,6 +33,17 @@ _FIG_WIDTH = 6.0   # inches -> 900 px at 150 DPI
 _FIG_HEIGHT = 3.6  # inches -> 540 px at 150 DPI
 
 
+def _make_fig(title: str, run_id: str = "", **fig_kwargs) -> tuple:
+    """Create a figure with suptitle and run_id subtitle matching oas-cli."""
+    fig_kwargs.setdefault("figsize", (_FIG_WIDTH, _FIG_HEIGHT))
+    fig, ax = plt.subplots(**fig_kwargs)
+    suptitle = title
+    if run_id:
+        suptitle += f"\n({run_id})"
+    fig.suptitle(suptitle, fontsize=9, y=0.98)
+    return fig, ax
+
+
 # ---------------------------------------------------------------------------
 # Planform
 # ---------------------------------------------------------------------------
@@ -58,6 +69,7 @@ def plot_planform(
     Returns:
         matplotlib Figure.
     """
+    run_id = kwargs.get("run_id", "")
     reader, case = get_reader_and_final_case(recorder_path)
 
     surf = surface_name or "*"
@@ -85,7 +97,7 @@ def plot_planform(
     if mirror and mesh.ndim == 3:
         mesh = _mirror_mesh(mesh)
 
-    fig, ax = plt.subplots(figsize=(_FIG_WIDTH, _FIG_HEIGHT))
+    fig, ax = _make_fig("Wing Planform", run_id)
 
     if mesh.ndim == 3:
         nx, ny, _ = mesh.shape
@@ -153,6 +165,7 @@ def plot_lift_distribution(
     Returns:
         matplotlib Figure.
     """
+    run_id = kwargs.get("run_id", "")
     reader, case = get_reader_and_final_case(recorder_path)
 
     surf = surface_name or "*"
@@ -171,7 +184,7 @@ def plot_lift_distribution(
     _, rho_val = find_first_output(case, "prob_vars.rho", "*rho*")
     _, v_val = find_first_output(case, "prob_vars.v", "*v*")
 
-    fig, ax = plt.subplots(figsize=(_FIG_WIDTH, _FIG_HEIGHT))
+    fig, ax = _make_fig("Lift Distribution", run_id)
 
     if values is not None and name and "sec_forces" in name:
         values = np.array(values)
@@ -293,6 +306,7 @@ def plot_structural_deformation(
     Returns:
         matplotlib Figure.
     """
+    run_id = kwargs.get("run_id", "")
     reader, case = get_reader_and_final_case(recorder_path)
 
     surf = surface_name or "*"
@@ -313,7 +327,7 @@ def plot_structural_deformation(
 
     def_mesh = np.array(def_mesh_raw)
 
-    fig, ax = plt.subplots(figsize=(_FIG_WIDTH, _FIG_HEIGHT))
+    fig, ax = _make_fig("Deflection Profile", run_id)
 
     if def_mesh.ndim == 3:
         # Compute displacement from reference (not absolute position)
@@ -347,7 +361,6 @@ def plot_structural_deformation(
     ax.axhline(0, color="gray", linewidth=0.8, linestyle="--", alpha=0.5)
     ax.set_xlabel("Normalised spanwise station eta  [--]   (0 = root, 1 = tip)")
     ax.set_ylabel("Vertical deflection  [m]")
-    ax.set_title("Deflection Profile", fontsize=8)
     ax.legend(fontsize=7)
     ax.grid(True, alpha=0.3)
     fig.tight_layout(rect=[0, 0, 1, 0.93])
@@ -379,6 +392,7 @@ def plot_twist(
     Returns:
         matplotlib Figure.
     """
+    run_id = kwargs.get("run_id", "")
     reader, case = get_reader_and_final_case(recorder_path)
 
     surf = surface_name or "*"
@@ -425,7 +439,11 @@ def plot_twist(
     if mirror:
         span_twist, twist = mirror_spanwise(span_twist, twist)
 
+    suptitle = "Twist & Chord Distribution"
+    if run_id:
+        suptitle += f"\n({run_id})"
     fig, ax1 = plt.subplots(figsize=(_FIG_WIDTH, _FIG_HEIGHT))
+    fig.suptitle(suptitle, fontsize=9, y=0.98)
 
     color_tw = "tab:blue"
     ax1.plot(span_twist, twist, color=color_tw, linewidth=1.5,
@@ -482,6 +500,7 @@ def plot_thickness(
     Returns:
         matplotlib Figure.
     """
+    run_id = kwargs.get("run_id", "")
     reader, case = get_reader_and_final_case(recorder_path)
 
     surf = surface_name or "*"
@@ -518,11 +537,10 @@ def plot_thickness(
     if mirror:
         span_frac, thickness = mirror_spanwise(span_frac, thickness)
 
-    fig, ax = plt.subplots(figsize=(_FIG_WIDTH, _FIG_HEIGHT))
+    fig, ax = _make_fig("Spanwise Spar Thickness", run_id)
     ax.plot(span_frac, thickness * 1000, "b-o", markersize=4)
     ax.set_xlabel("Normalised spanwise station eta  [--]   (0 = root, 1 = tip)")
     ax.set_ylabel("Thickness (mm)")
-    ax.set_title("Spanwise Spar Thickness Distribution", fontsize=8)
     ax.grid(True, alpha=0.3)
     fig.tight_layout(rect=[0, 0, 1, 0.93])
 
@@ -557,6 +575,7 @@ def plot_vonmises(
     Returns:
         matplotlib Figure.
     """
+    run_id = kwargs.get("run_id", "")
     reader, case = get_reader_and_final_case(recorder_path)
 
     surf = surface_name or "*"
@@ -601,7 +620,7 @@ def plot_vonmises(
     if mirror:
         span_frac, vm_peak_mpa = mirror_spanwise(span_frac, vm_peak_mpa)
 
-    fig, ax = plt.subplots(figsize=(_FIG_WIDTH, _FIG_HEIGHT))
+    fig, ax = _make_fig("Stress Distribution", run_id)
     vm_label = surface_name or detect_surface_name(case) or "wing"
     ax.plot(span_frac, vm_peak_mpa, linewidth=2, label=vm_label)
 
@@ -636,7 +655,6 @@ def plot_vonmises(
 
     ax.set_xlabel("Normalised spanwise station eta  [--]   (0 = root, 1 = tip)")
     ax.set_ylabel("von Mises stress  [MPa]")
-    ax.set_title("Stress Distribution", fontsize=8)
     ax.legend(fontsize=7)
     ax.grid(True, alpha=0.3)
     fig.tight_layout(rect=[0, 0, 1, 0.93])
@@ -666,6 +684,7 @@ def plot_skin_spar(
     Returns:
         matplotlib Figure.
     """
+    run_id = kwargs.get("run_id", "")
     reader, case = get_reader_and_final_case(recorder_path)
 
     surf = surface_name or "*"
@@ -686,7 +705,7 @@ def plot_skin_spar(
     # Get mesh for span coordinates
     _, mesh_raw = find_first_output(case, f"*{surf}*.mesh", "*.mesh")
 
-    fig, ax = plt.subplots(figsize=(_FIG_WIDTH, _FIG_HEIGHT))
+    fig, ax = _make_fig("Skin and Spar Thickness", run_id)
 
     if skin is not None:
         skin = np.array(skin).flatten()
@@ -732,7 +751,6 @@ def plot_skin_spar(
 
     ax.set_xlabel("Normalised spanwise station eta  [--]   (0 = root, 1 = tip)")
     ax.set_ylabel("Thickness (mm)")
-    ax.set_title("Skin and Spar Thickness", fontsize=8)
     ax.legend(fontsize=7)
     ax.grid(True, alpha=0.3)
     fig.tight_layout(rect=[0, 0, 1, 0.93])
@@ -762,6 +780,7 @@ def plot_t_over_c(
     Returns:
         matplotlib Figure.
     """
+    run_id = kwargs.get("run_id", "")
     reader, case = get_reader_and_final_case(recorder_path)
 
     surf = surface_name or "*"
@@ -797,11 +816,10 @@ def plot_t_over_c(
     if mirror:
         span_frac, toc = mirror_spanwise(span_frac, toc)
 
-    fig, ax = plt.subplots(figsize=(_FIG_WIDTH, _FIG_HEIGHT))
+    fig, ax = _make_fig("Spanwise t/c Distribution", run_id)
     ax.plot(span_frac, toc, "k-o", markersize=4)
     ax.set_xlabel("Normalised spanwise station eta  [--]   (0 = root, 1 = tip)")
     ax.set_ylabel("Thickness to Chord Ratio")
-    ax.set_title("Spanwise t/c Distribution", fontsize=8)
     ax.grid(True, alpha=0.3)
     fig.tight_layout(rect=[0, 0, 1, 0.93])
 
@@ -907,6 +925,7 @@ def plot_mesh_3d(
     Returns:
         matplotlib Figure.
     """
+    run_id = kwargs.get("run_id", "")
     reader, case = get_reader_and_final_case(recorder_path)
 
     surf = surface_name or "*"
@@ -931,6 +950,10 @@ def plot_mesh_3d(
 
     fig = plt.figure(figsize=(_FIG_3D_WIDTH, _FIG_3D_HEIGHT))
     ax = fig.add_subplot(111, projection="3d")
+    suptitle = "3D Wing Mesh"
+    if run_id:
+        suptitle += f"\n({run_id})"
+    fig.suptitle(suptitle, fontsize=9, y=0.98)
 
     x = mesh[:, :, 0]
     y = mesh[:, :, 1]
