@@ -103,6 +103,16 @@ def generate_plots(
     saved: dict[str, Path] = {}
 
     for ptype in plot_types:
+        # N2 is special: copy pre-generated HTML instead of rendering matplotlib
+        if ptype == "n2":
+            try:
+                n2_path = _resolve_n2(run_id, output_dir)
+                if n2_path:
+                    saved["n2"] = n2_path
+            except Exception as exc:
+                logger.warning("Skipping n2: %s", exc)
+            continue
+
         func = available.get(ptype)
         if func is None:
             logger.warning("Unknown plot type: %s", ptype)
@@ -129,3 +139,26 @@ def generate_plots(
             logger.warning("Skipping %s plot: %s", ptype, exc)
 
     return saved
+
+
+def _resolve_n2(run_id: str, output_dir: Path) -> Path | None:
+    """Copy pre-generated N2 HTML to the plot output directory.
+
+    The N2 HTML is generated during `omd-cli run` and stored at
+    hangar_data/omd/n2/{run_id}.html. This copies it to the plot
+    output directory for consistency.
+
+    Returns the output path, or None if no N2 file exists.
+    """
+    import shutil
+    from hangar.omd.db import n2_dir
+
+    src = n2_dir() / f"{run_id}.html"
+    if not src.exists():
+        logger.warning("No N2 diagram found at %s (run predates N2 generation?)", src)
+        return None
+
+    dst = output_dir / "n2.html"
+    shutil.copy2(src, dst)
+    logger.info("N2 diagram copied to %s", dst)
+    return dst

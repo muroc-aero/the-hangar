@@ -174,6 +174,14 @@ def recordings_dir() -> Path:
     return omd_data_root() / "recordings"
 
 
+def n2_dir() -> Path:
+    """Return the directory for N2 diagram HTML files.
+
+    Defaults to {omd_data_root}/n2/.
+    """
+    return omd_data_root() / "n2"
+
+
 # ---------------------------------------------------------------------------
 # Initialization
 # ---------------------------------------------------------------------------

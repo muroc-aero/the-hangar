@@ -305,7 +305,13 @@ def plot_dv_evolution(
     return fig
 
 
+# N2 is a sentinel -- generate_plots() handles it specially (copies HTML
+# from hangar_data/omd/n2/ rather than calling a matplotlib function).
+# Listed here so it appears in --list-types for all component types.
+_N2_SENTINEL = None
+
 GENERIC_PLOTS: dict[str, callable] = {
     "convergence": plot_convergence,
     "dv_evolution": plot_dv_evolution,
+    "n2": _N2_SENTINEL,
 }

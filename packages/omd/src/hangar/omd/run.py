@@ -19,6 +19,7 @@ from hangar.omd.db import (
     init_analysis_db,
     plan_store_dir,
     recordings_dir,
+    n2_dir,
     record_entity,
     record_activity,
     add_prov_edge,
@@ -129,6 +130,10 @@ def run_plan(
             prob.run_model()
 
         prob.record("final")
+
+        # Generate N2 diagram while problem is still live
+        _generate_n2(prob, run_id)
+
         prob.cleanup()
     except Exception as exc:
         prob.cleanup()
@@ -342,6 +347,24 @@ def _extract_summary(prob, metadata: dict, mode: str) -> dict:
             pass
 
     return summary
+
+
+def _generate_n2(prob, run_id: str) -> None:
+    """Generate an N2 (Design Structure Matrix) HTML diagram.
+
+    Called while the OpenMDAO Problem is still live (before cleanup).
+    Saves to hangar_data/omd/n2/{run_id}.html.
+    """
+    try:
+        import openmdao.api as om
+
+        out = n2_dir()
+        out.mkdir(parents=True, exist_ok=True)
+        html_path = out / f"{run_id}.html"
+        om.n2(prob, outfile=str(html_path), show_browser=False, title=run_id)
+        logger.info("N2 diagram saved to %s", html_path)
+    except Exception as exc:
+        logger.warning("Failed to generate N2 diagram: %s", exc)
 
 
 def _record_failure(
