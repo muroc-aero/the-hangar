@@ -448,7 +448,7 @@ def _omd_n2_handler(
 def _omd_problem_dag_handler(
     qs: dict[str, list[str]],
 ) -> tuple[int, str, bytes]:
-    """Serve a simplified OpenMDAO problem DAG as Cytoscape.js HTML."""
+    """Serve a discipline-level analysis flow DAG."""
     import json as _json
     from hangar.omd.db import init_analysis_db, query_entity
 
@@ -462,72 +462,50 @@ def _omd_problem_dag_handler(
         return 404, "application/json", b'{"error":"Model structure not found"}'
 
     try:
-        graph = _json.loads(entity["metadata"])
+        meta = _json.loads(entity["metadata"])
     except Exception:
-        return 500, "application/json", b'{"error":"Invalid model graph data"}'
+        return 500, "application/json", b'{"error":"Invalid model data"}'
 
-    # Build Cytoscape elements from the model graph
-    nodes = []
-    edges = []
+    # Use the discipline graph if available, otherwise fall back
+    dgraph = meta.get("discipline_graph")
+    if not dgraph:
+        # Old data format -- rebuild from component type
+        from hangar.omd.discipline_graph import build_discipline_graph
+        ctype = meta.get("component_type", "")
+        dgraph = build_discipline_graph(ctype)
 
-    for group in graph.get("groups", []):
-        gname = group["name"]
-        gtype = group.get("type", "")
-        outputs = group.get("outputs", [])
-        inputs = group.get("inputs", [])
-        label = gname
-        if outputs:
-            label += "\\n" + ", ".join(outputs[:4])
-            if len(outputs) > 4:
-                label += "..."
-        nodes.append({"data": {
-            "id": gname, "label": label, "type": gtype,
-            "inputs": _json.dumps(inputs), "outputs": _json.dumps(outputs),
+    # Convert to Cytoscape elements
+    cy_elements = []
+    for node in dgraph.get("nodes", []):
+        props_json = _json.dumps(node.get("properties", {}), default=str)
+        cy_elements.append({"data": {
+            "id": node["id"],
+            "label": node["label"],
+            "node_type": node["type"],
+            "properties": props_json,
         }})
-        for child in group.get("children", []):
-            cname = child["pathname"]
-            nodes.append({"data": {
-                "id": cname, "label": child["name"],
-                "type": child.get("type", ""), "parent": gname,
-            }})
 
-    # Aggregate connections at group level with key variable names
-    edge_vars: dict[str, list[str]] = {}
-    node_id_set = {n["data"]["id"] for n in nodes}
-    for conn in graph.get("connections", []):
-        src_parts = conn["src"].split(".")
-        tgt_parts = conn["tgt"].split(".")
-        src_group = src_parts[0]
-        tgt_group = tgt_parts[0]
-        if src_group == tgt_group:
-            continue
-        if src_group not in node_id_set or tgt_group not in node_id_set:
-            continue
-        key = f"{src_group}->{tgt_group}"
-        var_name = src_parts[-1]
-        if key not in edge_vars:
-            edge_vars[key] = []
-        if var_name not in edge_vars[key]:
-            edge_vars[key].append(var_name)
-
-    for key, var_names in edge_vars.items():
-        src, tgt = key.split("->")
-        # Show up to 3 variable names on the edge
-        label = ", ".join(var_names[:3])
-        if len(var_names) > 3:
-            label += f" +{len(var_names)-3}"
-        edges.append({"data": {
-            "source": src, "target": tgt,
+    for edge in dgraph.get("edges", []):
+        props = edge.get("properties", {})
+        variables = props.get("variables", [])
+        label = ", ".join(variables[:3])
+        if len(variables) > 3:
+            label += f" +{len(variables) - 3}"
+        cy_elements.append({"data": {
+            "source": edge["source"],
+            "target": edge["target"],
+            "relation": edge.get("relation", "provides"),
             "label": label,
+            "variables": _json.dumps(variables),
         }})
 
-    elements = _json.dumps(nodes + edges)
+    elements_json = _json.dumps(cy_elements)
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Problem DAG: {run_id}</title>
+<title>Analysis Flow: {run_id}</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dagre/0.8.5/dagre.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/cytoscape-dagre.min.js"></script>
@@ -544,19 +522,22 @@ def _omd_problem_dag_handler(
   .btn:hover {{ background: #2e3245; }}
   #main {{ display: flex; flex: 1; min-height: 0; }}
   #cy {{ flex: 1; }}
-  #panel {{ width: 300px; background: #1a1d27; border-left: 1px solid #2d3047;
+  #panel {{ width: 320px; background: #1a1d27; border-left: 1px solid #2d3047;
             overflow-y: auto; padding: 12px; font-size: 12px; line-height: 1.6; }}
   #panel h3 {{ font-size: 13px; color: #9cb8ff; margin: 8px 0 4px; }}
   #panel h3:first-child {{ margin-top: 0; }}
   .kv {{ margin-bottom: 3px; }}
   .kv .key {{ color: #888; font-size: 11px; }}
-  .kv .val {{ color: #d0d8f0; }}
+  .kv .val {{ color: #d0d8f0; word-break: break-word; }}
   .mono {{ font-family: monospace; font-size: 10px; color: #a0a8c0; }}
+  .var-tag {{ display: inline-block; padding: 1px 6px; border-radius: 3px;
+              font-size: 10px; background: #1a2030; color: #6090b0; margin: 1px;
+              font-family: monospace; }}
 </style>
 </head>
 <body>
 <div id="toolbar">
-  <h1>Problem DAG</h1>
+  <h1>Analysis Flow</h1>
   <span class="sub">{run_id}</span>
   <div style="flex:1"></div>
   <button class="btn" id="btn-fit">Fit</button>
@@ -564,67 +545,142 @@ def _omd_problem_dag_handler(
 <div id="main">
   <div id="cy"></div>
   <div id="panel">
-    <p style="color:#666">Click a node to see its inputs/outputs.</p>
+    <p style="color:#666;font-size:12px">Click a node or edge to inspect it.</p>
   </div>
 </div>
 <script>
 cytoscape.use(cytoscapeDagre);
 var cy = cytoscape({{
   container: document.getElementById('cy'),
-  elements: {elements},
+  elements: {elements_json},
   style: [
-    {{ selector: ':parent', style: {{
-         'background-opacity': 0.08, 'background-color': '#2a4a7a',
-         'border-width': 1, 'border-color': '#2a3a5a', 'padding': '14px',
-         'shape': 'round-rectangle', 'label': 'data(label)',
-         'text-valign': 'top', 'font-size': 11, 'color': '#6080a0',
-    }} }},
-    {{ selector: 'node', style: {{
-         'shape': 'round-rectangle', 'width': 140, 'height': 40,
+    /* Discipline nodes by ID for specific coloring */
+    {{ selector: 'node[node_type="discipline"]', style: {{
+         'shape': 'round-rectangle', 'width': 170, 'height': 50,
          'background-color': '#0d1f3c', 'border-width': 2, 'border-color': '#4a9eff',
-         'label': 'data(label)', 'text-wrap': 'wrap', 'font-size': 9,
+         'label': 'data(label)', 'text-wrap': 'wrap', 'font-size': 11,
          'color': '#a0ccff', 'text-valign': 'center', 'text-halign': 'center',
-         'text-max-width': '130px',
+         'text-max-width': '160px',
     }} }},
-    {{ selector: 'node:selected', style: {{ 'border-color': '#9ab0ff', 'border-width': 3 }} }},
-    {{ selector: 'edge', style: {{
-         'width': 2, 'line-color': '#2a90a0', 'target-arrow-color': '#2a90a0',
+    {{ selector: 'node#geometry', style: {{ 'border-color': '#4a9eff', 'background-color': '#0d1f3c' }} }},
+    {{ selector: 'node#aero', style: {{ 'border-color': '#40c0e0', 'background-color': '#0a1828' }} }},
+    {{ selector: 'node#struct', style: {{ 'border-color': '#5080a0', 'background-color': '#0e1820' }} }},
+    {{ selector: 'node#perf', style: {{ 'border-color': '#30c090', 'background-color': '#0a2018' }} }},
+    /* Coupling loop node */
+    {{ selector: 'node[node_type="coupling_loop"]', style: {{
+         'shape': 'round-rectangle', 'width': 180, 'height': 56,
+         'background-color': '#141020', 'border-width': 3, 'border-color': '#7060b0',
+         'border-style': 'double',
+         'label': 'data(label)', 'text-wrap': 'wrap', 'font-size': 11,
+         'color': '#b0a0d8', 'text-valign': 'center', 'text-halign': 'center',
+         'text-max-width': '170px',
+    }} }},
+    {{ selector: 'node:selected', style: {{ 'border-width': 3, 'border-color': '#9ab0ff' }} }},
+    /* Flow edges */
+    {{ selector: 'edge[relation="provides"]', style: {{
+         'width': 2.5, 'line-color': '#2a80a0', 'target-arrow-color': '#2a80a0',
          'target-arrow-shape': 'triangle', 'curve-style': 'bezier',
-         'label': 'data(label)', 'font-size': 8, 'color': '#4a6080',
-         'text-rotation': 'autorotate',
+         'label': 'data(label)', 'font-size': 8, 'color': '#4a7090',
+         'text-rotation': 'autorotate', 'text-background-opacity': 0.7,
+         'text-background-color': '#0f1117', 'text-background-padding': '2px',
+    }} }},
+    /* Coupling edges */
+    {{ selector: 'edge[relation="couples"]', style: {{
+         'width': 3, 'line-color': '#7060b0', 'target-arrow-color': '#7060b0',
+         'target-arrow-shape': 'triangle',
+         'source-arrow-shape': 'triangle', 'source-arrow-color': '#7060b0',
+         'curve-style': 'bezier',
+         'label': 'data(label)', 'font-size': 8, 'color': '#8070c0',
+         'text-rotation': 'autorotate', 'text-background-opacity': 0.7,
+         'text-background-color': '#0f1117', 'text-background-padding': '2px',
+         'line-style': 'dashed', 'line-dash-pattern': [8, 4],
     }} }},
   ],
-  layout: {{ name: 'dagre', rankDir: 'TB', nodeSep: 50, rankSep: 80 }},
+  layout: {{ name: 'dagre', rankDir: 'TB', nodeSep: 60, rankSep: 90 }},
 }});
-cy.fit(30);
-document.getElementById('btn-fit').addEventListener('click', function() {{ cy.fit(30); }});
+cy.fit(40);
+document.getElementById('btn-fit').addEventListener('click', function() {{ cy.fit(40); }});
 
 function escHtml(s) {{ return s == null ? '' : String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }}
 
+/* Node click: show discipline details */
 cy.on('tap', 'node', function(evt) {{
   var d = evt.target.data();
   var panel = document.getElementById('panel');
   var html = '<h3>' + escHtml(d.label.split('\\n')[0]) + '</h3>';
-  html += '<div class="kv"><span class="key">type </span><span class="val">' + escHtml(d.type) + '</span></div>';
-  if (d.inputs) {{
+  html += '<div class="kv"><span class="key">type </span><span class="val">' + escHtml(d.node_type) + '</span></div>';
+
+  if (d.properties) {{
     try {{
-      var inputs = JSON.parse(d.inputs);
-      if (inputs.length) {{
+      var props = JSON.parse(d.properties);
+      if (props.description) html += '<div class="kv"><span class="val" style="color:#8898b8">' + escHtml(props.description) + '</span></div>';
+      if (props.physics) html += '<div class="kv"><span class="key">physics </span><span class="val">' + escHtml(props.physics) + '</span></div>';
+      if (props.method) html += '<div class="kv"><span class="key">method </span><span class="val">' + escHtml(props.method) + '</span></div>';
+      if (props.fem_type) html += '<div class="kv"><span class="key">FEM type </span><span class="val">' + escHtml(props.fem_type) + '</span></div>';
+      if (props.solver) html += '<div class="kv"><span class="key">solver </span><span class="val">' + escHtml(props.solver) + '</span></div>';
+      if (props.iterations != null) html += '<div class="kv"><span class="key">iterations </span><span class="val">' + escHtml(props.iterations) + '</span></div>';
+      if (props.convergence_status) html += '<div class="kv"><span class="key">status </span><span class="val">' + escHtml(props.convergence_status) + '</span></div>';
+
+      /* Input/output variable lists */
+      if (props.inputs && props.inputs.length) {{
         html += '<h3>Inputs</h3>';
-        for (var i = 0; i < inputs.length; i++) html += '<div class="mono">' + escHtml(inputs[i]) + '</div>';
+        for (var i = 0; i < props.inputs.length; i++) html += '<span class="var-tag">' + escHtml(props.inputs[i]) + '</span>';
+      }}
+      if (props.outputs && props.outputs.length) {{
+        html += '<h3>Outputs</h3>';
+        for (var i = 0; i < props.outputs.length; i++) html += '<span class="var-tag">' + escHtml(props.outputs[i]) + '</span>';
+      }}
+
+      /* Flight conditions for aero */
+      if (props.flight_conditions) {{
+        html += '<h3>Flight Conditions</h3>';
+        for (var k in props.flight_conditions) {{
+          html += '<div class="kv"><span class="key">' + escHtml(k) + ' </span><span class="val">' + escHtml(props.flight_conditions[k]) + '</span></div>';
+        }}
+      }}
+
+      /* Material properties for struct */
+      for (var mk of ['E', 'G', 'yield_stress', 'mrho']) {{
+        if (props[mk] != null) html += '<div class="kv"><span class="key">' + escHtml(mk) + ' </span><span class="val">' + escHtml(props[mk]) + '</span></div>';
+      }}
+
+      /* Surfaces */
+      if (props.surfaces) {{
+        html += '<div class="kv"><span class="key">surfaces </span><span class="val">' + escHtml(props.surfaces.join(', ')) + '</span></div>';
+      }}
+
+      /* Coupling exchanges */
+      if (props.disciplines) {{
+        html += '<div class="kv"><span class="key">coupled </span><span class="val">' + escHtml(props.disciplines.join(' + ')) + '</span></div>';
       }}
     }} catch(e) {{}}
   }}
-  if (d.outputs) {{
+
+  panel.innerHTML = html;
+}});
+
+/* Edge click: show variables being transferred */
+cy.on('tap', 'edge', function(evt) {{
+  var d = evt.target.data();
+  var panel = document.getElementById('panel');
+  var html = '<h3>Data Transfer</h3>';
+  html += '<div class="kv"><span class="key">from </span><span class="val">' + escHtml(d.source) + '</span></div>';
+  html += '<div class="kv"><span class="key">to </span><span class="val">' + escHtml(d.target) + '</span></div>';
+  html += '<div class="kv"><span class="key">relation </span><span class="val">' + escHtml(d.relation) + '</span></div>';
+  if (d.variables) {{
     try {{
-      var outputs = JSON.parse(d.outputs);
-      if (outputs.length) {{
-        html += '<h3>Outputs</h3>';
-        for (var i = 0; i < outputs.length; i++) html += '<div class="mono">' + escHtml(outputs[i]) + '</div>';
-      }}
+      var vars = JSON.parse(d.variables);
+      html += '<h3>Variables</h3>';
+      for (var i = 0; i < vars.length; i++) html += '<span class="var-tag">' + escHtml(vars[i]) + '</span>';
     }} catch(e) {{}}
   }}
   panel.innerHTML = html;
+}});
+
+cy.on('tap', function(evt) {{
+  if (evt.target === cy) {{
+    document.getElementById('panel').innerHTML = '<p style="color:#666;font-size:12px">Click a node or edge to inspect it.</p>';
+  }}
 }});
 </script>
 </body>

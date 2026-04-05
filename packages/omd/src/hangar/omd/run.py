@@ -245,19 +245,39 @@ def run_plan(
         # Generate N2 diagram while problem is still live
         _generate_n2(prob, run_id)
 
-        # Extract model graph while problem is live
+        # Extract model graph and solver info while problem is live
         model_graph = _extract_model_graph(prob)
+        solver_info = _extract_solver_info(prob, metadata)
+
+        # Build discipline graph for the problem DAG view
+        component_type = None
+        components = plan.get("components", [])
+        if components:
+            component_type = components[0].get("type")
+
+        from hangar.omd.discipline_graph import build_discipline_graph
+        discipline_graph = build_discipline_graph(
+            component_type or "",
+            metadata=metadata,
+            solver_info=solver_info,
+        )
 
         # Record model structure as a sub-entity of the run
         n2_path = n2_dir() / f"{run_id}.html"
         if n2_path.exists():
+            model_meta = {
+                "component_type": component_type,
+                "model_graph": model_graph,
+                "discipline_graph": discipline_graph,
+                "solver_info": solver_info,
+            }
             record_entity(
                 entity_id=f"{run_id}/n2",
                 entity_type="model_structure",
                 created_by="omd",
                 plan_id=plan_id,
                 storage_ref=str(n2_path),
-                metadata=json.dumps(model_graph),
+                metadata=json.dumps(model_meta, default=str),
                 parent_id=run_id,
             )
 
@@ -412,6 +432,36 @@ def format_convergence_table(recorder_path: Path) -> str | None:
             lines.append(f"  {idx:>5}  {fval:>18.6e}")
 
     return "\n".join(lines)
+
+
+def _extract_solver_info(prob, metadata: dict) -> dict:
+    """Extract solver iteration info from a solved OpenMDAO Problem."""
+    info: dict = {}
+    point_name = metadata.get("point_name", "AS_point_0")
+
+    # Try to get Newton solver info from the coupled group
+    try:
+        coupled = prob.model._get_subsystem(f"{point_name}.coupled")
+        if coupled is not None:
+            nl = coupled.nonlinear_solver
+            info["solver_type"] = type(nl).__name__
+            # Newton tracks iteration count
+            if hasattr(nl, "_iter_count"):
+                info["iterations"] = nl._iter_count
+            info["convergence_status"] = "converged"
+    except Exception:
+        pass
+
+    # Check if optimization ran
+    try:
+        if hasattr(prob.driver, "result") and prob.driver.result is not None:
+            result = prob.driver.result
+            info["optimizer_converged"] = result.success
+            info["optimizer_iterations"] = getattr(result, "nit", None)
+    except Exception:
+        pass
+
+    return info
 
 
 def _extract_model_graph(prob) -> dict:
