@@ -6,6 +6,7 @@ in the analysis database with PROV-Agent provenance tracking.
 
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -161,13 +162,20 @@ def run_plan(
         except Exception:
             pass
 
-    # Record run entity
+    # Record run entity with component type metadata
+    component_type = None
+    components = plan.get("components", [])
+    if components:
+        component_type = components[0].get("type")
+    run_metadata = json.dumps({"component_type": component_type}) if component_type else None
+
     record_entity(
         entity_id=run_id,
         entity_type="run_record",
         created_by="omd",
         plan_id=plan_id,
         storage_ref=str(recorder_path) if recorder_path else None,
+        metadata=run_metadata,
     )
 
     # Provenance: run wasGeneratedBy execute
@@ -269,22 +277,6 @@ def format_convergence_table(recorder_path: Path) -> str | None:
             lines.append(f"  {idx:>5}  {fval:>18.6e}")
 
     return "\n".join(lines)
-    # Update activity as completed
-    record_activity(
-        activity_id=activity_id,
-        activity_type="execute",
-        agent="omd",
-        started_at=started_at,
-        completed_at=datetime.now(timezone.utc).isoformat(),
-        status="completed",
-    )
-
-    return {
-        "run_id": run_id,
-        "status": status,
-        "summary": summary,
-        "errors": [],
-    }
 
 
 def _generate_run_id() -> str:

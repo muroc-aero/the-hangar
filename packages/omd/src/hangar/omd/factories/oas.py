@@ -81,7 +81,12 @@ def _generate_mesh(
         "symmetry": config.get("symmetry", True),
         "span": config.get("span", 10.0),
         "root_chord": config.get("root_chord", 1.0),
+        "span_cos_spacing": config.get("span_cos_spacing", 0.0),
+        "chord_cos_spacing": config.get("chord_cos_spacing", 0.0),
     }
+    offset = config.get("offset")
+    if offset is not None:
+        mesh_dict["offset"] = np.asarray(offset, dtype=float)
 
     if "CRM" in mesh_dict["wing_type"]:
         num_twist = config.get(

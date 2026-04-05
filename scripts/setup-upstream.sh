@@ -8,9 +8,7 @@ mkdir -p "$UPSTREAM_DIR"
 
 echo "Cloning OpenAeroStruct..."
 if [ ! -d "$UPSTREAM_DIR/OpenAeroStruct" ]; then
-    # git clone -b <branch-name> https://github.com/acb-code/OpenAeroStruct "$UPSTREAM_DIR/OpenAeroStruct"
-    # git clone https://github.com/mdolab/OpenAeroStruct "$UPSTREAM_DIR/OpenAeroStruct"
-    git clone https://github.com/acb-code/OpenAeroStruct "$UPSTREAM_DIR/OpenAeroStruct"
+    git clone https://github.com/mdolab/OpenAeroStruct "$UPSTREAM_DIR/OpenAeroStruct"
 else
     # git -C "$UPSTREAM_DIR/OpenAeroStruct" pull origin <branch-name>
     echo "  Already exists, pulling latest..."

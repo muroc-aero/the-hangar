@@ -12,19 +12,38 @@ from typing import Callable
 logger = logging.getLogger(__name__)
 
 _FACTORIES: dict[str, Callable] = {}
+_PLOT_PROVIDERS: dict[str, dict[str, Callable]] = {}
+_GENERIC_PLOTS: dict[str, Callable] = {}
 _initialized = False
 
 
-def register_factory(component_type: str, factory: Callable) -> None:
+def register_factory(
+    component_type: str,
+    factory: Callable,
+    plot_provider: dict[str, Callable] | None = None,
+) -> None:
     """Register a factory function for a component type.
 
     Args:
         component_type: Type string matching plan component entries
             (e.g., "oas/AerostructPoint").
         factory: Callable(component_config, operating_points) -> (problem, metadata).
+        plot_provider: Optional dict mapping plot type names to callables.
+            Each callable has signature (recorder_path, **kwargs) -> Figure.
     """
     _FACTORIES[component_type] = factory
+    if plot_provider:
+        _PLOT_PROVIDERS[component_type] = plot_provider
     logger.debug("Registered factory for %s", component_type)
+
+
+def register_generic_plots(plots: dict[str, Callable]) -> None:
+    """Register plot types that work for any OpenMDAO problem.
+
+    Args:
+        plots: Dict mapping plot type names to callables.
+    """
+    _GENERIC_PLOTS.update(plots)
 
 
 def get_factory(component_type: str) -> Callable:
@@ -55,6 +74,55 @@ def list_factories() -> list[str]:
     return sorted(_FACTORIES.keys())
 
 
+def get_plot_provider(component_type: str | None = None) -> dict[str, Callable]:
+    """Get merged plot provider for a component type.
+
+    Returns generic plots merged with type-specific plots. Type-specific
+    plots take precedence over generic ones with the same name.
+
+    Args:
+        component_type: Component type string. If None, returns only
+            generic plots.
+
+    Returns:
+        Dict mapping plot type names to callables.
+    """
+    _ensure_builtins()
+    merged = dict(_GENERIC_PLOTS)
+    if component_type and component_type in _PLOT_PROVIDERS:
+        merged.update(_PLOT_PROVIDERS[component_type])
+    return merged
+
+
+def get_all_plot_providers() -> dict[str, Callable]:
+    """Get all registered plot types merged together.
+
+    Used as fallback when component type is unknown (e.g., old runs
+    without metadata). Generic plots are included; on name collisions,
+    the last registered provider wins.
+
+    Returns:
+        Dict mapping plot type names to callables.
+    """
+    _ensure_builtins()
+    merged = dict(_GENERIC_PLOTS)
+    for provider in _PLOT_PROVIDERS.values():
+        merged.update(provider)
+    return merged
+
+
+def list_plot_types(component_type: str | None = None) -> list[str]:
+    """Return sorted list of available plot types.
+
+    Args:
+        component_type: If given, returns types for this component.
+            If None, returns all registered types.
+    """
+    if component_type:
+        return sorted(get_plot_provider(component_type).keys())
+    return sorted(get_all_plot_providers().keys())
+
+
 def _ensure_builtins() -> None:
     """Register built-in factories on first access."""
     global _initialized
@@ -70,7 +138,11 @@ def _register_builtins() -> None:
     Uses try/except so omd core works even without optional
     upstream packages installed.
     """
-    # Paraboloid: pure OpenMDAO, always available
+    # Generic plots: always available
+    from hangar.omd.plotting.generic import GENERIC_PLOTS
+    register_generic_plots(GENERIC_PLOTS)
+
+    # Paraboloid: pure OpenMDAO, always available (uses generic plots only)
     from hangar.omd.factories.paraboloid import build_paraboloid
     register_factory("paraboloid/Paraboloid", build_paraboloid)
 
@@ -78,7 +150,10 @@ def _register_builtins() -> None:
     try:
         from hangar.omd.factories.oas import build_oas_aerostruct
         from hangar.omd.factories.oas_aero import build_oas_aeropoint
-        register_factory("oas/AerostructPoint", build_oas_aerostruct)
-        register_factory("oas/AeroPoint", build_oas_aeropoint)
+        from hangar.omd.plotting.oas import OAS_AEROSTRUCT_PLOTS, OAS_AERO_PLOTS
+        register_factory("oas/AerostructPoint", build_oas_aerostruct,
+                         plot_provider=OAS_AEROSTRUCT_PLOTS)
+        register_factory("oas/AeroPoint", build_oas_aeropoint,
+                         plot_provider=OAS_AERO_PLOTS)
     except ImportError:
         logger.info("OpenAeroStruct not available, OAS factories not registered")

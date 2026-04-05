@@ -1303,6 +1303,7 @@ provides-extras = ["test", "all"]
 
 [[package]]
 name = "openaerostruct"
+version = "2.12.0"
 source = { editable = "upstream/OpenAeroStruct" }
 dependencies = [
     { name = "matplotlib" },
@@ -1313,35 +1314,22 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "httpx", marker = "extra == 'all'", specifier = ">=0.27" },
-    { name = "httpx", marker = "extra == 'http'", specifier = ">=0.27" },
-    { name = "itsdangerous", marker = "extra == 'all'", specifier = ">=2.1" },
-    { name = "itsdangerous", marker = "extra == 'http'", specifier = ">=2.1" },
     { name = "matplotlib" },
-    { name = "mcp", extras = ["cli"], marker = "extra == 'all'", specifier = ">=1.0" },
-    { name = "mcp", extras = ["cli"], marker = "extra == 'http'", specifier = ">=1.0" },
-    { name = "mcp", extras = ["cli"], marker = "extra == 'mcp'", specifier = ">=1.0" },
     { name = "mphys", marker = "extra == 'all'", specifier = ">=2.0.0" },
     { name = "mphys", marker = "extra == 'mphys'", specifier = ">=2.0.0" },
     { name = "numpy", specifier = ">=1.21" },
     { name = "openmdao", specifier = ">=3.35,!=3.40" },
+    { name = "pygeo", marker = "extra == 'all'", specifier = ">=1.6.0" },
     { name = "pygeo", marker = "extra == 'all'", specifier = ">=1.15.0" },
     { name = "pygeo", marker = "extra == 'ffd'", specifier = ">=1.6.0" },
     { name = "pygeo", marker = "extra == 'mphys'", specifier = ">=1.15.0" },
-    { name = "pyjwt", extras = ["crypto"], marker = "extra == 'all'", specifier = ">=2.8" },
-    { name = "pyjwt", extras = ["crypto"], marker = "extra == 'http'", specifier = ">=2.8" },
-    { name = "python-dotenv", marker = "extra == 'all'", specifier = ">=1.0" },
-    { name = "python-dotenv", marker = "extra == 'http'", specifier = ">=1.0" },
-    { name = "python-dotenv", marker = "extra == 'mcp'", specifier = ">=1.0" },
     { name = "scipy", specifier = ">=1.7" },
     { name = "sphinx-mdolab-theme", marker = "extra == 'all'" },
     { name = "sphinx-mdolab-theme", marker = "extra == 'docs'" },
     { name = "testflo", marker = "extra == 'all'" },
     { name = "testflo", marker = "extra == 'test'" },
-    { name = "uvicorn", marker = "extra == 'all'", specifier = ">=0.27" },
-    { name = "uvicorn", marker = "extra == 'http'", specifier = ">=0.27" },
 ]
-provides-extras = ["docs", "test", "ffd", "mphys", "mcp", "http", "all"]
+provides-extras = ["docs", "test", "ffd", "mphys", "all"]
 
 [[package]]
 name = "openapi-pydantic"

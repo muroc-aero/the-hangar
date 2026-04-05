@@ -176,24 +176,51 @@ def run_cmd(plan_path: str, mode: str, recording_level: str,
 
 @cli.command("plot")
 @click.argument("run_id", required=False, default=None)
-@click.option("--type", "plot_type",
-              type=click.Choice(["all", "planform", "lift", "struct",
-                                 "convergence", "twist", "thickness"]),
-              default="all", help="Plot type(s) to generate")
+@click.option("--type", "plot_type", default="all",
+              help="Plot type to generate (or 'all')")
 @click.option("--output", "-o", type=click.Path(), default=None,
               help="Output directory for PNGs")
 @click.option("--recorder-db", type=click.Path(exists=True), default=None,
               help="Direct path to recorder .sql/.db file")
 @click.option("--surface", default=None, help="Surface name filter")
+@click.option("--list-types", is_flag=True, default=False,
+              help="List available plot types for this run, then exit")
 def plot_cmd(run_id: str | None, plot_type: str, output: str | None,
-             recorder_db: str | None, surface: str | None) -> None:
+             recorder_db: str | None, surface: str | None,
+             list_types: bool) -> None:
     """Generate analysis plots from a completed run.
 
     Provide either a RUN_ID (resolved from omd recordings) or
     --recorder-db for a direct recorder file path.
     """
-    from hangar.omd.db import recordings_dir
-    from hangar.omd.plotting import generate_plots, PLOT_TYPES
+    import json as _json
+    from hangar.omd.db import recordings_dir, init_analysis_db, query_entity
+    from hangar.omd.plotting import generate_plots
+    from hangar.omd.registry import get_plot_provider, get_all_plot_providers
+
+    # Look up component type from DB if we have a run_id
+    component_type = None
+    if run_id:
+        try:
+            init_analysis_db()
+            entity = query_entity(run_id)
+            if entity and entity.get("metadata"):
+                meta = _json.loads(entity["metadata"])
+                component_type = meta.get("component_type")
+        except Exception:
+            pass
+
+    # Handle --list-types
+    if list_types:
+        if component_type:
+            provider = get_plot_provider(component_type)
+            click.echo(f"Plot types for {component_type}:")
+        else:
+            provider = get_all_plot_providers()
+            click.echo("All registered plot types:")
+        for name in sorted(provider.keys()):
+            click.echo(f"  {name}")
+        return
 
     # Resolve recorder path
     if recorder_db:
@@ -219,7 +246,7 @@ def plot_cmd(run_id: str | None, plot_type: str, output: str | None,
 
     # Determine plot types
     if plot_type == "all":
-        types = list(PLOT_TYPES.keys())
+        types = None  # generate_plots will use registry
     else:
         types = [plot_type]
 
@@ -228,6 +255,7 @@ def plot_cmd(run_id: str | None, plot_type: str, output: str | None,
         plot_types=types,
         surface_name=surface,
         output_dir=out_dir,
+        component_type=component_type,
     )
 
     if saved:

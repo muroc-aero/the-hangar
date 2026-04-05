@@ -204,6 +204,12 @@ def init_analysis_db(db_path: Path | None = None) -> None:
 
     conn = _get_conn()
     conn.executescript(_DDL)
+    # Migrate: add metadata column if missing (SQLite lacks IF NOT EXISTS for ALTER)
+    try:
+        conn.execute("ALTER TABLE entities ADD COLUMN metadata TEXT")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # column already exists
     conn.commit()
     logger.debug("Analysis DB initialized at %s", _db_path)
 
@@ -226,6 +232,7 @@ def record_entity(
     version: int | None = None,
     content_hash: str | None = None,
     storage_ref: str | None = None,
+    metadata: str | None = None,
 ) -> None:
     """Record a versioned artifact entity.
 
@@ -237,14 +244,16 @@ def record_entity(
         version: Version number.
         content_hash: SHA256 of content.
         storage_ref: Filesystem path or reference.
+        metadata: Optional JSON string with extra metadata (e.g.,
+            component_type for run records).
     """
     conn = _get_conn()
     conn.execute(
         "INSERT OR REPLACE INTO entities "
         "(entity_id, entity_type, created_at, created_by, plan_id, version, "
-        "content_hash, storage_ref) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "content_hash, storage_ref, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (entity_id, entity_type, _now(), created_by, plan_id, version,
-         content_hash, storage_ref),
+         content_hash, storage_ref, metadata),
     )
     conn.commit()
 
