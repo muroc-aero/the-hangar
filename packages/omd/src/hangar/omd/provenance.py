@@ -374,6 +374,32 @@ def provenance_dag_html(
   }}
   .btn.active {{ background: #2a4a7f; border-color: #4a6fa8; color: #fff; }}
 
+  .plot-btn {{
+    padding: 4px 9px; font-size: 11px; background: #1a2a4a;
+    border: 1px solid #3a5a8a; border-radius: 4px; color: #8eb6ff;
+    cursor: pointer; display: inline-block; margin: 2px;
+  }}
+  .plot-btn:hover {{ background: #1e3560; }}
+  .plot-loading {{ color: #888; font-size: 11px; }}
+  .plot-error {{ color: #ff6b6b; font-size: 11px; }}
+  #panel-body .plot-display img {{
+    width: 100%; border-radius: 4px; margin-top: 6px;
+  }}
+  .diff-item {{
+    margin: 3px 0; padding: 3px 8px; border-radius: 3px;
+    font-size: 11px; background: #141a28;
+  }}
+  .diff-added {{ border-left: 3px solid #30c090; }}
+  .diff-modified {{ border-left: 3px solid #50a0f0; }}
+  .diff-removed {{ border-left: 3px solid #e06050; }}
+  .n2-btn {{
+    padding: 6px 12px; font-size: 12px; background: #1a2a3a;
+    border: 1px solid #3a6a9a; border-radius: 5px; color: #8eb6ff;
+    cursor: pointer; display: inline-block; margin: 4px 0;
+    text-decoration: none;
+  }}
+  .n2-btn:hover {{ background: #1e3560; }}
+
   #empty-state {{
     position: absolute; inset: 0; display: flex; flex-direction: column;
     align-items: center; justify-content: center; color: #555; pointer-events: none;
@@ -626,6 +652,39 @@ var BADGE_MAP = {{
   'model_structure': 'badge-n2',
 }};
 
+/* Helper: extract run_id from a sub-entity id like "run-XXXX/aero" */
+function runIdFromId(id) {{
+  var parts = id.split('/');
+  return parts[0].startsWith('run-') ? parts[0] : '';
+}}
+
+/* Helper: render metadata as key-value pairs */
+function renderMeta(meta) {{
+  var html = '';
+  for (var key in meta) {{
+    var val = meta[key];
+    var display = (typeof val === 'object') ? JSON.stringify(val, null, 2) : String(val);
+    if (display.length > 120) {{
+      html += '<div class="kv"><span class="key">' + escHtml(key) + '</span></div><pre>' + escHtml(display) + '</pre>';
+    }} else {{
+      html += '<div class="kv"><span class="key">' + escHtml(key) + ' </span><span class="val">' + escHtml(display) + '</span></div>';
+    }}
+  }}
+  return html;
+}}
+
+/* Helper: render plot buttons for a set of plot types */
+function renderPlotBtns(runId, plotTypes) {{
+  var html = '<h3>Plots</h3><div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:6px">';
+  for (var i = 0; i < plotTypes.length; i++) {{
+    html += '<button class="plot-btn" data-run-id="' + escHtml(runId) +
+            '" data-plot="' + escHtml(plotTypes[i]) + '">' +
+            escHtml(plotTypes[i].replace(/_/g, ' ')) + '</button>';
+  }}
+  html += '</div><div class="plot-display"></div>';
+  return html;
+}}
+
 cy.on('tap', 'node', function(evt) {{
   var d = evt.target.data();
   var body = document.getElementById('panel-body');
@@ -636,37 +695,147 @@ cy.on('tap', 'node', function(evt) {{
     var badgeClass = BADGE_MAP[etype] || 'badge-activity';
     html += '<h3>' + escHtml(etype) + ' <span class="badge ' + badgeClass + '">' + escHtml(etype) + '</span></h3>';
     html += '<div class="kv"><span class="key">id </span><span class="val mono">' + escHtml(d.id) + '</span></div>';
-    if (d.created_at)   html += '<div class="kv"><span class="key">created_at </span><span class="val">' + escHtml(d.created_at) + '</span></div>';
-    if (d.created_by)   html += '<div class="kv"><span class="key">created_by </span><span class="val">' + escHtml(d.created_by) + '</span></div>';
-    if (d.version)      html += '<div class="kv"><span class="key">version </span><span class="val">' + escHtml(d.version) + '</span></div>';
-    if (d.content_hash) html += '<div class="kv"><span class="key">content_hash </span><span class="val mono">' + escHtml(d.content_hash) + '</span></div>';
-    if (d.storage_ref)  html += '<div class="kv"><span class="key">storage_ref </span><span class="val mono">' + escHtml(d.storage_ref) + '</span></div>';
 
-    /* Parse and display metadata as structured fields */
-    if (d.metadata) {{
-      try {{
-        var meta = JSON.parse(d.metadata);
-        html += '<h3>Details</h3>';
-        /* Special handling for decision nodes */
-        if (etype === 'decision') {{
-          if (meta.decision)  html += '<div class="kv"><span class="key">decision </span><span class="val">' + escHtml(meta.decision) + '</span></div>';
-          if (meta.reason)    html += '<div class="kv"><span class="key">reason </span><span class="val">' + escHtml(meta.reason) + '</span></div>';
-          if (meta.rationale) html += '<div class="kv"><span class="key">rationale </span><span class="val">' + escHtml(meta.rationale) + '</span></div>';
-          if (meta.stage)     html += '<div class="kv"><span class="key">stage </span><span class="val">' + escHtml(meta.stage) + '</span></div>';
-        }} else {{
-          for (var key in meta) {{
-            var val = meta[key];
-            var display = (typeof val === 'object') ? JSON.stringify(val, null, 2) : String(val);
-            if (display.length > 120) {{
-              html += '<div class="kv"><span class="key">' + escHtml(key) + '</span></div><pre>' + escHtml(display) + '</pre>';
-            }} else {{
-              html += '<div class="kv"><span class="key">' + escHtml(key) + ' </span><span class="val">' + escHtml(display) + '</span></div>';
+    var meta = {{}};
+    if (d.metadata) {{ try {{ meta = JSON.parse(d.metadata); }} catch(e) {{}} }}
+
+    /* --- Plan node: show version diff + decisions + plan detail link --- */
+    if (etype === 'plan') {{
+      if (d.version) html += '<div class="kv"><span class="key">version </span><span class="val">' + escHtml(d.version) + '</span></div>';
+      if (d.content_hash) html += '<div class="kv"><span class="key">hash </span><span class="val mono">' + escHtml(d.content_hash) + '</span></div>';
+
+      /* Fetch version diff asynchronously */
+      var planParts = d.id.split('/v');
+      var planId = planParts[0];
+      var ver = parseInt(planParts[1] || '1');
+      html += '<a class="n2-btn" href="/omd-plan-detail?plan_id=' + encodeURIComponent(planId) + '&version=' + ver + '" target="_blank">Open Plan Detail</a>';
+      html += '<div id="diff-section"><span class="plot-loading">Loading changes...</span></div>';
+
+      /* Show decisions from child nodes */
+      var children = cy.nodes('[parent_ref="' + d.id + '"]');
+      var decisions = children.filter('[entity_type="decision"]');
+      if (decisions.length > 0) {{
+        html += '<h3>Decisions</h3>';
+        decisions.forEach(function(decNode) {{
+          var dm = {{}};
+          try {{ dm = JSON.parse(decNode.data('metadata') || '{{}}'); }} catch(e) {{}}
+          var text = dm.decision || dm.rationale || '(no text)';
+          var reason = dm.reason || dm.rationale || '';
+          html += '<div class="diff-item diff-modified">';
+          html += '<strong>' + escHtml(text) + '</strong>';
+          if (reason) html += '<br><span style="color:#888">' + escHtml(reason) + '</span>';
+          html += '</div>';
+        }});
+      }}
+
+      body.innerHTML = html;
+
+      /* Async fetch for diff */
+      fetch('/omd-plan-diff?plan_id=' + encodeURIComponent(planId) + '&version=' + ver)
+        .then(function(r) {{ return r.json(); }})
+        .then(function(data) {{
+          var sec = document.getElementById('diff-section');
+          if (!sec) return;
+          var dhtml = '';
+          if (data.first_version) {{
+            dhtml = '<h3>First Version</h3><div class="diff-item diff-added">Initial plan creation</div>';
+          }} else if (data.changes && data.changes.length > 0) {{
+            dhtml = '<h3>Changes from v' + (ver - 1) + '</h3>';
+            for (var i = 0; i < data.changes.length; i++) {{
+              var c = data.changes[i];
+              var cls = c.action === 'added' ? 'diff-added' : c.action === 'removed' ? 'diff-removed' : 'diff-modified';
+              dhtml += '<div class="diff-item ' + cls + '">' + escHtml(c.key) + ' <span style="color:#888">(' + escHtml(c.action) + ')</span></div>';
             }}
+          }} else {{
+            dhtml = '<h3>Changes from v' + (ver - 1) + '</h3><div class="diff-item" style="color:#666">No structural changes (content hash may differ)</div>';
           }}
-        }}
-      }} catch(e) {{}}
+          if (data.content_changed === false) {{
+            dhtml += '<div style="color:#4cdf88;font-size:11px;margin-top:4px">Content unchanged (replan only)</div>';
+          }}
+          sec.innerHTML = dhtml;
+        }})
+        .catch(function() {{
+          var sec = document.getElementById('diff-section');
+          if (sec) sec.innerHTML = '<span class="plot-error">Failed to load diff</span>';
+        }});
+      return;
     }}
+
+    /* --- Run record: show component info + N2 + Problem DAG buttons --- */
+    if (etype === 'run_record') {{
+      if (d.created_at) html += '<div class="kv"><span class="key">created_at </span><span class="val">' + escHtml(d.created_at) + '</span></div>';
+      if (meta.component_type) html += '<div class="kv"><span class="key">component </span><span class="val">' + escHtml(meta.component_type) + '</span></div>';
+      html += '<h3>Model Structure</h3>';
+      html += '<a class="n2-btn" href="/omd-problem-dag?run_id=' + encodeURIComponent(d.id) + '" target="_blank">Problem DAG</a> ';
+      html += '<a class="n2-btn" href="/omd-n2?run_id=' + encodeURIComponent(d.id) + '" target="_blank">Full N2</a>';
+      body.innerHTML = html;
+      return;
+    }}
+
+    /* --- Aero results: values + aero plot buttons --- */
+    if (etype === 'aero_results') {{
+      html += '<h3>Results</h3>';
+      html += renderMeta(meta);
+      var rid = runIdFromId(d.id);
+      if (rid) html += renderPlotBtns(rid, ['planform', 'lift', 'twist', 'mesh_3d']);
+      body.innerHTML = html;
+      return;
+    }}
+
+    /* --- Struct results: values + structural plot buttons --- */
+    if (etype === 'struct_results') {{
+      html += '<h3>Results</h3>';
+      html += renderMeta(meta);
+      var rid = runIdFromId(d.id);
+      if (rid) html += renderPlotBtns(rid, ['struct', 'thickness', 'vonmises', 't_over_c']);
+      body.innerHTML = html;
+      return;
+    }}
+
+    /* --- Convergence: info + convergence plot button --- */
+    if (etype === 'convergence_info') {{
+      html += '<h3>Convergence</h3>';
+      html += renderMeta(meta);
+      var rid = runIdFromId(d.id);
+      if (rid) {{
+        var cPlots = ['convergence'];
+        if (meta.mode === 'optimize') cPlots.push('dv_evolution');
+        html += renderPlotBtns(rid, cPlots);
+      }}
+      body.innerHTML = html;
+      return;
+    }}
+
+    /* --- Model structure: N2 button --- */
+    if (etype === 'model_structure') {{
+      var rid = runIdFromId(d.id);
+      html += '<h3>OpenMDAO Model</h3>';
+      if (rid) html += '<a class="n2-btn" href="/omd-n2?run_id=' + encodeURIComponent(rid) + '" target="_blank">Open N2 Diagram</a>';
+      if (d.storage_ref) html += '<div class="kv" style="margin-top:8px"><span class="key">file </span><span class="val mono">' + escHtml(d.storage_ref) + '</span></div>';
+      body.innerHTML = html;
+      return;
+    }}
+
+    /* --- Decision node --- */
+    if (etype === 'decision') {{
+      if (meta.decision)  html += '<div class="kv"><span class="key">decision </span><span class="val">' + escHtml(meta.decision) + '</span></div>';
+      if (meta.reason)    html += '<div class="kv"><span class="key">reason </span><span class="val">' + escHtml(meta.reason) + '</span></div>';
+      if (meta.rationale) html += '<div class="kv"><span class="key">rationale </span><span class="val">' + escHtml(meta.rationale) + '</span></div>';
+      if (meta.stage)     html += '<div class="kv"><span class="key">stage </span><span class="val">' + escHtml(meta.stage) + '</span></div>';
+      body.innerHTML = html;
+      return;
+    }}
+
+    /* --- Generic entity fallback --- */
+    if (d.created_at) html += '<div class="kv"><span class="key">created_at </span><span class="val">' + escHtml(d.created_at) + '</span></div>';
+    if (d.created_by) html += '<div class="kv"><span class="key">created_by </span><span class="val">' + escHtml(d.created_by) + '</span></div>';
+    if (Object.keys(meta).length > 0) {{
+      html += '<h3>Details</h3>';
+      html += renderMeta(meta);
+    }}
+
   }} else {{
+    /* Activity node */
     var status = d.status || 'unknown';
     var statusClass = status === 'completed' ? 'badge-completed' : status === 'failed' ? 'badge-failed' : 'badge-activity';
     html += '<h3>' + escHtml((d.activity_type || 'activity').toUpperCase()) + ' <span class="badge ' + statusClass + '">' + escHtml(status) + '</span></h3>';
@@ -676,20 +845,37 @@ cy.on('tap', 'node', function(evt) {{
     if (d.completed_at) html += '<div class="kv"><span class="key">completed_at </span><span class="val">' + escHtml(d.completed_at) + '</span></div>';
   }}
 
-  /* Show connected edges */
-  var conns = evt.target.connectedEdges();
-  if (conns.length > 0) {{
-    html += '<h3>Edges</h3>';
-    conns.forEach(function(e) {{
-      var ed = e.data();
-      var direction = ed.source === d.id ? 'out' : 'in';
-      var other = direction === 'out' ? ed.target : ed.source;
-      var arrow = direction === 'out' ? '&rarr;' : '&larr;';
-      html += '<div class="kv"><span class="key">' + escHtml(ed.relation) + ' ' + arrow + ' </span><span class="val mono">' + escHtml(other) + '</span></div>';
-    }});
-  }}
-
   body.innerHTML = html;
+}});
+
+/* Plot button click handler -- fetch and display inline */
+document.getElementById('panel-body').addEventListener('click', function(e) {{
+  var btn = e.target.closest('.plot-btn');
+  if (!btn) return;
+  var runId = btn.dataset.runId;
+  var plotName = btn.dataset.plot + '.png';
+  var display = btn.closest('div').parentElement.querySelector('.plot-display');
+  if (!display) return;
+  display.innerHTML = '<span class="plot-loading">Loading plot...</span>';
+
+  /* First ensure plots are generated */
+  fetch('/omd-plots?run_id=' + encodeURIComponent(runId))
+    .then(function(r) {{ return r.json(); }})
+    .then(function(data) {{
+      if (data.error) {{
+        display.innerHTML = '<span class="plot-error">' + escHtml(data.error) + '</span>';
+        return;
+      }}
+      if (data.plots && data.plots.indexOf(plotName) >= 0) {{
+        display.innerHTML = '<img src="/omd-plot-img?run_id=' + encodeURIComponent(runId) +
+                           '&name=' + encodeURIComponent(plotName) + '" alt="' + escHtml(plotName) + '">';
+      }} else {{
+        display.innerHTML = '<span class="plot-error">Plot not available for this run</span>';
+      }}
+    }})
+    .catch(function(err) {{
+      display.innerHTML = '<span class="plot-error">Failed: ' + escHtml(err.message) + '</span>';
+    }});
 }});
 
 cy.on('tap', function(evt) {{

@@ -1,0 +1,14 @@
+- id: mesh-choice
+  decision: "Use 7 spanwise panels with 2 chordwise"
+  reason: "Balance between accuracy and computation time for initial analysis"
+  stage: mesh_resolution
+
+- id: fem-choice
+  decision: "Use tube FEM model instead of wingbox"
+  reason: "Simpler model appropriate for rectangular wing validation"
+  stage: structural_model
+
+- id: material-choice
+  decision: "Use aluminum with conservative yield (500 MPa)"
+  reason: "Standard aerospace aluminum properties for baseline comparison"
+  stage: material_selection

@@ -319,6 +319,580 @@ def _omd_provenance_handler(
     return 200, "text/html; charset=utf-8", body
 
 
+def _omd_plan_diff_handler(
+    qs: dict[str, list[str]],
+) -> tuple[int, str, bytes]:
+    """Return JSON diff between a plan version and its predecessor."""
+    import json as _json
+    from hangar.omd.provenance import provenance_diff
+    from hangar.omd.db import init_analysis_db, query_entity
+
+    plan_id = (qs.get("plan_id") or [None])[0]
+    version = (qs.get("version") or [None])[0]
+    if not plan_id or not version:
+        body = _json.dumps({"error": "Missing plan_id or version"})
+        return 400, "application/json", body.encode()
+
+    init_analysis_db()
+    ver = int(version)
+    if ver <= 1:
+        # No prior version -- return the full plan content
+        entity = query_entity(f"{plan_id}/v{ver}")
+        if entity and entity.get("storage_ref"):
+            from pathlib import Path
+            import yaml
+            plan_path = Path(entity["storage_ref"])
+            if plan_path.exists():
+                with open(plan_path) as f:
+                    plan = yaml.safe_load(f)
+                body = _json.dumps({"first_version": True, "plan": plan}, default=str)
+                return 200, "application/json", body.encode()
+        body = _json.dumps({"first_version": True, "plan": None})
+        return 200, "application/json", body.encode()
+
+    result = provenance_diff(plan_id, ver - 1, ver)
+    body = _json.dumps(result, default=str)
+    return 200, "application/json", body.encode()
+
+
+def _omd_plots_handler(
+    qs: dict[str, list[str]],
+) -> tuple[int, str, bytes]:
+    """Generate plots for a run and return list of available filenames."""
+    import json as _json
+    from pathlib import Path
+    from hangar.omd.db import init_analysis_db, omd_data_root, query_entity
+
+    run_id = (qs.get("run_id") or [None])[0]
+    if not run_id:
+        return 400, "application/json", b'{"error":"Missing run_id"}'
+
+    init_analysis_db()
+    plots_dir = omd_data_root() / "plots" / run_id
+
+    # Generate plots on demand if they don't exist
+    if not plots_dir.exists() or not list(plots_dir.glob("*.png")):
+        try:
+            from hangar.omd.plotting import generate_plots
+            rec_path = omd_data_root() / "recordings" / f"{run_id}.sql"
+            if not rec_path.exists():
+                return 404, "application/json", b'{"error":"Recording not found"}'
+
+            # Get component type from run entity metadata
+            entity = query_entity(run_id)
+            component_type = None
+            if entity and entity.get("metadata"):
+                import json
+                meta = json.loads(entity["metadata"])
+                component_type = meta.get("component_type")
+
+            generate_plots(
+                recorder_path=rec_path,
+                plot_types=None,
+                surface_name="wing",
+                output_dir=plots_dir,
+                component_type=component_type,
+            )
+        except Exception as exc:
+            body = _json.dumps({"error": str(exc)})
+            return 500, "application/json", body.encode()
+
+    # List available plot files
+    files = sorted(p.name for p in plots_dir.glob("*.png"))
+    body = _json.dumps({"run_id": run_id, "plots": files})
+    return 200, "application/json", body.encode()
+
+
+def _omd_plot_img_handler(
+    qs: dict[str, list[str]],
+) -> tuple[int, str, bytes]:
+    """Serve a specific plot PNG for a run."""
+    from pathlib import Path
+    from hangar.omd.db import omd_data_root
+
+    run_id = (qs.get("run_id") or [None])[0]
+    name = (qs.get("name") or [None])[0]
+    if not run_id or not name:
+        return 400, "application/json", b'{"error":"Missing run_id or name"}'
+
+    # Sanitize name to prevent path traversal
+    from pathlib import PurePosixPath
+    if ".." in name or "/" in name or "\\" in name:
+        return 400, "application/json", b'{"error":"Invalid name"}'
+
+    img_path = omd_data_root() / "plots" / run_id / name
+    if not img_path.exists():
+        return 404, "application/json", b'{"error":"Plot not found"}'
+
+    return 200, "image/png", img_path.read_bytes()
+
+
+def _omd_n2_handler(
+    qs: dict[str, list[str]],
+) -> tuple[int, str, bytes]:
+    """Serve the N2 diagram HTML for a run."""
+    from pathlib import Path
+    from hangar.omd.db import omd_data_root
+
+    run_id = (qs.get("run_id") or [None])[0]
+    if not run_id:
+        return 400, "application/json", b'{"error":"Missing run_id"}'
+
+    n2_path = omd_data_root() / "n2" / f"{run_id}.html"
+    if not n2_path.exists():
+        return 404, "application/json", b'{"error":"N2 not found"}'
+
+    return 200, "text/html; charset=utf-8", n2_path.read_bytes()
+
+
+def _omd_problem_dag_handler(
+    qs: dict[str, list[str]],
+) -> tuple[int, str, bytes]:
+    """Serve a simplified OpenMDAO problem DAG as Cytoscape.js HTML."""
+    import json as _json
+    from hangar.omd.db import init_analysis_db, query_entity
+
+    run_id = (qs.get("run_id") or [None])[0]
+    if not run_id:
+        return 400, "application/json", b'{"error":"Missing run_id"}'
+
+    init_analysis_db()
+    entity = query_entity(f"{run_id}/n2")
+    if not entity or not entity.get("metadata"):
+        return 404, "application/json", b'{"error":"Model structure not found"}'
+
+    try:
+        graph = _json.loads(entity["metadata"])
+    except Exception:
+        return 500, "application/json", b'{"error":"Invalid model graph data"}'
+
+    # Build Cytoscape elements from the model graph
+    nodes = []
+    edges = []
+
+    for group in graph.get("groups", []):
+        gname = group["name"]
+        gtype = group.get("type", "")
+        outputs = group.get("outputs", [])
+        inputs = group.get("inputs", [])
+        label = gname
+        if outputs:
+            label += "\\n" + ", ".join(outputs[:4])
+            if len(outputs) > 4:
+                label += "..."
+        nodes.append({"data": {
+            "id": gname, "label": label, "type": gtype,
+            "inputs": _json.dumps(inputs), "outputs": _json.dumps(outputs),
+        }})
+        for child in group.get("children", []):
+            cname = child["pathname"]
+            nodes.append({"data": {
+                "id": cname, "label": child["name"],
+                "type": child.get("type", ""), "parent": gname,
+            }})
+
+    # Add connection edges (deduplicate at group level)
+    seen = set()
+    for conn in graph.get("connections", []):
+        src_group = conn["src"].split(".")[0]
+        tgt_group = conn["tgt"].split(".")[0]
+        if src_group == tgt_group:
+            continue
+        # Use the variable name as label
+        var_name = conn["src"].split(".")[-1]
+        key = f"{src_group}->{tgt_group}"
+        if key not in seen:
+            seen.add(key)
+            edges.append({"data": {
+                "source": src_group, "target": tgt_group,
+                "label": var_name,
+            }})
+
+    elements = _json.dumps(nodes + edges)
+
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Problem DAG: {run_id}</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dagre/0.8.5/dagre.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/cytoscape-dagre.min.js"></script>
+<style>
+  *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+         background: #0f1117; color: #e0e0e0; height: 100vh; display: flex; flex-direction: column; }}
+  #toolbar {{ display: flex; align-items: center; gap: 10px; padding: 8px 14px;
+              background: #1a1d27; border-bottom: 1px solid #2d3047; }}
+  #toolbar h1 {{ font-size: 15px; font-weight: 600; color: #8eb6ff; }}
+  #toolbar .sub {{ font-size: 13px; color: #6080b0; margin-left: 4px; }}
+  .btn {{ padding: 5px 12px; border-radius: 5px; border: 1px solid #3a3e54;
+          background: #252839; color: #c0c8e8; cursor: pointer; font-size: 12px; }}
+  .btn:hover {{ background: #2e3245; }}
+  #main {{ display: flex; flex: 1; min-height: 0; }}
+  #cy {{ flex: 1; }}
+  #panel {{ width: 300px; background: #1a1d27; border-left: 1px solid #2d3047;
+            overflow-y: auto; padding: 12px; font-size: 12px; line-height: 1.6; }}
+  #panel h3 {{ font-size: 13px; color: #9cb8ff; margin: 8px 0 4px; }}
+  #panel h3:first-child {{ margin-top: 0; }}
+  .kv {{ margin-bottom: 3px; }}
+  .kv .key {{ color: #888; font-size: 11px; }}
+  .kv .val {{ color: #d0d8f0; }}
+  .mono {{ font-family: monospace; font-size: 10px; color: #a0a8c0; }}
+</style>
+</head>
+<body>
+<div id="toolbar">
+  <h1>Problem DAG</h1>
+  <span class="sub">{run_id}</span>
+  <div style="flex:1"></div>
+  <button class="btn" id="btn-fit">Fit</button>
+</div>
+<div id="main">
+  <div id="cy"></div>
+  <div id="panel">
+    <p style="color:#666">Click a node to see its inputs/outputs.</p>
+  </div>
+</div>
+<script>
+cytoscape.use(cytoscapeDagre);
+var cy = cytoscape({{
+  container: document.getElementById('cy'),
+  elements: {elements},
+  style: [
+    {{ selector: ':parent', style: {{
+         'background-opacity': 0.08, 'background-color': '#2a4a7a',
+         'border-width': 1, 'border-color': '#2a3a5a', 'padding': '14px',
+         'shape': 'round-rectangle', 'label': 'data(label)',
+         'text-valign': 'top', 'font-size': 11, 'color': '#6080a0',
+    }} }},
+    {{ selector: 'node', style: {{
+         'shape': 'round-rectangle', 'width': 140, 'height': 40,
+         'background-color': '#0d1f3c', 'border-width': 2, 'border-color': '#4a9eff',
+         'label': 'data(label)', 'text-wrap': 'wrap', 'font-size': 9,
+         'color': '#a0ccff', 'text-valign': 'center', 'text-halign': 'center',
+         'text-max-width': '130px',
+    }} }},
+    {{ selector: 'node:selected', style: {{ 'border-color': '#9ab0ff', 'border-width': 3 }} }},
+    {{ selector: 'edge', style: {{
+         'width': 2, 'line-color': '#2a90a0', 'target-arrow-color': '#2a90a0',
+         'target-arrow-shape': 'triangle', 'curve-style': 'bezier',
+         'label': 'data(label)', 'font-size': 8, 'color': '#4a6080',
+         'text-rotation': 'autorotate',
+    }} }},
+  ],
+  layout: {{ name: 'dagre', rankDir: 'TB', nodeSep: 50, rankSep: 80 }},
+}});
+cy.fit(30);
+document.getElementById('btn-fit').addEventListener('click', function() {{ cy.fit(30); }});
+
+function escHtml(s) {{ return s == null ? '' : String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }}
+
+cy.on('tap', 'node', function(evt) {{
+  var d = evt.target.data();
+  var panel = document.getElementById('panel');
+  var html = '<h3>' + escHtml(d.label.split('\\n')[0]) + '</h3>';
+  html += '<div class="kv"><span class="key">type </span><span class="val">' + escHtml(d.type) + '</span></div>';
+  if (d.inputs) {{
+    try {{
+      var inputs = JSON.parse(d.inputs);
+      if (inputs.length) {{
+        html += '<h3>Inputs</h3>';
+        for (var i = 0; i < inputs.length; i++) html += '<div class="mono">' + escHtml(inputs[i]) + '</div>';
+      }}
+    }} catch(e) {{}}
+  }}
+  if (d.outputs) {{
+    try {{
+      var outputs = JSON.parse(d.outputs);
+      if (outputs.length) {{
+        html += '<h3>Outputs</h3>';
+        for (var i = 0; i < outputs.length; i++) html += '<div class="mono">' + escHtml(outputs[i]) + '</div>';
+      }}
+    }} catch(e) {{}}
+  }}
+  panel.innerHTML = html;
+}});
+</script>
+</body>
+</html>"""
+    return 200, "text/html; charset=utf-8", html.encode()
+
+
+def _omd_plan_detail_handler(
+    qs: dict[str, list[str]],
+) -> tuple[int, str, bytes]:
+    """Serve a plan detail page showing objects, relationships, and versions."""
+    import json as _json
+    import yaml
+    from pathlib import Path
+    from hangar.omd.db import init_analysis_db, query_entity, _get_conn
+
+    plan_id = (qs.get("plan_id") or [None])[0]
+    version = (qs.get("version") or [None])[0]
+    if not plan_id:
+        return 400, "application/json", b'{"error":"Missing plan_id"}'
+
+    init_analysis_db()
+    conn = _get_conn()
+
+    # Get all plan versions
+    rows = conn.execute(
+        "SELECT entity_id, version, content_hash, storage_ref, created_at "
+        "FROM entities WHERE plan_id = ? AND entity_type = 'plan' "
+        "ORDER BY version ASC",
+        (plan_id,),
+    ).fetchall()
+    versions = [dict(r) for r in rows]
+
+    # Pick the requested version or latest
+    if version:
+        ver = int(version)
+    elif versions:
+        ver = versions[-1]["version"]
+    else:
+        return 404, "application/json", b'{"error":"Plan not found"}'
+
+    # Load the plan YAML
+    entity = query_entity(f"{plan_id}/v{ver}")
+    plan = None
+    if entity and entity.get("storage_ref"):
+        plan_path = Path(entity["storage_ref"])
+        if plan_path.exists():
+            with open(plan_path) as f:
+                plan = yaml.safe_load(f)
+
+    if not plan:
+        return 404, "application/json", b'{"error":"Plan YAML not found"}'
+
+    # Build graph nodes from plan content
+    nodes = []
+    edges = []
+
+    # Plan root node
+    nodes.append({"data": {
+        "id": "plan", "label": f"{plan_id}\\nv{ver}",
+        "node_type": "plan",
+    }})
+
+    # Operating point
+    op = plan.get("operating_points", {})
+    if op:
+        label = f"M={op.get('Mach_number','?')} a={op.get('alpha','?')}\\nV={op.get('velocity','?')} m/s"
+        nodes.append({"data": {"id": "op", "label": label, "node_type": "operating_point"}})
+        edges.append({"data": {"source": "plan", "target": "op"}})
+
+    # Components and surfaces
+    for comp in plan.get("components", []):
+        cid = comp["id"]
+        ctype = comp.get("type", "?")
+        nodes.append({"data": {"id": f"comp-{cid}", "label": f"{cid}\\n({ctype})", "node_type": "component"}})
+        edges.append({"data": {"source": "plan", "target": f"comp-{cid}"}})
+
+        for surf in comp.get("config", {}).get("surfaces", []):
+            sname = surf.get("name", cid)
+            wtype = surf.get("wing_type", "")
+            span = surf.get("span", "")
+            fem = surf.get("fem_model_type", "")
+            slabel = f"{sname}\\n{wtype} {span}m {fem}"
+            nodes.append({"data": {"id": f"surf-{sname}", "label": slabel, "node_type": "surface"}})
+            edges.append({"data": {"source": f"comp-{cid}", "target": f"surf-{sname}"}})
+
+    # Solvers
+    solvers = plan.get("solvers", {})
+    if solvers:
+        nl = solvers.get("nonlinear", {}).get("type", "")
+        ln = solvers.get("linear", {}).get("type", "")
+        nodes.append({"data": {"id": "solvers", "label": f"{nl}\\n+ {ln}", "node_type": "solver"}})
+        edges.append({"data": {"source": "plan", "target": "solvers"}})
+
+    # Optimization
+    if plan.get("design_variables") or plan.get("objective"):
+        obj = plan.get("objective", {})
+        obj_name = obj.get("name", "?").split(".")[-1] if isinstance(obj, dict) else "?"
+        nodes.append({"data": {"id": "objective", "label": f"min {obj_name}", "node_type": "objective"}})
+        edges.append({"data": {"source": "plan", "target": "objective"}})
+
+        for dv in plan.get("design_variables", []):
+            dv_name = dv.get("name", "?").split(".")[-1]
+            dvid = f"dv-{dv_name}"
+            lower = dv.get("lower", "")
+            upper = dv.get("upper", "")
+            nodes.append({"data": {"id": dvid, "label": f"DV: {dv_name}\\n[{lower}, {upper}]", "node_type": "dv"}})
+            edges.append({"data": {"source": "objective", "target": dvid}})
+
+        for con in plan.get("constraints", []):
+            con_name = con.get("name", "?").split(".")[-1]
+            conid = f"con-{con_name}"
+            eq = con.get("equals")
+            label = f"con: {con_name}" + (f"\\n= {eq}" if eq is not None else "")
+            nodes.append({"data": {"id": conid, "label": label, "node_type": "constraint"}})
+            edges.append({"data": {"source": "objective", "target": conid}})
+
+    # Decisions
+    for dec in plan.get("decisions", []):
+        did = dec.get("id", "dec")
+        text = dec.get("decision", "")[:35]
+        reason = dec.get("reason", "")[:40]
+        nodes.append({"data": {"id": f"dec-{did}", "label": f"{text}", "node_type": "decision",
+                                "reason": reason}})
+        stage = dec.get("stage", "")
+        # Link to the most relevant node based on stage
+        target = "plan"
+        if "mesh" in stage:
+            target = next((n["data"]["id"] for n in nodes if n["data"].get("node_type") == "surface"), "plan")
+        elif "material" in stage or "structural" in stage or "fem" in stage:
+            target = next((n["data"]["id"] for n in nodes if n["data"].get("node_type") == "surface"), "plan")
+        edges.append({"data": {"source": f"dec-{did}", "target": target, "label": "justifies"}})
+
+    elements = _json.dumps(nodes + edges)
+
+    # Version timeline HTML
+    ver_html = ""
+    for v in versions:
+        vnum = v["version"]
+        active = " style='background:#2a4a7f;border-color:#4a6fa8;color:#fff'" if vnum == ver else ""
+        ver_html += (
+            f'<a href="/omd-plan-detail?plan_id={plan_id}&version={vnum}" '
+            f'class="btn"{active}>v{vnum}</a> '
+        )
+
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Plan: {plan_id} v{ver}</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dagre/0.8.5/dagre.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/cytoscape-dagre.min.js"></script>
+<style>
+  *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+         background: #0f1117; color: #e0e0e0; height: 100vh; display: flex; flex-direction: column; }}
+  #toolbar {{ display: flex; align-items: center; gap: 10px; padding: 8px 14px;
+              background: #1a1d27; border-bottom: 1px solid #2d3047; flex-wrap: wrap; }}
+  #toolbar h1 {{ font-size: 15px; font-weight: 600; color: #8eb6ff; }}
+  #toolbar .sub {{ font-size: 13px; color: #6080b0; margin-left: 4px; }}
+  .btn {{ padding: 5px 12px; border-radius: 5px; border: 1px solid #3a3e54;
+          background: #252839; color: #c0c8e8; cursor: pointer; font-size: 12px; text-decoration: none; }}
+  .btn:hover {{ background: #2e3245; }}
+  #versions {{ display: flex; gap: 4px; align-items: center; }}
+  #versions .label {{ font-size: 11px; color: #888; }}
+  #main {{ display: flex; flex: 1; min-height: 0; }}
+  #cy {{ flex: 1; }}
+  #panel {{ width: 300px; background: #1a1d27; border-left: 1px solid #2d3047;
+            overflow-y: auto; padding: 12px; font-size: 12px; line-height: 1.6; }}
+  #panel h3 {{ font-size: 13px; color: #9cb8ff; margin: 8px 0 4px; }}
+  .kv {{ margin-bottom: 3px; }}
+  .kv .key {{ color: #888; font-size: 11px; }}
+  .kv .val {{ color: #d0d8f0; word-break: break-word; }}
+</style>
+</head>
+<body>
+<div id="toolbar">
+  <h1>Plan Detail</h1>
+  <span class="sub">{plan_id}</span>
+  <div style="flex:1"></div>
+  <div id="versions"><span class="label">Versions:</span> {ver_html}</div>
+  <button class="btn" id="btn-fit">Fit</button>
+</div>
+<div id="main">
+  <div id="cy"></div>
+  <div id="panel">
+    <p style="color:#666">Click a node to inspect it.</p>
+  </div>
+</div>
+<script>
+cytoscape.use(cytoscapeDagre);
+var cy = cytoscape({{
+  container: document.getElementById('cy'),
+  elements: {elements},
+  style: [
+    {{ selector: 'node[node_type="plan"]', style: {{
+         'shape': 'round-rectangle', 'width': 160, 'height': 44,
+         'background-color': '#0d1f3c', 'border-width': 2, 'border-color': '#4a9eff',
+         'label': 'data(label)', 'text-wrap': 'wrap', 'font-size': 11,
+         'color': '#a0ccff', 'text-valign': 'center', 'text-halign': 'center',
+    }} }},
+    {{ selector: 'node[node_type="component"]', style: {{
+         'shape': 'round-rectangle', 'width': 130, 'height': 36,
+         'background-color': '#0a1e2e', 'border-width': 2, 'border-color': '#3ac8fa',
+         'label': 'data(label)', 'text-wrap': 'wrap', 'font-size': 10,
+         'color': '#80d8ff', 'text-valign': 'center', 'text-halign': 'center',
+    }} }},
+    {{ selector: 'node[node_type="surface"]', style: {{
+         'shape': 'round-rectangle', 'width': 140, 'height': 36,
+         'background-color': '#0a1828', 'border-width': 2, 'border-color': '#70b8ff',
+         'label': 'data(label)', 'text-wrap': 'wrap', 'font-size': 9,
+         'color': '#90ccff', 'text-valign': 'center', 'text-halign': 'center',
+    }} }},
+    {{ selector: 'node[node_type="operating_point"]', style: {{
+         'shape': 'round-rectangle', 'width': 130, 'height': 36,
+         'background-color': '#0a1820', 'border-width': 2, 'border-color': '#50c0f0',
+         'label': 'data(label)', 'text-wrap': 'wrap', 'font-size': 9,
+         'color': '#80d8ff', 'text-valign': 'center', 'text-halign': 'center',
+    }} }},
+    {{ selector: 'node[node_type="solver"]', style: {{
+         'shape': 'round-rectangle', 'width': 120, 'height': 32,
+         'background-color': '#101820', 'border-width': 2, 'border-color': '#5080a0',
+         'label': 'data(label)', 'text-wrap': 'wrap', 'font-size': 9,
+         'color': '#80a0c0', 'text-valign': 'center', 'text-halign': 'center',
+    }} }},
+    {{ selector: 'node[node_type="objective"]', style: {{
+         'shape': 'round-rectangle', 'width': 120, 'height': 32,
+         'background-color': '#0a1820', 'border-width': 2, 'border-color': '#40d0e0',
+         'label': 'data(label)', 'text-wrap': 'wrap', 'font-size': 10,
+         'color': '#70e0f0', 'text-valign': 'center', 'text-halign': 'center',
+    }} }},
+    {{ selector: 'node[node_type="dv"]', style: {{
+         'shape': 'round-rectangle', 'width': 120, 'height': 32,
+         'background-color': '#0a1828', 'border-width': 2, 'border-color': '#50a0f0',
+         'label': 'data(label)', 'text-wrap': 'wrap', 'font-size': 9,
+         'color': '#80c0ff', 'text-valign': 'center', 'text-halign': 'center',
+    }} }},
+    {{ selector: 'node[node_type="constraint"]', style: {{
+         'shape': 'round-rectangle', 'width': 120, 'height': 32,
+         'background-color': '#0a2018', 'border-width': 2, 'border-color': '#30c090',
+         'label': 'data(label)', 'text-wrap': 'wrap', 'font-size': 9,
+         'color': '#60e0b0', 'text-valign': 'center', 'text-halign': 'center',
+    }} }},
+    {{ selector: 'node[node_type="decision"]', style: {{
+         'shape': 'hexagon', 'width': 110, 'height': 55,
+         'background-color': '#1a1808', 'border-width': 2, 'border-color': '#d0a030',
+         'label': 'data(label)', 'text-wrap': 'wrap', 'font-size': 9,
+         'color': '#e0c060', 'text-valign': 'center', 'text-halign': 'center',
+         'text-max-width': '90px',
+    }} }},
+    {{ selector: 'node:selected', style: {{ 'border-width': 3, 'border-color': '#9ab0ff' }} }},
+    {{ selector: 'edge', style: {{
+         'width': 2, 'line-color': '#2a3a5a', 'target-arrow-color': '#2a3a5a',
+         'target-arrow-shape': 'triangle', 'curve-style': 'bezier',
+    }} }},
+    {{ selector: 'edge[label="justifies"]', style: {{
+         'line-style': 'dashed', 'line-color': '#a08030', 'target-arrow-color': '#a08030',
+    }} }},
+  ],
+  layout: {{ name: 'dagre', rankDir: 'TB', nodeSep: 40, rankSep: 70 }},
+}});
+cy.fit(30);
+document.getElementById('btn-fit').addEventListener('click', function() {{ cy.fit(30); }});
+
+function escHtml(s) {{ return s == null ? '' : String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }}
+
+cy.on('tap', 'node', function(evt) {{
+  var d = evt.target.data();
+  var panel = document.getElementById('panel');
+  var html = '<h3>' + escHtml(d.label.split('\\n')[0]) + '</h3>';
+  html += '<div class="kv"><span class="key">type </span><span class="val">' + escHtml(d.node_type) + '</span></div>';
+  if (d.reason) html += '<div class="kv"><span class="key">reason </span><span class="val">' + escHtml(d.reason) + '</span></div>';
+  panel.innerHTML = html;
+}});
+</script>
+</body>
+</html>"""
+    return 200, "text/html; charset=utf-8", html.encode()
+
+
 @cli.command("viewer")
 @click.option("--port", type=int, default=7654,
               help="Port for viewer server")
@@ -343,6 +917,12 @@ def viewer_cmd(port: int, db_path: str | None) -> None:
     from hangar.sdk.viz.viewer_server import register_viewer_route, start_viewer_server
 
     register_viewer_route("/omd-provenance", _omd_provenance_handler)
+    register_viewer_route("/omd-plan-diff", _omd_plan_diff_handler)
+    register_viewer_route("/omd-plots", _omd_plots_handler)
+    register_viewer_route("/omd-plot-img", _omd_plot_img_handler)
+    register_viewer_route("/omd-n2", _omd_n2_handler)
+    register_viewer_route("/omd-problem-dag", _omd_problem_dag_handler)
+    register_viewer_route("/omd-plan-detail", _omd_plan_detail_handler)
 
     actual_port = start_viewer_server()
     if actual_port is None:

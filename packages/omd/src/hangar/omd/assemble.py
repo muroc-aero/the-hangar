@@ -257,19 +257,31 @@ def _record_decisions(
 
         init_analysis_db()
 
-        for i, decision in enumerate(decisions):
+        from hangar.omd.db import record_activity
+
+        for decision in decisions:
             if not isinstance(decision, dict):
                 continue
-            decision_id = f"{plan_id}/v{version}/decision-{i}"
+            dec_id = decision.get("id", f"dec-{decisions.index(decision)}")
+            entity_id = f"{plan_entity_id}/dec/{dec_id}"
             record_entity(
-                entity_id=decision_id,
+                entity_id=entity_id,
                 entity_type="decision",
                 created_by=decision.get("agent", "have-agent"),
                 plan_id=plan_id,
                 version=version,
                 metadata=json.dumps(decision),
+                parent_id=plan_entity_id,
             )
-            add_prov_edge("wasAttributedTo", decision_id, plan_entity_id)
+            # Record the decide activity
+            decide_act_id = f"act-decide-{entity_id}"
+            record_activity(
+                activity_id=decide_act_id,
+                activity_type="decide",
+                agent="have-agent",
+                status="completed",
+            )
+            add_prov_edge("wasGeneratedBy", entity_id, decide_act_id)
     except Exception:
         # Don't fail assembly if provenance recording fails
         pass

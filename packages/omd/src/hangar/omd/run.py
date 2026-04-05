@@ -114,34 +114,8 @@ def _decompose_plan(
             parent_id=plan_entity_id,
         )
 
-    # Decisions
-    for dec in plan.get("decisions", []):
-        dec_id = dec.get("id", uuid.uuid4().hex[:8])
-        record_entity(
-            entity_id=f"{plan_entity_id}/dec/{dec_id}",
-            entity_type="decision",
-            created_by="have-agent",
-            plan_id=plan_id,
-            metadata=json.dumps(dec),
-            parent_id=plan_entity_id,
-        )
-        decide_act_id = f"act-decide-{plan_entity_id}/{dec_id}"
-        record_activity(
-            activity_id=decide_act_id,
-            activity_type="decide",
-            agent="have-agent",
-            status="completed",
-        )
-        add_prov_edge(
-            "wasGeneratedBy",
-            f"{plan_entity_id}/dec/{dec_id}",
-            decide_act_id,
-        )
-        # Link to referenced entities if provided
-        for ref in dec.get("references", []):
-            ref_id = ref if isinstance(ref, str) else ref.get("entity_id", "")
-            if ref_id:
-                add_prov_edge("used", decide_act_id, ref_id)
+    # Decisions are recorded during assembly (assemble.py _record_decisions)
+    # so we skip them here to avoid duplicates.
 
 
 def run_plan(
@@ -271,6 +245,9 @@ def run_plan(
         # Generate N2 diagram while problem is still live
         _generate_n2(prob, run_id)
 
+        # Extract model graph while problem is live
+        model_graph = _extract_model_graph(prob)
+
         # Record model structure as a sub-entity of the run
         n2_path = n2_dir() / f"{run_id}.html"
         if n2_path.exists():
@@ -280,6 +257,7 @@ def run_plan(
                 created_by="omd",
                 plan_id=plan_id,
                 storage_ref=str(n2_path),
+                metadata=json.dumps(model_graph),
                 parent_id=run_id,
             )
 
@@ -434,6 +412,62 @@ def format_convergence_table(recorder_path: Path) -> str | None:
             lines.append(f"  {idx:>5}  {fval:>18.6e}")
 
     return "\n".join(lines)
+
+
+def _extract_model_graph(prob) -> dict:
+    """Extract a simplified group/variable graph from a live OpenMDAO Problem.
+
+    Walks the top-level subsystems and one level of children for Groups.
+    Returns a JSON-serializable dict with groups and connections.
+    """
+    import openmdao.api as om
+
+    groups = []
+    for system in prob.model.system_iter(include_self=False, recurse=False):
+        node = {
+            "name": system.name,
+            "type": type(system).__name__,
+            "pathname": system.pathname,
+        }
+        # Get promoted outputs (limit to key variables, skip internal)
+        try:
+            io_meta = system.get_io_metadata(iotypes=("output",), get_remote=False)
+            outputs = [name.split(".")[-1] for name in io_meta.keys()]
+            # Filter to interesting outputs (skip very internal ones)
+            node["outputs"] = outputs[:20]
+        except Exception:
+            node["outputs"] = []
+
+        try:
+            io_meta = system.get_io_metadata(iotypes=("input",), get_remote=False)
+            inputs = [name.split(".")[-1] for name in io_meta.keys()]
+            node["inputs"] = inputs[:20]
+        except Exception:
+            node["inputs"] = []
+
+        # One level of children for Groups
+        if isinstance(system, om.Group):
+            children = []
+            for child in system.system_iter(include_self=False, recurse=False):
+                children.append({
+                    "name": child.name,
+                    "type": type(child).__name__,
+                    "pathname": child.pathname,
+                })
+            node["children"] = children
+
+        groups.append(node)
+
+    # Extract connections
+    connections = []
+    try:
+        for tgt, (src, _) in prob.model._conn_global_abs_in2out.items():
+            # Shorten to relative paths
+            connections.append({"src": src, "tgt": tgt})
+    except Exception:
+        pass
+
+    return {"groups": groups, "connections": connections[:100]}
 
 
 def _generate_run_id() -> str:
