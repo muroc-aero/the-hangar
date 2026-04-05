@@ -193,7 +193,13 @@ def extract_standard_detail(
         sect: dict = {}
 
         # Spanwise panel y-stations from mesh (normalised 0→1)
-        mesh = surface.get("mesh")
+        # Prefer the optimized mesh from the problem state (reflects chord/twist
+        # changes from optimization). Fall back to the static surface dict mesh.
+        mesh = _try_get(prob, f"{name}.mesh")
+        if mesh is not None:
+            mesh = np.asarray(mesh)
+        else:
+            mesh = surface.get("mesh")
         ny = None
         if mesh is not None:
             ny = int(mesh.shape[1])

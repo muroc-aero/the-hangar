@@ -332,6 +332,11 @@ def _resolve_var_path(
         if name in perf_outputs:
             return f"{point_name}.{surf}_perf.{name}"
 
+        # Surface-level outputs: {point}.{surf}.{name}
+        surface_outputs = {"S_ref"}
+        if name in surface_outputs:
+            return f"{point_name}.{surf}.{name}"
+
     # Aerostruct-specific outputs
     aerostruct_outputs = {
         "failure": f"{point_name}.{surface_names[0]}_perf.failure" if surface_names else name,

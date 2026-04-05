@@ -90,6 +90,10 @@ def _plan_config_to_aero_surface(surface_config: dict) -> dict:
     else:
         surface["twist_cp"] = np.zeros(n_cp)
 
+    # Chord control points (optional -- only needed for chord optimization)
+    if "chord_cp" in surface_config:
+        surface["chord_cp"] = np.array(surface_config["chord_cp"])
+
     # Optional overrides
     for key in ("groundplane", "CL0", "CD0"):
         if key in surface_config:
