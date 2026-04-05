@@ -28,6 +28,122 @@ from hangar.omd.db import (
 logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# Plan / result decomposition for rich provenance
+# ---------------------------------------------------------------------------
+
+
+def _decompose_plan(
+    plan: dict,
+    plan_entity_id: str,
+    plan_id: str,
+) -> None:
+    """Extract sub-entities from a plan and persist them in the provenance DB.
+
+    Creates surface_def, operating_point, solver_config, opt_setup, and
+    decision entities as children of the plan entity.
+    """
+    # Surfaces
+    for comp in plan.get("components", []):
+        for surf in comp.get("config", {}).get("surfaces", []):
+            surf_name = surf.get("name", comp["id"])
+            # Pick the fields worth showing; skip large arrays like mesh
+            surf_meta = {}
+            for k in ("name", "wing_type", "span", "root_chord", "num_x",
+                       "num_y", "symmetry", "fem_model_type", "E", "G",
+                       "yield_stress", "mrho", "with_viscous", "CD0",
+                       "sweep", "dihedral", "taper"):
+                if k in surf:
+                    surf_meta[k] = surf[k]
+            record_entity(
+                entity_id=f"{plan_entity_id}/surf/{surf_name}",
+                entity_type="surface_def",
+                created_by="omd",
+                plan_id=plan_id,
+                metadata=json.dumps(surf_meta),
+                parent_id=plan_entity_id,
+            )
+
+    # Operating point
+    op = plan.get("operating_points")
+    if op:
+        record_entity(
+            entity_id=f"{plan_entity_id}/op",
+            entity_type="operating_point",
+            created_by="omd",
+            plan_id=plan_id,
+            metadata=json.dumps(op),
+            parent_id=plan_entity_id,
+        )
+
+    # Solvers
+    solvers = plan.get("solvers")
+    if solvers:
+        solver_meta = {}
+        nl = solvers.get("nonlinear", {})
+        if nl:
+            solver_meta["nonlinear_type"] = nl.get("type")
+            solver_meta["nonlinear_options"] = nl.get("options", {})
+        ln = solvers.get("linear", {})
+        if ln:
+            solver_meta["linear_type"] = ln.get("type")
+        record_entity(
+            entity_id=f"{plan_entity_id}/solvers",
+            entity_type="solver_config",
+            created_by="omd",
+            plan_id=plan_id,
+            metadata=json.dumps(solver_meta),
+            parent_id=plan_entity_id,
+        )
+
+    # Optimization setup
+    if plan.get("design_variables") or plan.get("objective"):
+        opt_meta = {
+            "optimizer_type": plan.get("optimizer", {}).get("type"),
+            "optimizer_options": plan.get("optimizer", {}).get("options", {}),
+            "objective": plan.get("objective"),
+            "design_variables": plan.get("design_variables", []),
+            "constraints": plan.get("constraints", []),
+        }
+        record_entity(
+            entity_id=f"{plan_entity_id}/opt",
+            entity_type="opt_setup",
+            created_by="omd",
+            plan_id=plan_id,
+            metadata=json.dumps(opt_meta),
+            parent_id=plan_entity_id,
+        )
+
+    # Decisions
+    for dec in plan.get("decisions", []):
+        dec_id = dec.get("id", uuid.uuid4().hex[:8])
+        record_entity(
+            entity_id=f"{plan_entity_id}/dec/{dec_id}",
+            entity_type="decision",
+            created_by="have-agent",
+            plan_id=plan_id,
+            metadata=json.dumps(dec),
+            parent_id=plan_entity_id,
+        )
+        decide_act_id = f"act-decide-{plan_entity_id}/{dec_id}"
+        record_activity(
+            activity_id=decide_act_id,
+            activity_type="decide",
+            agent="have-agent",
+            status="completed",
+        )
+        add_prov_edge(
+            "wasGeneratedBy",
+            f"{plan_entity_id}/dec/{dec_id}",
+            decide_act_id,
+        )
+        # Link to referenced entities if provided
+        for ref in dec.get("references", []):
+            ref_id = ref if isinstance(ref, str) else ref.get("entity_id", "")
+            if ref_id:
+                add_prov_edge("used", decide_act_id, ref_id)
+
+
 def run_plan(
     plan_path: Path,
     mode: str = "analysis",
@@ -92,6 +208,9 @@ def run_plan(
         storage_ref=plan_storage_ref,
     )
 
+    # Decompose plan into sub-entities for rich provenance
+    _decompose_plan(plan, plan_entity_id, plan_id)
+
     # Replan provenance: link to parent version if this is a revision
     parent_version = plan.get("metadata", {}).get("parent_version")
     if parent_version:
@@ -151,6 +270,18 @@ def run_plan(
 
         # Generate N2 diagram while problem is still live
         _generate_n2(prob, run_id)
+
+        # Record model structure as a sub-entity of the run
+        n2_path = n2_dir() / f"{run_id}.html"
+        if n2_path.exists():
+            record_entity(
+                entity_id=f"{run_id}/n2",
+                entity_type="model_structure",
+                created_by="omd",
+                plan_id=plan_id,
+                storage_ref=str(n2_path),
+                parent_id=run_id,
+            )
 
         prob.cleanup()
     except Exception as exc:
@@ -434,6 +565,43 @@ def _record_assessment(
     # Provenance edges: assess activity used the run, assessment was generated by it
     add_prov_edge("used", assess_activity_id, run_id)
     add_prov_edge("wasGeneratedBy", assessment_id, assess_activity_id)
+
+    # Decompose results into sub-entities under the run
+    aero_keys = {k: summary[k] for k in ("CL", "CD", "L_over_D") if k in summary}
+    if aero_keys:
+        record_entity(
+            entity_id=f"{run_id}/aero",
+            entity_type="aero_results",
+            created_by="omd",
+            plan_id=plan_id,
+            metadata=json.dumps(aero_keys),
+            parent_id=run_id,
+        )
+
+    struct_keys = {k: summary[k] for k in summary
+                   if "structural_mass" in k or "failure" in k}
+    if struct_keys:
+        record_entity(
+            entity_id=f"{run_id}/struct",
+            entity_type="struct_results",
+            created_by="omd",
+            plan_id=plan_id,
+            metadata=json.dumps(struct_keys),
+            parent_id=run_id,
+        )
+
+    conv_meta = {"status": status, "mode": mode}
+    if recorder_info:
+        conv_meta["case_count"] = recorder_info.get("case_count", 0)
+        conv_meta["storage_bytes"] = recorder_info.get("storage_bytes", 0)
+    record_entity(
+        entity_id=f"{run_id}/conv",
+        entity_type="convergence_info",
+        created_by="omd",
+        plan_id=plan_id,
+        metadata=json.dumps(conv_meta),
+        parent_id=run_id,
+    )
 
 
 def _record_failure(

@@ -218,6 +218,11 @@ def init_analysis_db(db_path: Path | None = None) -> None:
         conn.commit()
     except sqlite3.OperationalError:
         pass  # column already exists
+    try:
+        conn.execute("ALTER TABLE entities ADD COLUMN parent_id TEXT")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # column already exists
     conn.commit()
     logger.debug("Analysis DB initialized at %s", _db_path)
 
@@ -241,27 +246,32 @@ def record_entity(
     content_hash: str | None = None,
     storage_ref: str | None = None,
     metadata: str | None = None,
+    parent_id: str | None = None,
 ) -> None:
     """Record a versioned artifact entity.
 
     Args:
         entity_id: Unique entity identifier (e.g., "plan-ttbw/v2").
-        entity_type: One of: plan, run_record, assessment, validation_report.
+        entity_type: One of: plan, run_record, assessment, surface_def,
+            operating_point, solver_config, opt_setup, decision,
+            aero_results, struct_results, convergence_info, model_structure.
         created_by: Agent that created it (e.g., "omd", "have-agent").
         plan_id: Parent plan identifier (None for top-level).
         version: Version number.
         content_hash: SHA256 of content.
         storage_ref: Filesystem path or reference.
-        metadata: Optional JSON string with extra metadata (e.g.,
-            component_type for run records).
+        metadata: Optional JSON string with extra metadata.
+        parent_id: Containing entity ID for sub-entities (enables
+            compound node grouping in the provenance DAG).
     """
     conn = _get_conn()
     conn.execute(
         "INSERT OR REPLACE INTO entities "
         "(entity_id, entity_type, created_at, created_by, plan_id, version, "
-        "content_hash, storage_ref, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "content_hash, storage_ref, metadata, parent_id) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (entity_id, entity_type, _now(), created_by, plan_id, version,
-         content_hash, storage_ref, metadata),
+         content_hash, storage_ref, metadata, parent_id),
     )
     conn.commit()
 
