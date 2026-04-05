@@ -458,16 +458,19 @@ def _extract_model_graph(prob) -> dict:
 
         groups.append(node)
 
-    # Extract connections
+    # Extract connections from the global connection map
     connections = []
     try:
-        for tgt, (src, _) in prob.model._conn_global_abs_in2out.items():
-            # Shorten to relative paths
+        conn_map = prob.model._conn_global_abs_in2out
+        for tgt, src in conn_map.items():
+            # src may be a string or a tuple depending on OpenMDAO version
+            if isinstance(src, tuple):
+                src = src[0]
             connections.append({"src": src, "tgt": tgt})
     except Exception:
         pass
 
-    return {"groups": groups, "connections": connections[:100]}
+    return {"groups": groups, "connections": connections}
 
 
 def _generate_run_id() -> str:

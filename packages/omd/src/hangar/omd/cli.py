@@ -491,22 +491,35 @@ def _omd_problem_dag_handler(
                 "type": child.get("type", ""), "parent": gname,
             }})
 
-    # Add connection edges (deduplicate at group level)
-    seen = set()
+    # Aggregate connections at group level with key variable names
+    edge_vars: dict[str, list[str]] = {}
+    node_id_set = {n["data"]["id"] for n in nodes}
     for conn in graph.get("connections", []):
-        src_group = conn["src"].split(".")[0]
-        tgt_group = conn["tgt"].split(".")[0]
+        src_parts = conn["src"].split(".")
+        tgt_parts = conn["tgt"].split(".")
+        src_group = src_parts[0]
+        tgt_group = tgt_parts[0]
         if src_group == tgt_group:
             continue
-        # Use the variable name as label
-        var_name = conn["src"].split(".")[-1]
+        if src_group not in node_id_set or tgt_group not in node_id_set:
+            continue
         key = f"{src_group}->{tgt_group}"
-        if key not in seen:
-            seen.add(key)
-            edges.append({"data": {
-                "source": src_group, "target": tgt_group,
-                "label": var_name,
-            }})
+        var_name = src_parts[-1]
+        if key not in edge_vars:
+            edge_vars[key] = []
+        if var_name not in edge_vars[key]:
+            edge_vars[key].append(var_name)
+
+    for key, var_names in edge_vars.items():
+        src, tgt = key.split("->")
+        # Show up to 3 variable names on the edge
+        label = ", ".join(var_names[:3])
+        if len(var_names) > 3:
+            label += f" +{len(var_names)-3}"
+        edges.append({"data": {
+            "source": src, "target": tgt,
+            "label": label,
+        }})
 
     elements = _json.dumps(nodes + edges)
 
