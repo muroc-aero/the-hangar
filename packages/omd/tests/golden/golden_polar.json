@@ -1,0 +1,89 @@
+{
+  "description": "Golden reference for drag polar sweep (aero-only, rect wing)",
+  "generated_at": "2026-04-06",
+  "reproducibility": {
+    "python": "3.11.14",
+    "openmdao": "3.41.0",
+    "numpy": "1.26.4"
+  },
+  "surface": {
+    "wing_type": "rect",
+    "span": 10.0,
+    "root_chord": 1.0,
+    "num_x": 2,
+    "num_y": 7,
+    "CD0": 0.01,
+    "with_viscous": true
+  },
+  "flight_conditions": {
+    "velocity": 248.136,
+    "Mach_number": 0.84,
+    "reynolds_number": 1000000.0,
+    "density": 0.38
+  },
+  "alpha_deg": [
+    -2.0,
+    0.0,
+    2.0,
+    4.0,
+    6.0,
+    8.0,
+    10.0
+  ],
+  "expected": {
+    "CL": [
+      -0.181072,
+      0.0,
+      0.181072,
+      0.361914,
+      0.542296,
+      0.721989,
+      0.900768
+    ],
+    "CD": [
+      0.025273,
+      0.024353,
+      0.025273,
+      0.028027,
+      0.0326,
+      0.038968,
+      0.047097
+    ],
+    "CM": [
+      0.045249,
+      0.0,
+      -0.045249,
+      -0.090322,
+      -0.135047,
+      -0.179249,
+      -0.222758
+    ],
+    "L_over_D": [
+      -7.1647,
+      0.0,
+      7.1647,
+      12.9132,
+      16.6348,
+      18.5277,
+      19.1258
+    ],
+    "best_L_over_D": {
+      "index": 6,
+      "alpha_deg": 10.0,
+      "CL": 0.900768,
+      "CD": 0.047097,
+      "L_over_D": 19.1258
+    }
+  },
+  "tolerances": {
+    "CL": {
+      "rel": 0.005
+    },
+    "CD": {
+      "rel": 0.005
+    },
+    "L_over_D": {
+      "rel": 0.01
+    }
+  }
+}

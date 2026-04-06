@@ -134,15 +134,18 @@ def provenance_cmd(plan_id: str, fmt: str, diff_versions: tuple | None,
               help="Suppress convergence table output")
 @click.option("--timeout", type=int, default=None,
               help="Wallclock timeout in seconds (aborts run if exceeded)")
+@click.option("--stability", is_flag=True, default=False,
+              help="Compute stability derivatives after analysis")
 def run_cmd(plan_path: str, mode: str, recording_level: str,
-            db_path: str | None, quiet: bool, timeout: int | None) -> None:
+            db_path: str | None, quiet: bool, timeout: int | None,
+            stability: bool) -> None:
     """Materialize and run an analysis plan."""
     from hangar.omd.run import run_plan, format_convergence_table
 
     db = Path(db_path) if db_path else None
     result = run_plan(Path(plan_path), mode=mode,
                       recording_level=recording_level, db_path=db,
-                      timeout_seconds=timeout)
+                      timeout_seconds=timeout, compute_stab=stability)
 
     if result["errors"]:
         click.echo("Run failed:", err=True)
@@ -166,6 +169,14 @@ def run_cmd(plan_path: str, mode: str, recording_level: str,
             f"{rec.get('storage_bytes', 0) / 1024:.1f} KB"
         )
 
+    # Print stability derivatives
+    stab = summary.get("stability")
+    if stab:
+        sm = stab.get("static_margin")
+        sm_str = f"{sm * 100:.1f}%" if sm is not None else "N/A"
+        click.echo(f"  Stability: CL_alpha={stab['CL_alpha_per_rad']:.2f}/rad, "
+                    f"CM_alpha={stab['CM_alpha_per_rad']:.2f}/rad, SM={sm_str}")
+
     # Print convergence table for optimization runs
     if mode == "optimize" and not quiet:
         from hangar.omd.db import recordings_dir
@@ -175,6 +186,48 @@ def run_cmd(plan_path: str, mode: str, recording_level: str,
             if table:
                 click.echo()
                 click.echo(table)
+
+
+@cli.command("polar")
+@click.argument("plan_path", type=click.Path(exists=True))
+@click.option("--alpha-start", type=float, default=-5.0,
+              help="Starting angle of attack in degrees")
+@click.option("--alpha-end", type=float, default=15.0,
+              help="Ending angle of attack in degrees")
+@click.option("--num", type=int, default=21,
+              help="Number of alpha points to evaluate")
+@click.option("--output", "-o", type=click.Path(), default=None,
+              help="Output JSON file path")
+def polar_cmd(plan_path: str, alpha_start: float, alpha_end: float,
+              num: int, output: str | None) -> None:
+    """Compute a drag polar by sweeping angle of attack."""
+    from hangar.omd.polar import run_polar
+
+    result = run_polar(
+        Path(plan_path),
+        alpha_start=alpha_start,
+        alpha_end=alpha_end,
+        num_alpha=num,
+    )
+
+    if output:
+        out_path = Path(output)
+        out_path.write_text(json.dumps(result, indent=2))
+        click.echo(f"Polar written to {out_path}")
+    else:
+        best = result["best_L_over_D"]
+        click.echo(f"Drag polar: {num} points, alpha {alpha_start} to {alpha_end} deg")
+        click.echo(f"  Best L/D: {best['L_over_D']:.2f} at alpha={best['alpha_deg']:.1f} deg "
+                    f"(CL={best['CL']:.4f}, CD={best['CD']:.6f})")
+
+        # Print table
+        click.echo()
+        click.echo(f"  {'alpha':>8s}  {'CL':>10s}  {'CD':>10s}  {'L/D':>10s}")
+        click.echo(f"  {'-----':>8s}  {'-----':>10s}  {'-----':>10s}  {'-----':>10s}")
+        for a, cl, cd, ld in zip(result["alpha_deg"], result["CL"],
+                                  result["CD"], result["L_over_D"]):
+            ld_str = f"{ld:.2f}" if ld is not None else "N/A"
+            click.echo(f"  {a:8.2f}  {cl:10.6f}  {cd:10.6f}  {ld_str:>10s}")
 
 
 @cli.command("plot")

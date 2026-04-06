@@ -41,6 +41,8 @@ def export_plan_to_script(
 
     if comp_type == "oas/AerostructPoint":
         script = _export_oas_aerostruct(plan, comp, operating_points)
+    elif comp_type == "oas/AerostructMultipoint":
+        script = _export_oas_aerostruct_multipoint(plan, comp, operating_points)
     elif comp_type == "paraboloid/Paraboloid":
         script = _export_paraboloid(plan, operating_points)
     else:
@@ -212,6 +214,162 @@ def _export_oas_aerostruct(
     script = "\n".join(lines) + "\n"
 
     return script
+
+
+def _export_oas_aerostruct_multipoint(
+    plan: dict,
+    component: dict,
+    operating_points: dict,
+) -> str:
+    """Generate script for a multipoint OAS aerostruct problem."""
+    config = component.get("config", {})
+    surfaces = config.get("surfaces", [])
+    meta = plan.get("metadata", {})
+
+    surface_lines = []
+    for sc in surfaces:
+        surface_lines.append(_format_surface_config(sc))
+
+    flight_points = operating_points.get("flight_points", [])
+    shared = operating_points.get("shared", {})
+
+    surfaces_str = ",\n    ".join(surface_lines)
+    fp_str = json.dumps(flight_points, indent=4)
+    shared_str = json.dumps(shared, indent=4)
+
+    lines = [
+        '#!/usr/bin/env python',
+        '"""Standalone multipoint OAS aerostruct analysis.',
+        '',
+        f'Generated from plan: {meta.get("name", "unknown")}',
+        f'Plan ID: {meta.get("id", "unknown")} v{meta.get("version", 0)}',
+        '',
+        'Dependencies: openmdao, openaerostruct, numpy',
+        '"""',
+        '',
+        'import numpy as np',
+        'import openmdao.api as om',
+        'from openaerostruct.meshing.mesh_generator import generate_mesh',
+        'from openaerostruct.integration.aerostruct_groups import (',
+        '    AerostructGeometry,',
+        '    AerostructPoint,',
+        ')',
+        '',
+        '',
+        '# (build_surface and connect_aerostruct_surface same as single-point)',
+        'def build_surface(config):',
+        '    mesh_dict = {"num_x": config.get("num_x", 2), "num_y": config["num_y"],',
+        '                 "wing_type": config.get("wing_type", "rect"),',
+        '                 "symmetry": config.get("symmetry", True),',
+        '                 "span": config.get("span", 10.0), "root_chord": config.get("root_chord", 1.0)}',
+        '    result = generate_mesh(mesh_dict)',
+        '    mesh = result[0] if isinstance(result, tuple) else result',
+        '    n_cp = (config["num_y"] + 1) // 2 if config.get("symmetry", True) else config["num_y"]',
+        '    surface = {"name": config["name"], "mesh": mesh, "symmetry": config.get("symmetry", True),',
+        '              "S_ref_type": "wetted", "CL0": 0.0, "CD0": config.get("CD0", 0.015),',
+        '              "k_lam": 0.05, "t_over_c_cp": np.array([0.15]), "c_max_t": 0.303,',
+        '              "with_viscous": True, "with_wave": False,',
+        '              "fem_model_type": config.get("fem_model_type", "tube"),',
+        '              "fem_origin": 0.35, "wing_weight_ratio": 2.0,',
+        '              "struct_weight_relief": False, "distributed_fuel_weight": False,',
+        '              "exact_failure_constraint": False,',
+        '              "twist_cp": np.zeros(n_cp)}',
+        '    if config.get("E"): surface["E"] = config["E"]',
+        '    if config.get("G"): surface["G"] = config["G"]',
+        '    if config.get("yield_stress"): surface["yield"] = config["yield_stress"]',
+        '    if config.get("mrho"): surface["mrho"] = config["mrho"]',
+        '    if config.get("safety_factor"): surface["safety_factor"] = config["safety_factor"]',
+        '    if surface["fem_model_type"] == "tube":',
+        '        surface["thickness_cp"] = np.array(config.get("thickness_cp", [0.01] * n_cp))',
+        '    return surface',
+        '',
+        '',
+        'def connect_aerostruct_surface(model, name, point_name, fem_model_type="tube"):',
+        '    com_name = f"{point_name}.{name}_perf"',
+        '    model.connect(f"{name}.local_stiff_transformed", f"{point_name}.coupled.{name}.local_stiff_transformed")',
+        '    model.connect(f"{name}.nodes", f"{point_name}.coupled.{name}.nodes")',
+        '    model.connect(f"{name}.mesh", f"{point_name}.coupled.{name}.mesh")',
+        '    model.connect(f"{name}.nodes", f"{com_name}.nodes")',
+        '    model.connect(f"{name}.cg_location", f"{point_name}.total_perf.{name}_cg_location")',
+        '    model.connect(f"{name}.structural_mass", f"{point_name}.total_perf.{name}_structural_mass")',
+        '    model.connect(f"{name}.t_over_c", f"{com_name}.t_over_c")',
+        '    if fem_model_type == "tube":',
+        '        model.connect(f"{name}.radius", f"{com_name}.radius")',
+        '        model.connect(f"{name}.thickness", f"{com_name}.thickness")',
+        '',
+        '',
+        'def main():',
+        '    surface_configs = [',
+        f'        {surfaces_str}',
+        '    ]',
+        f'    flight_points = {fp_str}',
+        f'    shared = {shared_str}',
+        '    surfaces = [build_surface(sc) for sc in surface_configs]',
+        '    N = len(flight_points)',
+        '    prob = om.Problem(reports=False)',
+        '    v_arr = np.array([fp["velocity"] for fp in flight_points])',
+        '    mach_arr = np.array([fp["Mach_number"] for fp in flight_points])',
+        '    re_arr = np.array([fp.get("reynolds_number", 1e6) for fp in flight_points])',
+        '    rho_arr = np.array([fp.get("density", 0.38) for fp in flight_points])',
+        '    sos_arr = np.array([fp.get("speed_of_sound", 295.4) for fp in flight_points])',
+        '    lf_arr = np.array([fp.get("load_factor", 1.0) for fp in flight_points])',
+        '    indep = om.IndepVarComp()',
+        '    indep.add_output("v", val=v_arr, units="m/s")',
+        '    indep.add_output("Mach_number", val=mach_arr)',
+        '    indep.add_output("re", val=re_arr, units="1/m")',
+        '    indep.add_output("rho", val=rho_arr, units="kg/m**3")',
+        '    indep.add_output("speed_of_sound", val=sos_arr, units="m/s")',
+        '    indep.add_output("load_factor", val=lf_arr)',
+        f'    indep.add_output("CT", val={shared.get("CT", 9.81e-6)}, units="1/s")',
+        f'    indep.add_output("R", val={shared.get("R", 3e6)}, units="m")',
+        f'    indep.add_output("W0_without_point_masses", val={shared.get("W0_without_point_masses", 5000)}, units="kg")',
+        f'    indep.add_output("alpha", val={shared.get("alpha", 5.0)}, units="deg")',
+        '    indep.add_output("alpha_maneuver", val=0.0, units="deg")',
+        '    indep.add_output("empty_cg", val=np.zeros(3), units="m")',
+        '    indep.add_output("fuel_mass", val=10000.0, units="kg")',
+        '    indep.add_output("point_masses", val=np.zeros((1, 1)), units="kg")',
+        '    indep.add_output("point_mass_locations", val=np.zeros((1, 3)), units="m")',
+        '    prob.model.add_subsystem("prob_vars", indep, promotes=["*"])',
+        '    prob.model.add_subsystem("W0_comp",',
+        '        om.ExecComp("W0 = W0_without_point_masses + 2 * sum(point_masses)", units="kg"),',
+        '        promotes=["*"])',
+        '    for surface in surfaces:',
+        '        prob.model.add_subsystem(surface["name"], AerostructGeometry(surface=surface))',
+        '    for i in range(N):',
+        '        pt = f"AS_point_{i}"',
+        '        prob.model.add_subsystem(pt, AerostructPoint(surfaces=surfaces, internally_connect_fuelburn=False))',
+        '        prob.model.connect("v", f"{pt}.v", src_indices=[i])',
+        '        prob.model.connect("Mach_number", f"{pt}.Mach_number", src_indices=[i])',
+        '        prob.model.connect("re", f"{pt}.re", src_indices=[i])',
+        '        prob.model.connect("rho", f"{pt}.rho", src_indices=[i])',
+        '        prob.model.connect("speed_of_sound", f"{pt}.speed_of_sound", src_indices=[i])',
+        '        prob.model.connect("load_factor", f"{pt}.load_factor", src_indices=[i])',
+        '        prob.model.connect("CT", f"{pt}.CT")',
+        '        prob.model.connect("R", f"{pt}.R")',
+        '        prob.model.connect("W0", f"{pt}.W0")',
+        '        prob.model.connect("empty_cg", f"{pt}.empty_cg")',
+        '        prob.model.connect("fuel_mass", f"{pt}.total_perf.L_equals_W.fuelburn")',
+        '        prob.model.connect("fuel_mass", f"{pt}.total_perf.CG.fuelburn")',
+        '        for surface in surfaces:',
+        '            connect_aerostruct_surface(prob.model, surface["name"], pt,',
+        '                                       surface.get("fem_model_type", "tube"))',
+        '    prob.model.connect("alpha", "AS_point_0.alpha")',
+        '    if N > 1:',
+        '        prob.model.connect("alpha_maneuver", "AS_point_1.alpha")',
+        '    prob.setup()',
+        '    prob.run_model()',
+        '    for i in range(N):',
+        '        pt = f"AS_point_{i}"',
+        '        CL = prob.get_val(f"{pt}.CL")[0]',
+        '        CD = prob.get_val(f"{pt}.CD")[0]',
+        '        label = flight_points[i].get("name", f"point_{i}")',
+        '        print(f"{label}: CL={CL:.6f}, CD={CD:.6f}, L/D={CL/CD:.2f}")',
+        '',
+        '',
+        'if __name__ == "__main__":',
+        '    main()',
+    ]
+    return "\n".join(lines) + "\n"
 
 
 def _export_paraboloid(plan: dict, operating_points: dict) -> str:

@@ -66,17 +66,41 @@ def _decompose_plan(
                 parent_id=plan_entity_id,
             )
 
-    # Operating point
+    # Operating points
     op = plan.get("operating_points")
     if op:
-        record_entity(
-            entity_id=f"{plan_entity_id}/op",
-            entity_type="operating_point",
-            created_by="omd",
-            plan_id=plan_id,
-            metadata=json.dumps(op),
-            parent_id=plan_entity_id,
-        )
+        if isinstance(op, dict) and "flight_points" in op:
+            # Multipoint: record shared params + each flight point
+            shared = op.get("shared", {})
+            if shared:
+                record_entity(
+                    entity_id=f"{plan_entity_id}/op/shared",
+                    entity_type="operating_point",
+                    created_by="omd",
+                    plan_id=plan_id,
+                    metadata=json.dumps({"type": "shared", **shared}),
+                    parent_id=plan_entity_id,
+                )
+            for idx, fp in enumerate(op["flight_points"]):
+                label = fp.get("name", f"point_{idx}")
+                record_entity(
+                    entity_id=f"{plan_entity_id}/op/{label}",
+                    entity_type="operating_point",
+                    created_by="omd",
+                    plan_id=plan_id,
+                    metadata=json.dumps({"type": "flight_point", "index": idx, **fp}),
+                    parent_id=plan_entity_id,
+                )
+        else:
+            # Single-point
+            record_entity(
+                entity_id=f"{plan_entity_id}/op",
+                entity_type="operating_point",
+                created_by="omd",
+                plan_id=plan_id,
+                metadata=json.dumps(op),
+                parent_id=plan_entity_id,
+            )
 
     # Solvers
     solvers = plan.get("solvers")
@@ -150,6 +174,7 @@ def run_plan(
     recording_level: str = "driver",
     db_path: Path | None = None,
     timeout_seconds: int | None = None,
+    compute_stab: bool = False,
 ) -> dict:
     """Load, materialize, execute, and record an analysis plan.
 
@@ -281,6 +306,15 @@ def run_plan(
         # Generate N2 diagram while problem is still live
         _generate_n2(prob, run_id)
 
+        # Stability derivatives (optional, before cleanup)
+        stab_results = None
+        if compute_stab:
+            try:
+                from hangar.omd.stability import compute_stability
+                stab_results = compute_stability(prob, metadata)
+            except Exception as exc:
+                logger.warning("Stability computation failed: %s", exc)
+
         # Extract model graph and solver info while problem is live
         model_graph = _extract_model_graph(prob)
         solver_info = _extract_solver_info(prob, metadata)
@@ -351,6 +385,8 @@ def run_plan(
     # Extract summary results
     summary = _extract_summary(prob, metadata, mode)
     summary["recording"] = recorder_info
+    if stab_results:
+        summary["stability"] = stab_results
 
     # Determine status
     status = "completed"
@@ -484,20 +520,22 @@ def format_convergence_table(recorder_path: Path) -> str | None:
 def _extract_solver_info(prob, metadata: dict) -> dict:
     """Extract solver iteration info from a solved OpenMDAO Problem."""
     info: dict = {}
-    point_name = metadata.get("point_name", "AS_point_0")
+    point_names = metadata.get("point_names")
+    if point_names is None:
+        point_names = [metadata.get("point_name", "AS_point_0")]
 
-    # Try to get Newton solver info from the coupled group
-    try:
-        coupled = prob.model._get_subsystem(f"{point_name}.coupled")
-        if coupled is not None:
-            nl = coupled.nonlinear_solver
-            info["solver_type"] = type(nl).__name__
-            # Newton tracks iteration count
-            if hasattr(nl, "_iter_count"):
-                info["iterations"] = nl._iter_count
-            info["convergence_status"] = "converged"
-    except Exception:
-        pass
+    for point_name in point_names:
+        try:
+            coupled = prob.model._get_subsystem(f"{point_name}.coupled")
+            if coupled is not None:
+                nl = coupled.nonlinear_solver
+                key_prefix = f"{point_name}." if len(point_names) > 1 else ""
+                info[f"{key_prefix}solver_type"] = type(nl).__name__
+                if hasattr(nl, "_iter_count"):
+                    info[f"{key_prefix}iterations"] = nl._iter_count
+                info[f"{key_prefix}convergence_status"] = "converged"
+        except Exception:
+            pass
 
     # Check if optimization ran
     try:
@@ -593,46 +631,84 @@ def _extract_summary(prob, metadata: dict, mode: str) -> dict:
         except Exception:
             pass
 
-    # OAS-specific outputs
+    # For multipoint, extract per-point results
+    if metadata.get("multipoint"):
+        point_names = metadata.get("point_names", [point_name])
+        point_labels = metadata.get("point_labels", [])
+        points_summary = {}
+        for idx, pt in enumerate(point_names):
+            label = point_labels[idx] if idx < len(point_labels) else pt
+            pt_data = _extract_point_summary(prob, pt, metadata, np)
+            points_summary[label] = pt_data
+        summary["points"] = points_summary
+        # Top-level values from point 0 for backwards compat
+        if points_summary:
+            first = next(iter(points_summary.values()))
+            for key in ("CL", "CD", "L_over_D"):
+                if key in first:
+                    summary[key] = first[key]
+            for surf_name in metadata.get("surface_names", []):
+                for skey in (f"{surf_name}_structural_mass",
+                             f"{surf_name}_failure"):
+                    if skey in first:
+                        summary[skey] = first[skey]
+    else:
+        # Single-point extraction
+        pt_data = _extract_point_summary(prob, point_name, metadata, np)
+        summary.update(pt_data)
+
+    return summary
+
+
+def _extract_point_summary(
+    prob, point_name: str, metadata: dict, np,
+) -> dict:
+    """Extract aero/struct results for a single analysis point."""
+    data: dict = {}
+
     try:
-        summary["CL"] = float(prob.get_val(f"{point_name}.CL")[0])
+        data["CL"] = float(prob.get_val(f"{point_name}.CL")[0])
     except Exception:
         pass
     try:
-        summary["CD"] = float(prob.get_val(f"{point_name}.CD")[0])
+        data["CD"] = float(prob.get_val(f"{point_name}.CD")[0])
     except Exception:
         pass
     try:
-        cl = summary.get("CL", 0)
-        cd = summary.get("CD", 1)
+        cl = data.get("CL", 0)
+        cd = data.get("CD", 1)
         if cd > 0:
-            summary["L_over_D"] = cl / cd
+            data["L_over_D"] = cl / cd
+    except Exception:
+        pass
+
+    # Fuelburn (aerostruct)
+    try:
+        data["fuelburn"] = float(prob.get_val(f"{point_name}.fuelburn")[0])
     except Exception:
         pass
 
     # Surface-specific results
     for surf_name in metadata.get("surface_names", []):
-        # Structural mass: available on the geometry group output
         for mass_path in (
             f"{surf_name}.structural_mass",
             f"{point_name}.total_perf.{surf_name}_structural_mass",
         ):
             try:
                 mass = float(np.sum(prob.get_val(mass_path)))
-                summary[f"{surf_name}_structural_mass"] = mass
+                data[f"{surf_name}_structural_mass"] = mass
                 break
             except Exception:
                 pass
-        # Failure index
         try:
             failure = float(np.max(prob.get_val(
                 f"{point_name}.{surf_name}_perf.failure"
             )))
-            summary[f"{surf_name}_failure"] = failure
+            data[f"{surf_name}_failure"] = failure
         except Exception:
             pass
 
-    return summary
+    return data
 
 
 def _generate_n2(prob, run_id: str) -> None:

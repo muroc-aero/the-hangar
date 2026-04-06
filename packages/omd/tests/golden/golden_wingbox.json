@@ -1,0 +1,52 @@
+{
+  "description": "Golden reference for wingbox FEM aerostruct analysis (CRM wing)",
+  "generated_at": "2026-04-06",
+  "reproducibility": {
+    "python": "3.11.14",
+    "openmdao": "3.41.0",
+    "numpy": "1.26.4"
+  },
+  "surface": {
+    "wing_type": "CRM",
+    "num_x": 2,
+    "num_y": 7,
+    "fem_model_type": "wingbox",
+    "E": 73100000000.0,
+    "G": 28000000000.0,
+    "yield_stress": 324000000.0,
+    "mrho": 2780.0,
+    "safety_factor": 1.5
+  },
+  "flight_conditions": {
+    "velocity": 248.136,
+    "alpha": 5.0,
+    "Mach_number": 0.84,
+    "reynolds_number": 1000000.0,
+    "density": 0.38,
+    "W0": 25000.0
+  },
+  "expected": {
+    "CL": 0.519019,
+    "CD": 0.036338,
+    "failure": -0.360604,
+    "structural_mass_kg": 36002.04,
+    "vonmises_peak_MPa": 137.88
+  },
+  "tolerances": {
+    "CL": {
+      "rel": 0.005
+    },
+    "CD": {
+      "rel": 0.005
+    },
+    "failure": {
+      "abs": 0.05
+    },
+    "structural_mass_kg": {
+      "rel": 0.005
+    },
+    "vonmises_peak_MPa": {
+      "rel": 0.01
+    }
+  }
+}

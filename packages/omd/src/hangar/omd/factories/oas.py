@@ -240,6 +240,65 @@ def _plan_config_to_surface_dict(surface_config: dict) -> dict:
             surface["spar_thickness_cp"] = np.array(surface_config["spar_thickness_cp"])
         if "skin_thickness_cp" in surface_config:
             surface["skin_thickness_cp"] = np.array(surface_config["skin_thickness_cp"])
+        # Wingbox-specific defaults
+        surface.setdefault("strength_factor_for_upper_skin", 1.0)
+        surface.setdefault("wing_weight_ratio",
+                           float(surface_config.get("wing_weight_ratio", 2.0)))
+        surface.setdefault("exact_failure_constraint",
+                           surface_config.get("exact_failure_constraint", False))
+        # Wingbox airfoil cross-section data
+        for wb_key in ("data_x_upper", "data_x_lower", "data_y_upper",
+                        "data_y_lower"):
+            if wb_key in surface_config:
+                surface[wb_key] = np.array(surface_config[wb_key])
+        # Defaults for wingbox airfoil data (NASA SC2-0612 profile)
+        if "data_x_upper" not in surface:
+            _wb_x = np.linspace(0.1, 0.6, 51)
+            surface["data_x_upper"] = _wb_x
+            surface["data_x_lower"] = _wb_x
+        if "data_y_upper" not in surface:
+            # Symmetric NACA-like profile, t/c ~ 0.12
+            _wb_x = surface["data_x_upper"]
+            _t = 0.12
+            _y = _t / 0.2 * (
+                0.2969 * np.sqrt(_wb_x)
+                - 0.1260 * _wb_x
+                - 0.3516 * _wb_x**2
+                + 0.2843 * _wb_x**3
+                - 0.1015 * _wb_x**4
+            )
+            surface["data_y_upper"] = _y
+            surface["data_y_lower"] = -_y
+        if "original_wingbox_airfoil_t_over_c" in surface_config:
+            surface["original_wingbox_airfoil_t_over_c"] = float(
+                surface_config["original_wingbox_airfoil_t_over_c"]
+            )
+        elif "original_wingbox_airfoil_t_over_c" not in surface:
+            surface["original_wingbox_airfoil_t_over_c"] = 0.12
+        # Fuel parameters for wingbox volume constraints
+        surface.setdefault("Wf_reserve",
+                           float(surface_config.get("Wf_reserve", 0.0)))
+        surface.setdefault("fuel_density",
+                           float(surface_config.get("fuel_density", 803.0)))
+
+    # Composite laminate properties (wingbox only)
+    if surface_config.get("use_composite", False):
+        from openaerostruct.structures.utils import compute_composite_stiffness
+
+        surface["useComposite"] = True
+        for key in ("ply_angles", "ply_fractions"):
+            if key in surface_config:
+                surface[key] = surface_config[key]
+        for key in ("E1", "E2", "nu12", "G12",
+                     "sigma_t1", "sigma_c1", "sigma_t2", "sigma_c2",
+                     "sigma_12max"):
+            if key in surface_config:
+                surface[key] = float(surface_config[key])
+        compute_composite_stiffness(surface)  # sets effective E, G in-place
+
+    # Point masses
+    if "n_point_masses" in surface_config:
+        surface["n_point_masses"] = int(surface_config["n_point_masses"])
 
     # Optional overrides
     for key in ("groundplane", "CL0", "CD0"):
@@ -344,6 +403,12 @@ def build_oas_aerostruct(
     # Build the problem
     prob = om.Problem(reports=False)
 
+    # Point masses (optional)
+    point_masses_cfg = operating_points.get("point_masses")
+    has_point_masses = (
+        point_masses_cfg is not None and len(point_masses_cfg) > 0
+    )
+
     # Independent variables
     indep = om.IndepVarComp()
     indep.add_output("v", val=flight["velocity"], units="m/s")
@@ -354,12 +419,25 @@ def build_oas_aerostruct(
     indep.add_output("rho", val=flight["rho"], units="kg/m**3")
     indep.add_output("CT", val=flight["CT"], units="1/s")
     indep.add_output("R", val=flight["R"], units="m")
-    indep.add_output("W0", val=flight["W0"], units="kg")
     indep.add_output("speed_of_sound", val=flight["speed_of_sound"], units="m/s")
     indep.add_output("load_factor", val=flight["load_factor"])
     indep.add_output(
         "empty_cg", val=np.array(flight["empty_cg"]), units="m"
     )
+
+    if has_point_masses:
+        pm_arr = np.array(point_masses_cfg)
+        pml_cfg = operating_points.get("point_mass_locations")
+        pml_arr = np.array(pml_cfg) if pml_cfg is not None else np.zeros((1, 3))
+        W0_wpm = float(operating_points.get(
+            "W0_without_point_masses",
+            flight["W0"],
+        ))
+        indep.add_output("W0_without_point_masses", val=W0_wpm, units="kg")
+        indep.add_output("point_masses", val=pm_arr, units="kg")
+        indep.add_output("point_mass_locations", val=pml_arr, units="m")
+    else:
+        indep.add_output("W0", val=flight["W0"], units="kg")
     if ground_effect:
         indep.add_output(
             "height_agl", val=flight.get("height_agl", 8000.0), units="m"
@@ -369,6 +447,16 @@ def build_oas_aerostruct(
             "omega", val=np.array(omega) * np.pi / 180.0, units="rad/s"
         )
     prob.model.add_subsystem("prob_vars", indep, promotes=["*"])
+
+    if has_point_masses:
+        prob.model.add_subsystem(
+            "W0_comp",
+            om.ExecComp(
+                "W0 = W0_without_point_masses + 2 * sum(point_masses)",
+                units="kg",
+            ),
+            promotes=["*"],
+        )
 
     point_name = "AS_point_0"
 
@@ -392,18 +480,253 @@ def build_oas_aerostruct(
 
     # Wire connections
     for surface in surfaces:
+        name = surface["name"]
         _connect_aerostruct_surface(
             prob.model,
-            surface["name"],
+            name,
             point_name,
             fem_model_type=surface.get("fem_model_type", "tube"),
         )
+        if has_point_masses:
+            coupled_name = f"{point_name}.coupled.{name}"
+            prob.model.connect("point_masses",
+                               f"{coupled_name}.point_masses")
+            prob.model.connect("point_mass_locations",
+                               f"{coupled_name}.point_mass_locations")
 
     metadata = {
         "point_name": point_name,
         "surface_names": [s["name"] for s in surfaces],
         "surfaces": surfaces,
         "flight_conditions": flight,
+    }
+
+    return prob, metadata
+
+
+# ---------------------------------------------------------------------------
+# Multipoint aerostruct factory
+# ---------------------------------------------------------------------------
+
+
+def build_oas_aerostruct_multipoint(
+    component_config: dict,
+    operating_points: dict,
+) -> tuple[om.Problem, dict]:
+    """Build a multipoint OAS aerostructural problem from plan config.
+
+    Creates shared geometry groups and N AerostructPoint groups (one per
+    flight condition). Follows the upstream OAS multipoint tutorial and
+    the hangar-oas MCP server's _assemble_multipoint_aerostruct_model().
+
+    Args:
+        component_config: The "config" dict from a plan component entry.
+            Must contain "surfaces" list.
+        operating_points: Must contain "flight_points" list and optional
+            "shared" dict with common parameters (CT, R, W0_without_point_masses).
+
+    Returns:
+        Tuple of (problem, metadata) where problem has setup NOT called.
+    """
+    surface_configs = component_config.get("surfaces", [])
+    if not surface_configs:
+        raise ValueError("component config must contain 'surfaces' list")
+
+    surfaces = [_plan_config_to_surface_dict(sc) for sc in surface_configs]
+
+    flight_points = operating_points["flight_points"]
+    shared = operating_points.get("shared", {})
+    N = len(flight_points)
+
+    # Shared mission parameters with defaults
+    CT = float(shared.get("CT", _DEFAULT_FLIGHT_CONDITIONS["CT"]))
+    R = float(shared.get("R", _DEFAULT_FLIGHT_CONDITIONS["R"]))
+    W0_wpm = float(shared.get(
+        "W0_without_point_masses",
+        shared.get("W0", _DEFAULT_FLIGHT_CONDITIONS["W0"]),
+    ))
+    empty_cg = shared.get("empty_cg", _DEFAULT_FLIGHT_CONDITIONS["empty_cg"])
+    alpha = float(shared.get("alpha", _DEFAULT_FLIGHT_CONDITIONS["alpha"]))
+    alpha_maneuver = float(shared.get("alpha_maneuver", 0.0))
+    fuel_mass = float(shared.get("fuel_mass", 10000.0))
+
+    # Build per-point arrays
+    v_arr = np.array([float(fp["velocity"]) for fp in flight_points])
+    mach_arr = np.array([float(fp["Mach_number"]) for fp in flight_points])
+    re_arr = np.array([float(fp.get("re", fp.get("reynolds_number", 1e6)))
+                        for fp in flight_points])
+    rho_arr = np.array([float(fp.get("rho", fp.get("density", 0.38)))
+                         for fp in flight_points])
+    sos_arr = np.array([float(fp.get("speed_of_sound",
+                        _DEFAULT_FLIGHT_CONDITIONS["speed_of_sound"]))
+                         for fp in flight_points])
+    lf_arr = np.array([float(fp.get("load_factor", 1.0))
+                        for fp in flight_points])
+
+    # Point masses (optional)
+    point_masses_cfg = shared.get("point_masses")
+    has_point_masses = point_masses_cfg is not None and len(point_masses_cfg) > 0
+    pm_arr = np.array(point_masses_cfg) if has_point_masses else np.zeros((1, 1))
+    pml_cfg = shared.get("point_mass_locations")
+    pml_arr = np.array(pml_cfg) if pml_cfg is not None else np.zeros((1, 3))
+
+    # Build the problem
+    prob = om.Problem(reports=False)
+
+    indep = om.IndepVarComp()
+    indep.add_output("v", val=v_arr, units="m/s")
+    indep.add_output("Mach_number", val=mach_arr)
+    indep.add_output("re", val=re_arr, units="1/m")
+    indep.add_output("rho", val=rho_arr, units="kg/m**3")
+    indep.add_output("speed_of_sound", val=sos_arr, units="m/s")
+    indep.add_output("load_factor", val=lf_arr)
+    indep.add_output("CT", val=CT, units="1/s")
+    indep.add_output("R", val=R, units="m")
+    indep.add_output("W0_without_point_masses", val=W0_wpm, units="kg")
+    indep.add_output("alpha", val=alpha, units="deg")
+    indep.add_output("alpha_maneuver", val=alpha_maneuver, units="deg")
+    indep.add_output("empty_cg", val=np.array(empty_cg), units="m")
+    indep.add_output("fuel_mass", val=fuel_mass, units="kg")
+    indep.add_output("point_masses", val=pm_arr, units="kg")
+    indep.add_output("point_mass_locations", val=pml_arr, units="m")
+    prob.model.add_subsystem("prob_vars", indep, promotes=["*"])
+
+    # W0 = W0_without_point_masses + 2 * sum(point_masses)
+    prob.model.add_subsystem(
+        "W0_comp",
+        om.ExecComp(
+            "W0 = W0_without_point_masses + 2 * sum(point_masses)",
+            units="kg",
+        ),
+        promotes=["*"],
+    )
+
+    # Shared geometry groups (one per surface)
+    for surface in surfaces:
+        prob.model.add_subsystem(
+            surface["name"], AerostructGeometry(surface=surface),
+        )
+
+    # Analysis points (one per flight condition)
+    point_names = []
+    for i in range(N):
+        pt = f"AS_point_{i}"
+        point_names.append(pt)
+
+        AS_point = AerostructPoint(
+            surfaces=surfaces, internally_connect_fuelburn=False,
+        )
+        prob.model.add_subsystem(pt, AS_point)
+
+        # Route per-point flight conditions via src_indices
+        prob.model.connect("v", f"{pt}.v", src_indices=[i])
+        prob.model.connect("Mach_number", f"{pt}.Mach_number", src_indices=[i])
+        prob.model.connect("re", f"{pt}.re", src_indices=[i])
+        prob.model.connect("rho", f"{pt}.rho", src_indices=[i])
+        prob.model.connect("speed_of_sound", f"{pt}.speed_of_sound",
+                           src_indices=[i])
+        prob.model.connect("load_factor", f"{pt}.load_factor", src_indices=[i])
+
+        # Shared scalar connections
+        prob.model.connect("CT", f"{pt}.CT")
+        prob.model.connect("R", f"{pt}.R")
+        prob.model.connect("W0", f"{pt}.W0")
+        prob.model.connect("empty_cg", f"{pt}.empty_cg")
+        prob.model.connect("fuel_mass",
+                           f"{pt}.total_perf.L_equals_W.fuelburn")
+        prob.model.connect("fuel_mass", f"{pt}.total_perf.CG.fuelburn")
+
+        # Wire each surface to this point
+        for surface in surfaces:
+            name = surface["name"]
+            fem_type = surface.get("fem_model_type", "tube")
+            struct_weight_relief = surface.get("struct_weight_relief", False)
+            distributed_fuel_weight = surface.get(
+                "distributed_fuel_weight", False,
+            )
+
+            if distributed_fuel_weight:
+                prob.model.connect(
+                    "load_factor",
+                    f"{pt}.coupled.load_factor",
+                    src_indices=[i],
+                )
+
+            _connect_aerostruct_surface(
+                prob.model, name, pt, fem_model_type=fem_type,
+            )
+
+            if struct_weight_relief:
+                prob.model.connect(
+                    f"{name}.element_mass",
+                    f"{pt}.coupled.{name}.element_mass",
+                )
+
+            if has_point_masses:
+                coupled_name = f"{pt}.coupled.{name}"
+                prob.model.connect("point_masses",
+                                   f"{coupled_name}.point_masses")
+                prob.model.connect("point_mass_locations",
+                                   f"{coupled_name}.point_mass_locations")
+
+            if distributed_fuel_weight:
+                prob.model.connect(
+                    f"{name}.struct_setup.fuel_vols",
+                    f"{pt}.coupled.{name}.struct_states.fuel_vols",
+                )
+                prob.model.connect(
+                    "fuel_mass",
+                    f"{pt}.coupled.{name}.struct_states.fuel_mass",
+                )
+
+    # Alpha routing: cruise = alpha, maneuver = alpha_maneuver
+    prob.model.connect("alpha", "AS_point_0.alpha")
+    if N > 1:
+        prob.model.connect("alpha_maneuver", "AS_point_1.alpha")
+
+    # Fuel volume constraints (wingbox only)
+    wingbox_surfaces = [
+        s for s in surfaces if s.get("fem_model_type") == "wingbox"
+    ]
+    if wingbox_surfaces:
+        from openaerostruct.structures.wingbox_fuel_vol_delta import (
+            WingboxFuelVolDelta,
+        )
+        wb_surf = wingbox_surfaces[0]
+        wb_name = wb_surf["name"]
+        prob.model.add_subsystem(
+            "fuel_vol_delta", WingboxFuelVolDelta(surface=wb_surf),
+        )
+        prob.model.connect(
+            f"{wb_name}.struct_setup.fuel_vols",
+            "fuel_vol_delta.fuel_vols",
+        )
+        prob.model.connect("AS_point_0.fuelburn", "fuel_vol_delta.fuelburn")
+
+        comp = om.ExecComp(
+            "fuel_diff = (fuel_mass - fuelburn) / fuelburn", units="kg",
+        )
+        prob.model.add_subsystem(
+            "fuel_diff", comp,
+            promotes_inputs=["fuel_mass"],
+            promotes_outputs=["fuel_diff"],
+        )
+        prob.model.connect("AS_point_0.fuelburn", "fuel_diff.fuelburn")
+
+    # Build point labels for metadata
+    point_labels = []
+    for i, fp in enumerate(flight_points):
+        point_labels.append(fp.get("name", f"point_{i}"))
+
+    metadata = {
+        "point_names": point_names,
+        "point_name": point_names[0],  # backwards compat
+        "point_labels": point_labels,
+        "surface_names": [s["name"] for s in surfaces],
+        "surfaces": surfaces,
+        "flight_conditions": shared,
+        "flight_points": flight_points,
+        "multipoint": True,
     }
 
     return prob, metadata

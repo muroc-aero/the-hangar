@@ -148,10 +148,16 @@ def _register_builtins() -> None:
 
     # OAS factories: optional, require openaerostruct
     try:
-        from hangar.omd.factories.oas import build_oas_aerostruct
+        from hangar.omd.factories.oas import (
+            build_oas_aerostruct,
+            build_oas_aerostruct_multipoint,
+        )
         from hangar.omd.factories.oas_aero import build_oas_aeropoint
         from hangar.omd.plotting.oas import OAS_AEROSTRUCT_PLOTS, OAS_AERO_PLOTS
         register_factory("oas/AerostructPoint", build_oas_aerostruct,
+                         plot_provider=OAS_AEROSTRUCT_PLOTS)
+        register_factory("oas/AerostructMultipoint",
+                         build_oas_aerostruct_multipoint,
                          plot_provider=OAS_AEROSTRUCT_PLOTS)
         register_factory("oas/AeroPoint", build_oas_aeropoint,
                          plot_provider=OAS_AERO_PLOTS)

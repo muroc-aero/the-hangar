@@ -1,0 +1,19 @@
+id: wing
+type: oas/AerostructMultipoint
+config:
+  surfaces:
+    - name: wing
+      wing_type: rect
+      num_x: 2
+      num_y: 7
+      span: 10.0
+      root_chord: 1.0
+      symmetry: true
+      fem_model_type: tube
+      E: 7.0e10
+      G: 3.0e10
+      yield_stress: 5.0e8
+      mrho: 3000.0
+      safety_factor: 1.5
+      with_viscous: true
+      CD0: 0.015

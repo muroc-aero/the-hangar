@@ -1,0 +1,9 @@
+nonlinear:
+  type: NonlinearBlockGS
+  options:
+    maxiter: 100
+    atol: 1.0e-8
+    use_aitken: true
+linear:
+  type: DirectSolver
+  options: {}

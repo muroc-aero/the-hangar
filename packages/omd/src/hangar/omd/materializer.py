@@ -188,6 +188,9 @@ def apply_solvers_post_setup(prob: om.Problem, metadata: dict) -> None:
     setup(). This function applies the configured solvers to the
     correct subsystem.
 
+    For multipoint problems, solvers are applied to each point's
+    coupled group independently.
+
     Important: OAS sets default solvers on the coupled group during
     setup() (NonlinearBlockGS with Aitken, err_on_non_converge=True).
     When replacing these, we must preserve safe defaults -- in particular,
@@ -195,39 +198,48 @@ def apply_solvers_post_setup(prob: om.Problem, metadata: dict) -> None:
     iterations return an approximate answer rather than raising an
     exception, which lets gradient-based optimizers proceed.
     """
-    point_name = metadata.get("point_name", "AS_point_0")
+    # Determine target groups: multipoint has multiple coupled groups
+    point_names = metadata.get("point_names")
+    if point_names is None:
+        point_names = [metadata.get("point_name", "AS_point_0")]
 
-    # Try to find the coupled group
-    try:
-        coupled = prob.model._get_subsystem(f"{point_name}.coupled")
-    except Exception:
-        coupled = None
+    targets = []
+    for pt in point_names:
+        try:
+            coupled = prob.model._get_subsystem(f"{pt}.coupled")
+        except Exception:
+            coupled = None
+        if coupled is not None:
+            targets.append(coupled)
 
-    target = coupled if coupled is not None else prob.model
+    if not targets:
+        targets = [prob.model]
 
     nl_config = metadata.pop("_nl_solver", None)
     if nl_config:
-        solver_cls = _NONLINEAR_SOLVERS[nl_config["type"]]
-        solver = solver_cls()
-        # Newton solver needs safe defaults for use inside optimization
-        if nl_config["type"] == "NewtonSolver":
-            if "solve_subsystems" not in nl_config["options"]:
-                solver.options["solve_subsystems"] = True
-            # Let unconverged Newton return approximate answers rather
-            # than raising, so SLSQP can continue with noisy gradients.
-            if "err_on_non_converge" not in nl_config["options"]:
-                solver.options["err_on_non_converge"] = False
-        for key, val in nl_config["options"].items():
-            solver.options[key] = val
-        target.nonlinear_solver = solver
+        for target in targets:
+            solver_cls = _NONLINEAR_SOLVERS[nl_config["type"]]
+            solver = solver_cls()
+            # Newton solver needs safe defaults for use inside optimization
+            if nl_config["type"] == "NewtonSolver":
+                if "solve_subsystems" not in nl_config["options"]:
+                    solver.options["solve_subsystems"] = True
+                # Let unconverged Newton return approximate answers rather
+                # than raising, so SLSQP can continue with noisy gradients.
+                if "err_on_non_converge" not in nl_config["options"]:
+                    solver.options["err_on_non_converge"] = False
+            for key, val in nl_config["options"].items():
+                solver.options[key] = val
+            target.nonlinear_solver = solver
 
     lin_config = metadata.pop("_lin_solver", None)
     if lin_config:
-        solver_cls = _LINEAR_SOLVERS[lin_config["type"]]
-        solver = solver_cls()
-        for key, val in lin_config["options"].items():
-            solver.options[key] = val
-        target.linear_solver = solver
+        for target in targets:
+            solver_cls = _LINEAR_SOLVERS[lin_config["type"]]
+            solver = solver_cls()
+            for key, val in lin_config["options"].items():
+                solver.options[key] = val
+            target.linear_solver = solver
 
 
 # ---------------------------------------------------------------------------
@@ -265,10 +277,13 @@ def _configure_driver(
     # Design variables
     point_name = metadata.get("point_name", "AS_point_0")
     surface_names = metadata.get("surface_names", [])
+    components = plan.get("components", [])
+    component_type = components[0].get("type") if components else None
 
     for dv in plan.get("design_variables", []):
         dv_name = dv["name"]
-        path = _resolve_var_path(dv_name, point_name, surface_names)
+        path = _resolve_var_path(dv_name, point_name, surface_names,
+                                 component_type)
         kwargs: dict = {}
         if "lower" in dv:
             kwargs["lower"] = dv["lower"]
@@ -283,9 +298,16 @@ def _configure_driver(
         prob.model.add_design_var(path, **kwargs)
 
     # Constraints
+    point_names = metadata.get("point_names")
     for con in plan.get("constraints", []):
         con_name = con["name"]
-        path = _resolve_var_path(con_name, point_name, surface_names)
+        # For multipoint, use per-point constraint targeting
+        if point_names and "point" in con:
+            pt_idx = con["point"]
+            pt = point_names[pt_idx] if pt_idx < len(point_names) else point_names[0]
+        else:
+            pt = point_name
+        path = _resolve_var_path(con_name, pt, surface_names, component_type)
         kwargs = {}
         if "upper" in con:
             kwargs["upper"] = con["upper"]
@@ -301,7 +323,8 @@ def _configure_driver(
     obj = plan.get("objective", {})
     if obj:
         obj_name = obj["name"]
-        path = _resolve_var_path(obj_name, point_name, surface_names)
+        path = _resolve_var_path(obj_name, point_name, surface_names,
+                                 component_type)
         kwargs = {}
         if "scaler" in obj:
             kwargs["scaler"] = obj["scaler"]
@@ -312,19 +335,35 @@ def _resolve_var_path(
     name: str,
     point_name: str,
     surface_names: list[str],
+    component_type: str | None = None,
 ) -> str:
     """Resolve a short variable name to a full OpenMDAO path.
 
     If the name already contains dots (looks like a full path),
     return as-is. Otherwise, try common OAS conventions.
+
+    Args:
+        name: Short variable name (e.g. "CL", "twist_cp").
+        point_name: Analysis point subsystem name.
+        surface_names: List of surface names from metadata.
+        component_type: Component type string (e.g. "oas/AeroPoint").
+            Used to distinguish aero-only vs aerostruct path patterns.
     """
     if "." in name:
         return name
 
     # Simple names that are promoted to top level
     if name in ("alpha", "v", "rho", "Mach_number", "re", "load_factor",
-                "beta", "CT", "R", "W0", "speed_of_sound"):
+                "beta", "CT", "R", "W0", "speed_of_sound",
+                "alpha_maneuver", "fuel_mass", "W0_without_point_masses",
+                "point_masses", "point_mass_locations"):
         return name
+
+    # Top-level multipoint constraints (no point prefix)
+    if name == "fuel_vol_delta":
+        return "fuel_vol_delta.fuel_vol_delta"
+    if name == "fuel_diff":
+        return "fuel_diff"
 
     # Surface-specific DVs: try first surface
     if surface_names:
@@ -341,9 +380,17 @@ def _resolve_var_path(
         if name in dv_map:
             return dv_map[name]
 
-        # Performance outputs (constraints/objectives): {point}.{surf}_perf.{name}
+        # Performance outputs (constraints/objectives)
         perf_outputs = {"CL", "CD", "CDi", "CDv", "CDw", "CM"}
         if name in perf_outputs:
+            # Aero-only: promoted directly to {point}.{name}
+            # Aerostruct: nested under {point}.{surf}_perf.{name}
+            is_aero_only = (
+                component_type == "oas/AeroPoint"
+                or point_name.startswith("aero_")
+            )
+            if is_aero_only:
+                return f"{point_name}.{name}"
             return f"{point_name}.{surf}_perf.{name}"
 
         # Surface-level outputs: {point}.{surf}.{name}
@@ -354,6 +401,7 @@ def _resolve_var_path(
     # Aerostruct-specific outputs
     aerostruct_outputs = {
         "failure": f"{point_name}.{surface_names[0]}_perf.failure" if surface_names else name,
+        "tsaiwu_sr": f"{point_name}.{surface_names[0]}_perf.tsaiwu_sr" if surface_names else name,
         "fuelburn": "fuelburn",
         "structural_mass": f"{surface_names[0]}.structural_mass" if surface_names else name,
         "L_equals_W": f"{point_name}.L_equals_W" if point_name else name,

@@ -678,6 +678,114 @@ def plot_vonmises(
     return fig
 
 
+def plot_failure(
+    recorder_path: Path,
+    *,
+    surface_name: str | None = None,
+    mirror: bool = False,
+    **kwargs,
+) -> plt.Figure:
+    """Plot spanwise failure metric, auto-detecting composite vs isotropic.
+
+    For composite surfaces (Tsai-Wu), plots dimensionless strength ratio
+    with failure limit at 1.0/safety_factor. For isotropic (von Mises),
+    delegates to plot_vonmises().
+
+    Args:
+        recorder_path: Path to OpenMDAO recorder file.
+        surface_name: Surface name (auto-detected if None).
+        mirror: If True, mirror for full-span view.
+
+    Returns:
+        matplotlib Figure.
+    """
+    run_id = kwargs.get("run_id", "")
+    reader, case = get_reader_and_final_case(recorder_path)
+    surf = surface_name or "*"
+
+    # Try Tsai-Wu first (composite)
+    _, tw = find_first_output(
+        case,
+        f"*{surf}_perf.tsaiwu_sr",
+        f"*tsaiwu_sr",
+    )
+
+    if tw is not None:
+        tw = np.array(tw)
+        logger.info("Failure plot using Tsai-Wu, shape: %s", tw.shape)
+
+        # Take max across plies/critical points per element (axis=1)
+        if tw.ndim == 2:
+            tw_peak = np.max(tw, axis=1)
+        else:
+            tw_peak = tw.flatten()
+
+        # Get mesh for span coordinates
+        _, mesh_raw = find_first_output(case, f"*{surf}*.mesh", "*.mesh")
+        if mesh_raw is not None:
+            m = np.array(mesh_raw)
+            if m.ndim == 3:
+                _, elem_eta, was_reversed = get_span_eta(m)
+                if len(tw_peak) == len(elem_eta):
+                    span_frac = elem_eta
+                    if was_reversed:
+                        tw_peak = tw_peak[::-1]
+                else:
+                    span_frac = np.linspace(0, 1, len(tw_peak))
+            else:
+                span_frac = np.linspace(0, 1, len(tw_peak))
+        else:
+            span_frac = np.linspace(0, 1, len(tw_peak))
+
+        if mirror:
+            span_frac, tw_peak = mirror_spanwise(span_frac, tw_peak)
+
+        fig, ax = _make_fig("Failure (Tsai-Wu)", run_id)
+        label = surface_name or detect_surface_name(case) or "wing"
+        ax.plot(span_frac, tw_peak, linewidth=2, label=label)
+
+        # Failure limit: SR / safety_factor = 1.0 at failure
+        safety_factor = kwargs.get("safety_factor", None)
+        if safety_factor is None:
+            try:
+                sys_options = reader.list_model_options(out_stream=None)
+                for key in sys_options:
+                    try:
+                        surface = sys_options[key].get("surface", {})
+                        sf = surface.get("safety_factor")
+                        if sf is not None:
+                            safety_factor = float(sf)
+                            break
+                    except (TypeError, AttributeError):
+                        pass
+            except Exception:
+                pass
+        if safety_factor is None:
+            safety_factor = 1.5
+
+        limit = 1.0 / safety_factor
+        ax.axhline(y=limit, color="r", linewidth=2, linestyle="--")
+        ax.set_ylim(0, max(float(tw_peak.max()), limit) * 1.1)
+        ax.text(0.075, 1.03, "failure limit", transform=ax.transAxes,
+                color="r", fontsize=8)
+
+        ax.set_xlabel("Normalised spanwise station eta  [--]   (0 = root, 1 = tip)")
+        ax.set_ylabel("Tsai-Wu Strength Ratio  [--]")
+        ax.legend(fontsize=7)
+        ax.grid(True, alpha=0.3)
+        fig.tight_layout(rect=[0, 0, 1, 0.93])
+
+        return fig
+
+    # Fall back to von Mises (isotropic)
+    return plot_vonmises(
+        recorder_path,
+        surface_name=surface_name,
+        mirror=mirror,
+        **kwargs,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Skin + spar thickness (wingbox model)
 # ---------------------------------------------------------------------------
@@ -1085,11 +1193,161 @@ OAS_AERO_PLOTS: dict[str, callable] = {
     "mesh_3d": plot_mesh_3d,
 }
 
+def plot_multipoint_comparison(
+    recorder_path: Path,
+    *,
+    surface_name: str | None = None,
+    **kwargs,
+) -> plt.Figure:
+    """Plot side-by-side cruise vs maneuver results for multipoint runs.
+
+    Shows CL, failure, and deflection at each flight point. Reads data
+    from AS_point_0 (cruise) and AS_point_1 (maneuver).
+
+    Args:
+        recorder_path: Path to OpenMDAO recorder file.
+        surface_name: Surface name (auto-detected if None).
+
+    Returns:
+        matplotlib Figure.
+    """
+    run_id = kwargs.get("run_id", "")
+    reader, case = get_reader_and_final_case(recorder_path)
+    surf = surface_name or detect_surface_name(case) or "wing"
+
+    # Collect per-point data
+    point_data = {}
+    for pt_idx, pt_label in enumerate(["cruise", "maneuver"]):
+        pt = f"AS_point_{pt_idx}"
+        data: dict = {}
+
+        # CL
+        _, cl_val = find_first_output(case, f"{pt}.{surf}_perf.CL",
+                                       f"{pt}.CL")
+        if cl_val is not None:
+            data["CL"] = float(np.atleast_1d(cl_val).flat[0])
+
+        # CD
+        _, cd_val = find_first_output(case, f"{pt}.{surf}_perf.CD",
+                                       f"{pt}.CD")
+        if cd_val is not None:
+            data["CD"] = float(np.atleast_1d(cd_val).flat[0])
+
+        # Failure
+        _, fail_val = find_first_output(case, f"{pt}.{surf}_perf.failure")
+        if fail_val is not None:
+            data["failure"] = float(np.max(fail_val))
+
+        # Deflection
+        _, disp_val = find_first_output(case, f"{pt}.{surf}.disp")
+        if disp_val is not None:
+            data["tip_deflection"] = float(disp_val[-1, 2])
+
+        point_data[pt_label] = data
+
+    if not any(point_data.values()):
+        fig, ax = _make_fig("Multipoint Comparison (no data)", run_id)
+        ax.text(0.5, 0.5, "No multipoint data found",
+                transform=ax.transAxes, ha="center", va="center")
+        return fig
+
+    # Build comparison bar chart
+    metrics = ["CL", "CD", "failure"]
+    labels = list(point_data.keys())
+    fig, axes = plt.subplots(1, len(metrics), figsize=(10, 3.6))
+    suptitle = f"Multipoint Comparison\n({run_id})" if run_id else "Multipoint Comparison"
+    fig.suptitle(suptitle, fontsize=9, y=0.98)
+
+    colors = ["#2196F3", "#FF5722"]  # blue = cruise, orange = maneuver
+
+    for ax, metric in zip(axes, metrics):
+        vals = []
+        for label in labels:
+            vals.append(point_data[label].get(metric, 0.0))
+        bars = ax.bar(labels, vals, color=colors[:len(labels)])
+        ax.set_ylabel(metric)
+        ax.set_title(metric, fontsize=8)
+        # Add value labels
+        for bar, val in zip(bars, vals):
+            ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height(),
+                    f"{val:.4f}", ha="center", va="bottom", fontsize=7)
+
+    fig.tight_layout(rect=[0, 0, 1, 0.90])
+    return fig
+
+
+def plot_drag_polar(
+    polar_data: dict,
+    *,
+    output_path: Path | None = None,
+    **kwargs,
+) -> plt.Figure:
+    """Plot a drag polar from sweep results.
+
+    Creates three subplots: CL vs CD, CL vs alpha, and L/D vs alpha.
+
+    Args:
+        polar_data: Dict with alpha_deg, CL, CD, L_over_D, best_L_over_D.
+        output_path: If provided, save the figure to this path.
+
+    Returns:
+        matplotlib Figure.
+    """
+    alpha = polar_data["alpha_deg"]
+    CL = polar_data["CL"]
+    CD = polar_data["CD"]
+    LoD = [v if v is not None else 0 for v in polar_data["L_over_D"]]
+    best = polar_data["best_L_over_D"]
+
+    fig, axes = plt.subplots(3, 1, figsize=(6.0, 8.0))
+
+    # CL vs CD (drag polar)
+    ax = axes[0]
+    ax.plot(CD, CL, "b-o", markersize=3, linewidth=1.5)
+    if best.get("CD") and best.get("CL"):
+        ax.plot(best["CD"], best["CL"], "r*", markersize=12,
+                label=f"Best L/D = {best['L_over_D']:.1f}")
+        ax.legend(fontsize=8)
+    ax.set_xlabel("CD")
+    ax.set_ylabel("CL")
+    ax.set_title("Drag Polar")
+    ax.grid(True, alpha=0.3)
+
+    # CL vs alpha
+    ax = axes[1]
+    ax.plot(alpha, CL, "b-o", markersize=3, linewidth=1.5)
+    ax.set_xlabel("alpha (deg)")
+    ax.set_ylabel("CL")
+    ax.set_title("Lift Curve")
+    ax.grid(True, alpha=0.3)
+
+    # L/D vs alpha
+    ax = axes[2]
+    ax.plot(alpha, LoD, "g-o", markersize=3, linewidth=1.5)
+    if best.get("alpha_deg") is not None and best.get("L_over_D"):
+        ax.plot(best["alpha_deg"], best["L_over_D"], "r*", markersize=12,
+                label=f"Best L/D = {best['L_over_D']:.1f}")
+        ax.legend(fontsize=8)
+    ax.set_xlabel("alpha (deg)")
+    ax.set_ylabel("L/D")
+    ax.set_title("Lift-to-Drag Ratio")
+    ax.grid(True, alpha=0.3)
+
+    fig.tight_layout()
+
+    if output_path:
+        fig.savefig(output_path, dpi=150, bbox_inches="tight")
+
+    return fig
+
+
 OAS_AEROSTRUCT_PLOTS: dict[str, callable] = {
     **OAS_AERO_PLOTS,
     "struct": plot_structural_deformation,
     "thickness": plot_thickness,
     "vonmises": plot_vonmises,
+    "failure": plot_failure,
     "skin_spar": plot_skin_spar,
     "t_over_c": plot_t_over_c,
+    "multipoint_comparison": plot_multipoint_comparison,
 }

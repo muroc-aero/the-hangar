@@ -1,0 +1,35 @@
+design_variables:
+  - name: twist_cp
+    lower: -5.0
+    upper: 10.0
+    scaler: 0.1
+  - name: thickness_cp
+    lower: 0.001
+    upper: 0.1
+    scaler: 100.0
+  - name: alpha
+    lower: -5.0
+    upper: 10.0
+  - name: alpha_maneuver
+    lower: -5.0
+    upper: 10.0
+
+constraints:
+  - name: CL
+    equals: 0.5
+    point: 0
+  - name: failure
+    upper: 0.0
+    point: 0
+  - name: failure
+    upper: 0.0
+    point: 1
+
+objective:
+  name: CD
+
+optimizer:
+  type: SLSQP
+  options:
+    maxiter: 200
+    ftol: 1.0e-8

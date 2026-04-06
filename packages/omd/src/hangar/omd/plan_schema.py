@@ -65,17 +65,60 @@ PLAN_SCHEMA: dict[str, Any] = {
             },
         },
         "operating_points": {
-            "type": "object",
-            "additionalProperties": {
-                "oneOf": [
-                    {"type": "number"},
-                    {"type": "string"},
-                    {
-                        "type": "array",
-                        "items": {"type": "number"},
+            "oneOf": [
+                # Single-point: flat dict of flight conditions
+                {
+                    "type": "object",
+                    "additionalProperties": {
+                        "oneOf": [
+                            {"type": "number"},
+                            {"type": "string"},
+                            {
+                                "type": "array",
+                                "items": {"type": "number"},
+                            },
+                        ],
                     },
-                ],
-            },
+                },
+                # Multipoint: {flight_points: [...], shared: {...}}
+                {
+                    "type": "object",
+                    "required": ["flight_points"],
+                    "additionalProperties": False,
+                    "properties": {
+                        "flight_points": {
+                            "type": "array",
+                            "minItems": 2,
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": {
+                                    "oneOf": [
+                                        {"type": "number"},
+                                        {"type": "string"},
+                                        {
+                                            "type": "array",
+                                            "items": {"type": "number"},
+                                        },
+                                    ],
+                                },
+                            },
+                        },
+                        "shared": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "oneOf": [
+                                    {"type": "number"},
+                                    {"type": "string"},
+                                    {
+                                        "type": "array",
+                                        "items": {"type": "number"},
+                                    },
+                                ],
+                            },
+                        },
+                    },
+                },
+            ],
         },
         "components": {
             "type": "array",
@@ -168,6 +211,7 @@ PLAN_SCHEMA: dict[str, Any] = {
                     "equals": {"type": "number"},
                     "scaler": {"type": "number"},
                     "units": {"type": "string"},
+                    "point": {"type": "integer", "minimum": 0},
                     "traces_to": {
                         "type": "array",
                         "items": {"type": "string"},

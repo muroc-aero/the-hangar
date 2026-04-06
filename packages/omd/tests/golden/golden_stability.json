@@ -1,0 +1,45 @@
+{
+  "description": "Golden reference for stability derivatives (aero-only, rect wing)",
+  "generated_at": "2026-04-06",
+  "reproducibility": {
+    "python": "3.11.14",
+    "openmdao": "3.41.0",
+    "numpy": "1.26.4"
+  },
+  "surface": {
+    "wing_type": "rect",
+    "span": 10.0,
+    "root_chord": 1.0,
+    "num_x": 2,
+    "num_y": 7
+  },
+  "flight_conditions": {
+    "velocity": 248.136,
+    "alpha": 5.0,
+    "Mach_number": 0.84,
+    "reynolds_number": 1000000.0,
+    "density": 0.38
+  },
+  "delta_alpha": 0.0001,
+  "expected": {
+    "alpha_deg": 5.0,
+    "CL": 0.4521766324285423,
+    "CM": -0.1127389282765389,
+    "CL_alpha_per_deg": 0.09019553,
+    "CM_alpha_per_deg": -0.02236587,
+    "CL_alpha_per_rad": 5.167823,
+    "CM_alpha_per_rad": -1.28147,
+    "static_margin": 0.247971
+  },
+  "tolerances": {
+    "CL_alpha_per_rad": {
+      "rel": 0.005
+    },
+    "CM_alpha_per_rad": {
+      "rel": 0.01
+    },
+    "static_margin": {
+      "abs": 0.005
+    }
+  }
+}

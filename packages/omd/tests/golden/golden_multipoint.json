@@ -1,0 +1,133 @@
+{
+  "description": "Golden reference for multipoint aerostructural optimization (CD minimization)",
+  "generated_by": "OAS MCP server run_optimization, run_id: 20260406T135052_6dc05e8528f86f64",
+  "generated_at": "2026-04-06",
+  "surface": {
+    "wing_type": "rect",
+    "span": 10.0,
+    "root_chord": 1.0,
+    "num_x": 2,
+    "num_y": 7,
+    "symmetry": true,
+    "fem_model_type": "tube",
+    "E": 70000000000.0,
+    "G": 30000000000.0,
+    "yield_stress": 500000000.0,
+    "mrho": 3000,
+    "safety_factor": 1.5,
+    "CD0": 0.015,
+    "with_viscous": true
+  },
+  "flight_points": [
+    {
+      "name": "cruise",
+      "velocity": 248.136,
+      "Mach_number": 0.84,
+      "density": 0.38,
+      "reynolds_number": 1000000.0,
+      "speed_of_sound": 295.4,
+      "load_factor": 1.0
+    },
+    {
+      "name": "maneuver",
+      "velocity": 248.136,
+      "Mach_number": 0.84,
+      "density": 0.38,
+      "reynolds_number": 1000000.0,
+      "speed_of_sound": 295.4,
+      "load_factor": 2.5
+    }
+  ],
+  "shared": {
+    "W0_without_point_masses": 5000,
+    "R": 3000000,
+    "CT": 9.81e-06
+  },
+  "design_variables": {
+    "twist": {
+      "lower": -5,
+      "upper": 10,
+      "scaler": 0.1
+    },
+    "thickness": {
+      "lower": 0.001,
+      "upper": 0.1,
+      "scaler": 100
+    },
+    "alpha": {
+      "lower": -5,
+      "upper": 10
+    },
+    "alpha_maneuver": {
+      "lower": -5,
+      "upper": 10
+    }
+  },
+  "constraints": [
+    {
+      "name": "CL",
+      "point": 0,
+      "equals": 0.5
+    },
+    {
+      "name": "failure",
+      "point": 0,
+      "upper": 0.0
+    },
+    {
+      "name": "failure",
+      "point": 1,
+      "upper": 0.0
+    }
+  ],
+  "objective": "CD",
+  "expected": {
+    "cruise": {
+      "CL": 0.4999999993596568,
+      "CD": 0.036174912347433016,
+      "failure": -0.11556046085182634,
+      "structural_mass_kg": 265.0692428868356
+    },
+    "maneuver": {
+      "CL": 0.01145435354665212,
+      "CD": 0.029644246498197007,
+      "failure": -0.9199248568613717
+    },
+    "optimized_dvs": {
+      "twist": [
+        -1.9407091800186638,
+        0.21229651075717243,
+        0.8094360253732362,
+        1.3743228973662087
+      ],
+      "thickness": [
+        0.010014467658054835,
+        0.01003517985728801,
+        0.010065215053475185,
+        0.010076540396841662
+      ],
+      "alpha": 5.004624188745752,
+      "alpha_maneuver": -8.364900710552769e-16
+    }
+  },
+  "tolerances": {
+    "CL": {
+      "rel": 0.005
+    },
+    "CD": {
+      "rel": 0.005
+    },
+    "failure": {
+      "abs": 0.05
+    },
+    "structural_mass_kg": {
+      "rel": 0.005
+    }
+  },
+  "reproducibility_header": {
+    "python_version": "3.11.14",
+    "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "openmdao_version": "3.41.0",
+    "numpy_version": "1.26.4"
+  }
+}
