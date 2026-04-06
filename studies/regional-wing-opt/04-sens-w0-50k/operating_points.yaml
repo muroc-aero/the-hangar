@@ -1,0 +1,14 @@
+velocity: 230.15
+alpha: 3.0
+Mach_number: 0.78
+re: 5500000.0
+rho: 0.3639
+CT: 9.8e-06
+R: 3704000.0
+W0: 50000.0
+speed_of_sound: 295.07
+load_factor: 1.0
+empty_cg:
+- 14.0
+- 0.0
+- -1.0

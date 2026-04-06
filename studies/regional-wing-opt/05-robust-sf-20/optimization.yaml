@@ -1,0 +1,39 @@
+design_variables:
+- name: wing.twist_cp
+  lower: -10.0
+  upper: 15.0
+  scaler: 0.1
+  units: deg
+  traces_to:
+  - REQ-AERO-01
+- name: wing.thickness_cp
+  lower: 0.002
+  upper: 0.05
+  scaler: 100.0
+  units: m
+  traces_to:
+  - REQ-STRUCT-01
+- name: alpha
+  lower: -2.0
+  upper: 8.0
+  scaler: 0.1
+  units: deg
+  traces_to:
+  - REQ-AERO-01
+constraints:
+- name: AS_point_0.wing_perf.failure
+  upper: 0.0
+  scaler: 1.0
+- name: AS_point_0.L_equals_W
+  equals: 0.0
+  scaler: 1.0
+objective:
+  name: AS_point_0.fuelburn
+  scaler: 1.0e-05
+  units: kg
+optimizer:
+  type: SLSQP
+  options:
+    maxiter: 300
+    ftol: 1.0e-09
+    timeout_seconds: 180

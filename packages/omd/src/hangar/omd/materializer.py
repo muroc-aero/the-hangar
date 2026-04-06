@@ -187,6 +187,13 @@ def apply_solvers_post_setup(prob: om.Problem, metadata: dict) -> None:
     For OAS aerostruct problems, the coupled group exists only after
     setup(). This function applies the configured solvers to the
     correct subsystem.
+
+    Important: OAS sets default solvers on the coupled group during
+    setup() (NonlinearBlockGS with Aitken, err_on_non_converge=True).
+    When replacing these, we must preserve safe defaults -- in particular,
+    Newton must have err_on_non_converge=False so that unconverged
+    iterations return an approximate answer rather than raising an
+    exception, which lets gradient-based optimizers proceed.
     """
     point_name = metadata.get("point_name", "AS_point_0")
 
@@ -202,9 +209,14 @@ def apply_solvers_post_setup(prob: om.Problem, metadata: dict) -> None:
     if nl_config:
         solver_cls = _NONLINEAR_SOLVERS[nl_config["type"]]
         solver = solver_cls()
-        # Newton solver requires solve_subsystems to be explicitly set
-        if nl_config["type"] == "NewtonSolver" and "solve_subsystems" not in nl_config["options"]:
-            solver.options["solve_subsystems"] = True
+        # Newton solver needs safe defaults for use inside optimization
+        if nl_config["type"] == "NewtonSolver":
+            if "solve_subsystems" not in nl_config["options"]:
+                solver.options["solve_subsystems"] = True
+            # Let unconverged Newton return approximate answers rather
+            # than raising, so SLSQP can continue with noisy gradients.
+            if "err_on_non_converge" not in nl_config["options"]:
+                solver.options["err_on_non_converge"] = False
         for key, val in nl_config["options"].items():
             solver.options[key] = val
         target.nonlinear_solver = solver
@@ -240,10 +252,12 @@ def _configure_driver(
     driver.options["optimizer"] = _OPTIMIZERS.get(opt_type, opt_type)
     driver.options["disp"] = False
     for key, val in opt_options.items():
-        if key in ("maxiter",):
+        if key in ("maxiter", "maxfev"):
             driver.options[key] = val
         elif key == "ftol":
             driver.options["tol"] = val
+        elif key == "timeout_seconds":
+            pass  # Handled by run.py, not the driver
         else:
             driver.options[key] = val
     prob.driver = driver

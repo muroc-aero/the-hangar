@@ -1,0 +1,125 @@
+metadata:
+  name: Robustness -- 2.5g maneuver load
+  version: 2
+  id: regional-wing-robust-lf25
+  content_hash: 504f85741d1eb70467bd686d49ed6a67e484b449c9c96e4026b6b6a8ed4f68a5
+  parent_version: 1
+operating_points:
+  velocity: 230.15
+  alpha: 3.0
+  Mach_number: 0.78
+  re: 5500000.0
+  rho: 0.3639
+  CT: 9.8e-06
+  R: 3704000.0
+  W0: 40000.0
+  speed_of_sound: 295.07
+  load_factor: 2.5
+  empty_cg:
+  - 14.0
+  - 0.0
+  - -1.0
+solvers:
+  nonlinear:
+    type: NewtonSolver
+    options:
+      maxiter: 20
+      atol: 1.0e-08
+      rtol: 1.0e-08
+      solve_subsystems: true
+  linear:
+    type: DirectSolver
+    options: {}
+constraints:
+- name: AS_point_0.wing_perf.failure
+  upper: 0.0
+  scaler: 1.0
+- name: AS_point_0.L_equals_W
+  equals: 0.0
+  scaler: 1.0
+optimizer:
+  type: SLSQP
+  options:
+    maxiter: 300
+    ftol: 1.0e-09
+objective:
+  name: AS_point_0.fuelburn
+  scaler: 1.0e-05
+  units: kg
+design_variables:
+- name: wing.twist_cp
+  lower: -10.0
+  upper: 15.0
+  scaler: 0.1
+  units: deg
+  traces_to:
+  - REQ-AERO-01
+- name: wing.thickness_cp
+  lower: 0.002
+  upper: 0.05
+  scaler: 100.0
+  units: m
+  traces_to:
+  - REQ-STRUCT-01
+- name: alpha
+  lower: -2.0
+  upper: 8.0
+  scaler: 0.1
+  units: deg
+  traces_to:
+  - REQ-AERO-01
+components:
+- id: wing
+  type: oas/AerostructPoint
+  config:
+    surfaces:
+    - name: wing
+      wing_type: rect
+      num_x: 3
+      num_y: 11
+      span: 28.0
+      root_chord: 4.2
+      symmetry: true
+      sweep: 24.0
+      dihedral: 5.0
+      taper: 0.32
+      span_cos_spacing: 1.0
+      fem_model_type: tube
+      E: 71700000000.0
+      G: 26900000000.0
+      yield_stress: 503000000.0
+      mrho: 2810.0
+      safety_factor: 1.5
+      fem_origin: 0.35
+      wing_weight_ratio: 2.0
+      struct_weight_relief: false
+      distributed_fuel_weight: true
+      exact_failure_constraint: false
+      with_viscous: true
+      with_wave: true
+      S_ref_type: wetted
+      CL0: 0.0
+      CD0: 0.0078
+      k_lam: 0.05
+      t_over_c_cp:
+      - 0.12
+      - 0.12
+      - 0.114
+      - 0.106
+      - 0.098
+      - 0.09
+      c_max_t: 0.303
+      thickness_cp:
+      - 0.015
+      - 0.015
+      - 0.0132
+      - 0.0112
+      - 0.0096
+      - 0.008
+      twist_cp:
+      - 4.0
+      - 3.2
+      - 2.4
+      - 1.3999999999999995
+      - 0.19999999999999973
+      - -1.0

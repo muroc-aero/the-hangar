@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import json
 import logging
+import signal
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -118,11 +120,36 @@ def _decompose_plan(
     # so we skip them here to avoid duplicates.
 
 
+@contextmanager
+def _wallclock_timeout(seconds: int | None):
+    """Context manager that raises TimeoutError after *seconds* wallclock time.
+
+    Uses SIGALRM on Unix. If *seconds* is None, no timeout is applied.
+    """
+    if seconds is None:
+        yield
+        return
+
+    def _handler(signum, frame):
+        raise TimeoutError(
+            f"Execution exceeded wallclock limit of {seconds}s"
+        )
+
+    old = signal.signal(signal.SIGALRM, _handler)
+    signal.alarm(int(seconds))
+    try:
+        yield
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old)
+
+
 def run_plan(
     plan_path: Path,
     mode: str = "analysis",
     recording_level: str = "driver",
     db_path: Path | None = None,
+    timeout_seconds: int | None = None,
 ) -> dict:
     """Load, materialize, execute, and record an analysis plan.
 
@@ -131,11 +158,13 @@ def run_plan(
         mode: "analysis" (run_model) or "optimize" (run_driver).
         recording_level: "minimal", "driver", "solver", or "full".
         db_path: Path to analysis DB. If None, uses default.
+        timeout_seconds: Wallclock timeout in seconds. If None, uses
+            the plan's optimizer.options.timeout_seconds, or no limit.
 
     Returns:
         Structured result dict with:
         - run_id: unique identifier
-        - status: "converged" | "failed" | "completed"
+        - status: "converged" | "failed" | "completed" | "timeout"
         - summary: key results dict
         - errors: list of error dicts if any
     """
@@ -233,12 +262,19 @@ def run_plan(
             "errors": [{"path": "materialize", "message": str(exc)}],
         }
 
+    # Resolve timeout: CLI flag > plan YAML > default (none)
+    if timeout_seconds is None:
+        timeout_seconds = (
+            plan.get("optimizer", {}).get("options", {}).get("timeout_seconds")
+        )
+
     # Execute
     try:
-        if mode == "optimize":
-            prob.run_driver()
-        else:
-            prob.run_model()
+        with _wallclock_timeout(timeout_seconds):
+            if mode == "optimize":
+                prob.run_driver()
+            else:
+                prob.run_model()
 
         prob.record("final")
 
@@ -282,6 +318,17 @@ def run_plan(
             )
 
         prob.cleanup()
+    except TimeoutError as exc:
+        prob.cleanup()
+        msg = str(exc) or f"Wallclock timeout after {timeout_seconds}s"
+        logger.warning("Run %s timed out: %s", run_id, msg)
+        _record_failure(activity_id, run_id, plan_id, plan_entity_id, msg)
+        return {
+            "run_id": run_id,
+            "status": "timeout",
+            "summary": {},
+            "errors": [{"path": "execute", "message": msg}],
+        }
     except Exception as exc:
         prob.cleanup()
         _record_failure(activity_id, run_id, plan_id, plan_entity_id, str(exc))

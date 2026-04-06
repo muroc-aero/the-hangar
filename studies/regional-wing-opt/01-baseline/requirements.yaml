@@ -1,0 +1,26 @@
+requirements:
+- id: REQ-PERF-01
+  text: Minimize fuel burn over 2000 nmi design mission
+  type: objective
+  traces_to:
+  - AS_point_0.fuelburn
+- id: REQ-STRUCT-01
+  text: No structural failure under cruise loads (failure <= 0)
+  type: structural
+  traces_to:
+  - AS_point_0.wing_perf.failure
+- id: REQ-STRUCT-02
+  text: Structural integrity under 2.5g maneuver with safety factor
+  type: structural
+  traces_to:
+  - AS_point_0.wing_perf.failure
+- id: REQ-AERO-01
+  text: Trimmed cruise flight (L = W)
+  type: constraint
+  traces_to:
+  - AS_point_0.L_equals_W
+- id: REQ-MANU-01
+  text: Minimum tube wall thickness >= 2 mm
+  type: constraint
+  traces_to:
+  - wing.thickness_cp

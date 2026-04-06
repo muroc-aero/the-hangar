@@ -132,14 +132,17 @@ def provenance_cmd(plan_id: str, fmt: str, diff_versions: tuple | None,
               help="Path to analysis database")
 @click.option("--quiet", is_flag=True, default=False,
               help="Suppress convergence table output")
+@click.option("--timeout", type=int, default=None,
+              help="Wallclock timeout in seconds (aborts run if exceeded)")
 def run_cmd(plan_path: str, mode: str, recording_level: str,
-            db_path: str | None, quiet: bool) -> None:
+            db_path: str | None, quiet: bool, timeout: int | None) -> None:
     """Materialize and run an analysis plan."""
     from hangar.omd.run import run_plan, format_convergence_table
 
     db = Path(db_path) if db_path else None
     result = run_plan(Path(plan_path), mode=mode,
-                      recording_level=recording_level, db_path=db)
+                      recording_level=recording_level, db_path=db,
+                      timeout_seconds=timeout)
 
     if result["errors"]:
         click.echo("Run failed:", err=True)

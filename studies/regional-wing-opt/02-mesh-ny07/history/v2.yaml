@@ -1,0 +1,82 @@
+metadata:
+  name: Mesh convergence -- num_y=7 (4 CPs)
+  version: 2
+  id: regional-wing-mesh-ny7
+  content_hash: 655733cfcc07ae54cb9574eaf612144c11301f8fa0426066d1d626ca6a97870a
+  parent_version: 1
+operating_points:
+  velocity: 230.15
+  alpha: 3.0
+  Mach_number: 0.78
+  re: 5500000.0
+  rho: 0.3639
+  CT: 9.8e-06
+  R: 3704000.0
+  W0: 40000.0
+  speed_of_sound: 295.07
+  load_factor: 1.0
+  empty_cg:
+  - 14.0
+  - 0.0
+  - -1.0
+solvers:
+  nonlinear:
+    type: NonlinearBlockGS
+    options:
+      maxiter: 100
+      atol: 1.0e-07
+      rtol: 1.0e-30
+      use_aitken: true
+      err_on_non_converge: false
+  linear:
+    type: DirectSolver
+    options: {}
+components:
+- id: wing
+  type: oas/AerostructPoint
+  config:
+    surfaces:
+    - name: wing
+      wing_type: rect
+      num_x: 3
+      num_y: 7
+      span: 28.0
+      root_chord: 4.2
+      symmetry: true
+      sweep: 24.0
+      dihedral: 5.0
+      taper: 0.32
+      span_cos_spacing: 1.0
+      fem_model_type: tube
+      E: 71700000000.0
+      G: 26900000000.0
+      yield_stress: 503000000.0
+      mrho: 2810.0
+      safety_factor: 1.5
+      fem_origin: 0.35
+      wing_weight_ratio: 2.0
+      struct_weight_relief: false
+      distributed_fuel_weight: true
+      exact_failure_constraint: false
+      with_viscous: true
+      with_wave: true
+      S_ref_type: wetted
+      CL0: 0.0
+      CD0: 0.0078
+      k_lam: 0.05
+      t_over_c_cp:
+      - 0.12
+      - 0.1167
+      - 0.1033
+      - 0.09
+      c_max_t: 0.303
+      thickness_cp:
+      - 0.015
+      - 0.014
+      - 0.010667
+      - 0.008
+      twist_cp:
+      - 4.0
+      - 2.6667
+      - 1.0
+      - -1.0

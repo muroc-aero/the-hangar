@@ -1,0 +1,3 @@
+name: Mesh convergence -- num_y=15 (8 CPs)
+version: 1
+id: regional-wing-mesh-ny15
