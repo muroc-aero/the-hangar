@@ -163,3 +163,20 @@ def _register_builtins() -> None:
                          plot_provider=OAS_AERO_PLOTS)
     except ImportError:
         logger.info("OpenAeroStruct not available, OAS factories not registered")
+
+    # OCP factories: optional, require openconcept
+    try:
+        from hangar.omd.factories.ocp import (
+            build_ocp_basic_mission,
+            build_ocp_full_mission,
+            build_ocp_mission_with_reserve,
+        )
+        from hangar.omd.plotting.ocp import OCP_MISSION_PLOTS
+        register_factory("ocp/BasicMission", build_ocp_basic_mission,
+                         plot_provider=OCP_MISSION_PLOTS)
+        register_factory("ocp/FullMission", build_ocp_full_mission,
+                         plot_provider=OCP_MISSION_PLOTS)
+        register_factory("ocp/MissionWithReserve", build_ocp_mission_with_reserve,
+                         plot_provider=OCP_MISSION_PLOTS)
+    except ImportError:
+        logger.info("OpenConcept not available, OCP factories not registered")

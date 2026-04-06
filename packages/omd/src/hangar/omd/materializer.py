@@ -112,8 +112,11 @@ def materialize(
             "Stage 2 will add this capability."
         )
 
-    # Configure solvers
-    _configure_solvers(prob, plan, metadata)
+    setup_done = metadata.get("_setup_done", False)
+
+    # Configure solvers (skip if factory already configured them)
+    if not setup_done:
+        _configure_solvers(prob, plan, metadata)
 
     # Configure optimization
     has_optimization = (
@@ -123,13 +126,26 @@ def materialize(
     if has_optimization:
         _configure_driver(prob, plan, metadata)
 
-    # Setup the problem
-    prob.setup()
+    # Setup the problem (skip if factory already called setup)
+    if not setup_done:
+        prob.setup()
 
     # Set initial values from metadata (factory-provided)
     for name, val in metadata.get("initial_values", {}).items():
         try:
             prob.set_val(name, val)
+        except Exception:
+            pass
+
+    # Set initial values with units (OCP factories provide these)
+    for name, spec in metadata.get("initial_values_with_units", {}).items():
+        try:
+            units = spec.get("units") if isinstance(spec, dict) else None
+            val = spec.get("val") if isinstance(spec, dict) else spec
+            if units:
+                prob.set_val(name, val, units=units)
+            else:
+                prob.set_val(name, val)
         except Exception:
             pass
 
@@ -349,8 +365,23 @@ def _resolve_var_path(
         component_type: Component type string (e.g. "oas/AeroPoint").
             Used to distinguish aero-only vs aerostruct path patterns.
     """
+    # Pipe-separated paths (OpenConcept convention) pass through as-is
+    if "|" in name:
+        return name
+
     if "." in name:
         return name
+
+    # OCP short names
+    _OCP_SHORT_NAMES = {
+        "fuel_burn": "descent.fuel_used_final",
+        "OEW": "climb.OEW",
+        "MTOW": "ac|weights|MTOW",
+        "TOFL": "rotate.range_final",
+    }
+    if component_type and component_type.startswith("ocp/"):
+        if name in _OCP_SHORT_NAMES:
+            return _OCP_SHORT_NAMES[name]
 
     # Simple names that are promoted to top level
     if name in ("alpha", "v", "rho", "Mach_number", "re", "load_factor",

@@ -140,6 +140,54 @@ def _decompose_plan(
             parent_id=plan_entity_id,
         )
 
+    # OCP-specific sub-entities: aircraft config, mission config, propulsion
+    for comp in plan.get("components", []):
+        comp_type = comp.get("type", "")
+        if comp_type.startswith("ocp/"):
+            config = comp.get("config", {})
+
+            # Aircraft configuration
+            template = config.get("aircraft_template")
+            aircraft_meta = {"aircraft_template": template} if template else {}
+            if aircraft_meta:
+                record_entity(
+                    entity_id=f"{plan_entity_id}/aircraft",
+                    entity_type="aircraft_config",
+                    created_by="omd",
+                    plan_id=plan_id,
+                    metadata=json.dumps(aircraft_meta),
+                    parent_id=plan_entity_id,
+                )
+
+            # Mission configuration
+            mission_params = config.get("mission_params", {})
+            if mission_params:
+                mission_meta = {
+                    "mission_type": comp_type.replace("ocp/", ""),
+                    "num_nodes": config.get("num_nodes"),
+                    **mission_params,
+                }
+                record_entity(
+                    entity_id=f"{plan_entity_id}/mission",
+                    entity_type="mission_config",
+                    created_by="omd",
+                    plan_id=plan_id,
+                    metadata=json.dumps(mission_meta),
+                    parent_id=plan_entity_id,
+                )
+
+            # Propulsion configuration
+            arch = config.get("architecture")
+            if arch:
+                record_entity(
+                    entity_id=f"{plan_entity_id}/propulsion",
+                    entity_type="propulsion_config",
+                    created_by="omd",
+                    plan_id=plan_id,
+                    metadata=json.dumps({"architecture": arch}),
+                    parent_id=plan_entity_id,
+                )
+
     # Decisions are recorded during assembly (assemble.py _record_decisions)
     # so we skip them here to avoid duplicates.
 
@@ -619,6 +667,10 @@ def _extract_summary(prob, metadata: dict, mode: str) -> dict:
     """Extract key results from a solved problem."""
     import numpy as np
 
+    # Dispatch to OCP-specific extraction
+    if metadata.get("component_family") == "ocp":
+        return _extract_ocp_summary(prob, metadata, mode)
+
     point_name = metadata.get("point_name", "AS_point_0")
     summary: dict = {"mode": mode}
 
@@ -656,6 +708,62 @@ def _extract_summary(prob, metadata: dict, mode: str) -> dict:
         # Single-point extraction
         pt_data = _extract_point_summary(prob, point_name, metadata, np)
         summary.update(pt_data)
+
+    return summary
+
+
+def _extract_ocp_summary(prob, metadata: dict, mode: str) -> dict:
+    """Extract key results from a solved OpenConcept mission problem."""
+    import numpy as np
+
+    summary: dict = {"mode": mode}
+
+    def _safe_get(path: str, units: str | None = None) -> float | None:
+        try:
+            if units:
+                val = prob.get_val(path, units=units)
+            else:
+                val = prob.get_val(path)
+            return float(np.atleast_1d(val).flat[0])
+        except (KeyError, Exception):
+            return None
+
+    # Fuel burn from last flight phase
+    phases = metadata.get("phases", ["climb", "cruise", "descent"])
+    for phase in reversed(phases):
+        val = _safe_get(f"{phase}.fuel_used_final")
+        if val is not None:
+            summary["fuel_burn_kg"] = val
+            break
+
+    # OEW (OpenConcept weight model outputs in lb, convert to kg)
+    oew = _safe_get("climb.OEW", units="kg")
+    if oew is not None:
+        summary["OEW_kg"] = oew
+
+    # MTOW
+    mtow = _safe_get("ac|weights|MTOW", units="kg")
+    if mtow is not None:
+        summary["MTOW_kg"] = mtow
+
+    # TOFL (full mission only)
+    if metadata.get("has_takeoff"):
+        tofl = _safe_get("rotate.range_final")
+        if tofl is not None:
+            summary["TOFL_m"] = tofl
+
+    # Battery SOC (hybrid architectures)
+    if metadata.get("has_battery"):
+        for phase in reversed(phases):
+            soc = _safe_get(f"{phase}.battery_SOC_final")
+            if soc is not None:
+                summary["battery_SOC_final"] = soc
+                break
+
+    # Architecture and mission info
+    summary["architecture"] = metadata.get("architecture", "unknown")
+    summary["mission_type"] = metadata.get("mission_type", "unknown")
+    summary["num_nodes"] = metadata.get("num_nodes")
 
     return summary
 
@@ -752,8 +860,12 @@ def _record_assessment(
     }
     if recorder_info:
         assess_meta["case_count"] = recorder_info.get("case_count", 0)
-    # Pull key scalars from summary
+    # Pull key scalars from summary (OAS)
     for key in ("CL", "CD", "L_over_D"):
+        if key in summary:
+            assess_meta[key] = summary[key]
+    # OCP scalars
+    for key in ("fuel_burn_kg", "OEW_kg", "MTOW_kg", "TOFL_m", "battery_SOC_final"):
         if key in summary:
             assess_meta[key] = summary[key]
 
@@ -785,6 +897,20 @@ def _record_assessment(
             created_by="omd",
             plan_id=plan_id,
             metadata=json.dumps(aero_keys),
+            parent_id=run_id,
+        )
+
+    # OCP mission results sub-entity
+    ocp_keys = {k: summary[k] for k in
+                ("fuel_burn_kg", "OEW_kg", "MTOW_kg", "TOFL_m", "battery_SOC_final")
+                if k in summary}
+    if ocp_keys:
+        record_entity(
+            entity_id=f"{run_id}/mission_results",
+            entity_type="mission_results",
+            created_by="omd",
+            plan_id=plan_id,
+            metadata=json.dumps(ocp_keys),
             parent_id=run_id,
         )
 
