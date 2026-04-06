@@ -643,8 +643,24 @@ def plot_vonmises(
 
     if yield_stress is not None:
         yield_mpa = yield_stress / 1e6
-        # OAS default safety factor is 2.5 for tube model (matches oas-cli)
-        safety_factor = kwargs.get("safety_factor", 2.5)
+        # Try to read safety_factor from the model; fall back to kwargs or 1.5
+        safety_factor = kwargs.get("safety_factor", None)
+        if safety_factor is None:
+            try:
+                sys_options = reader.list_model_options(out_stream=None)
+                for key in sys_options:
+                    try:
+                        surface = sys_options[key].get("surface", {})
+                        sf = surface.get("safety_factor")
+                        if sf is not None:
+                            safety_factor = float(sf)
+                            break
+                    except (TypeError, AttributeError):
+                        pass
+            except Exception:
+                pass
+        if safety_factor is None:
+            safety_factor = 1.5
         allowable_mpa = yield_mpa / safety_factor
         ax.axhline(
             y=allowable_mpa, color="r", linewidth=2, linestyle="--",
