@@ -685,12 +685,16 @@ def _set_mission_values(
                      np.ones((nn,)) * params.get("loiter_Ueas_kn", 200.0),
                      units="kn")
 
-    # Takeoff speed guesses
+    # Takeoff speed guesses (configurable via mission_params)
     if mission_type == "full":
-        prob.set_val("v0v1.fltcond|Utrue", np.ones((nn,)) * 40, units="kn")
-        prob.set_val("v1vr.fltcond|Utrue", np.ones((nn,)) * 70, units="kn")
-        prob.set_val("v1v0.fltcond|Utrue", np.ones((nn,)) * 60, units="kn")
-        prob.set_val("rotate.fltcond|Utrue", np.ones((nn,)) * 80, units="kn")
+        prob.set_val("v0v1.fltcond|Utrue",
+                     np.ones((nn,)) * params.get("v0v1_Utrue_kn", 50), units="kn")
+        prob.set_val("v1vr.fltcond|Utrue",
+                     np.ones((nn,)) * params.get("v1vr_Utrue_kn", 85), units="kn")
+        prob.set_val("v1v0.fltcond|Utrue",
+                     np.ones((nn,)) * params.get("v1v0_Utrue_kn", 85), units="kn")
+        prob.set_val("rotate.fltcond|Utrue",
+                     np.ones((nn,)) * params.get("rotate_Utrue_kn", 80), units="kn")
         prob.set_val("v0v1.throttle", np.ones((nn,)))
         prob.set_val("v1vr.throttle", np.ones((nn,)))
         prob.set_val("rotate.throttle", np.ones((nn,)))
