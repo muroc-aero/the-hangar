@@ -112,13 +112,37 @@ def test_materialize_missing_components():
         materialize({"metadata": {"id": "x", "name": "x", "version": 1}, "components": []})
 
 
-def test_materialize_multi_component_not_supported():
+def test_materialize_two_paraboloids_composite():
+    """Two paraboloid components composed: a feeds b via connection."""
     plan = {
-        "metadata": {"id": "x", "name": "x", "version": 1},
+        "metadata": {"id": "two-parab", "name": "two paraboloids", "version": 1},
         "components": [
-            {"id": "a", "type": "oas/AerostructPoint", "config": {}},
-            {"id": "b", "type": "oas/AerostructPoint", "config": {}},
+            {"id": "a", "type": "paraboloid/Paraboloid", "config": {}},
+            {"id": "b", "type": "paraboloid/Paraboloid", "config": {}},
         ],
+        "connections": [
+            {"src": "a.f_xy", "tgt": "b.x"},
+        ],
+        "operating_points": {"x": 3.0, "y": -4.0},
     }
-    with pytest.raises(NotImplementedError, match="Multi-component"):
-        materialize(plan)
+    prob, metadata = materialize(plan)
+    assert metadata.get("_composite") is True
+    assert "a" in metadata["component_ids"]
+    assert "b" in metadata["component_ids"]
+
+    # Set inputs on component 'a'
+    prob.set_val("a.x", 3.0)
+    prob.set_val("a.y", -4.0)
+    # Set y for component 'b' (x comes from connection)
+    prob.set_val("b.y", 0.0)
+
+    prob.run_model()
+
+    # a: f(3, -4) = (3-3)^2 + 3*(-4) + (-4+4)^2 - 3 = -15
+    a_out = float(prob.get_val("a.f_xy"))
+    assert abs(a_out - (-15.0)) < 1e-8, f"a.f_xy = {a_out}"
+
+    # b: x = -15 (from connection), y = 0
+    # f(-15, 0) = (-15-3)^2 + (-15)*0 + (0+4)^2 - 3 = 324 + 0 + 16 - 3 = 337
+    b_out = float(prob.get_val("b.f_xy"))
+    assert abs(b_out - 337.0) < 1e-8, f"b.f_xy = {b_out}"

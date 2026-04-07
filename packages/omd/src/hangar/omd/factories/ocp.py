@@ -603,6 +603,149 @@ def _make_aircraft_model_class(
 # ---------------------------------------------------------------------------
 
 
+def _collect_mission_values(
+    params: dict,
+    phases: list[str],
+    num_nodes: int,
+    is_hybrid: bool,
+    mission_type: str,
+) -> dict[str, dict]:
+    """Build a dict of {path: {"val": ..., "units": ...}} for deferred set_val.
+
+    This is the declarative equivalent of _set_mission_values -- same data,
+    returned as a dict instead of applied to a Problem.
+    """
+    nn = num_nodes
+    vals: dict[str, dict] = {}
+
+    if "climb" in phases:
+        vals["climb.fltcond|vs"] = {
+            "val": np.ones((nn,)) * params.get("climb_vs_ftmin", 850.0),
+            "units": "ft/min",
+        }
+        vals["climb.fltcond|Ueas"] = {
+            "val": np.ones((nn,)) * params.get("climb_Ueas_kn", 104.0),
+            "units": "kn",
+        }
+
+    if "cruise" in phases:
+        vals["cruise.fltcond|vs"] = {
+            "val": np.ones((nn,)) * params.get("cruise_vs_ftmin", 0.01),
+            "units": "ft/min",
+        }
+        vals["cruise.fltcond|Ueas"] = {
+            "val": np.ones((nn,)) * params.get("cruise_Ueas_kn", 129.0),
+            "units": "kn",
+        }
+
+    if "descent" in phases:
+        vs_descent = params.get("descent_vs_ftmin", -400.0)
+        if vs_descent > 0:
+            vs_descent = -vs_descent
+        vals["descent.fltcond|vs"] = {
+            "val": np.ones((nn,)) * vs_descent,
+            "units": "ft/min",
+        }
+        vals["descent.fltcond|Ueas"] = {
+            "val": np.ones((nn,)) * params.get("descent_Ueas_kn", 100.0),
+            "units": "kn",
+        }
+
+    vals["cruise|h0"] = {
+        "val": params.get("cruise_altitude_ft", 18000.0),
+        "units": "ft",
+    }
+    vals["mission_range"] = {
+        "val": params.get("mission_range_NM", 250.0),
+        "units": "NM",
+    }
+
+    # Reserve phases
+    if mission_type == "with_reserve":
+        vals["reserve|h0"] = {
+            "val": params.get("reserve_altitude_ft", 15000.0),
+            "units": "ft",
+        }
+        vals["reserve_climb.fltcond|vs"] = {
+            "val": np.ones((nn,)) * params.get("reserve_climb_vs_ftmin", 1500.0),
+            "units": "ft/min",
+        }
+        vals["reserve_climb.fltcond|Ueas"] = {
+            "val": np.ones((nn,)) * params.get("reserve_climb_Ueas_kn", 124.0),
+            "units": "kn",
+        }
+        vals["reserve_cruise.fltcond|vs"] = {
+            "val": np.ones((nn,)) * 4.0,
+            "units": "ft/min",
+        }
+        vals["reserve_cruise.fltcond|Ueas"] = {
+            "val": np.ones((nn,)) * params.get("reserve_cruise_Ueas_kn", 170.0),
+            "units": "kn",
+        }
+        reserve_descent_vs = params.get("reserve_descent_vs_ftmin", -600.0)
+        if reserve_descent_vs > 0:
+            reserve_descent_vs = -reserve_descent_vs
+        vals["reserve_descent.fltcond|vs"] = {
+            "val": np.ones((nn,)) * reserve_descent_vs,
+            "units": "ft/min",
+        }
+        vals["reserve_descent.fltcond|Ueas"] = {
+            "val": np.ones((nn,)) * params.get("reserve_descent_Ueas_kn", 140.0),
+            "units": "kn",
+        }
+        vals["loiter.fltcond|vs"] = {
+            "val": np.zeros((nn,)),
+            "units": "ft/min",
+        }
+        vals["loiter.fltcond|Ueas"] = {
+            "val": np.ones((nn,)) * params.get("loiter_Ueas_kn", 200.0),
+            "units": "kn",
+        }
+
+    # Takeoff speed guesses
+    if mission_type == "full":
+        vals["v0v1.fltcond|Utrue"] = {
+            "val": np.ones((nn,)) * params.get("v0v1_Utrue_kn", 50),
+            "units": "kn",
+        }
+        vals["v1vr.fltcond|Utrue"] = {
+            "val": np.ones((nn,)) * params.get("v1vr_Utrue_kn", 85),
+            "units": "kn",
+        }
+        vals["v1v0.fltcond|Utrue"] = {
+            "val": np.ones((nn,)) * params.get("v1v0_Utrue_kn", 85),
+            "units": "kn",
+        }
+        vals["rotate.fltcond|Utrue"] = {
+            "val": np.ones((nn,)) * params.get("rotate_Utrue_kn", 80),
+            "units": "kn",
+        }
+        vals["v0v1.throttle"] = {"val": np.ones((nn,))}
+        vals["v1vr.throttle"] = {"val": np.ones((nn,))}
+        vals["rotate.throttle"] = {"val": np.ones((nn,))}
+
+    # Payload
+    payload_lb = params.get("payload_lb")
+    if payload_lb is not None:
+        vals["payload"] = {"val": payload_lb, "units": "lb"}
+
+    # Hybridization fractions
+    if is_hybrid:
+        for phase in ("climb", "cruise", "descent"):
+            hyb = params.get(f"{phase}_hybridization")
+            if hyb is not None and phase in phases:
+                vals[f"{phase}.hybridization"] = {"val": hyb}
+
+        spec_energy = params.get("battery_specific_energy")
+        if spec_energy is not None:
+            vals["ac|propulsion|battery|specific_energy"] = {
+                "val": spec_energy,
+                "units": "W*h/kg",
+            }
+
+    return vals
+
+
 def _set_mission_values(
     prob: om.Problem,
     params: dict,
@@ -612,118 +755,17 @@ def _set_mission_values(
     mission_type: str,
 ) -> None:
     """Set mission parameter values on the problem after setup."""
-    nn = num_nodes
-
-    if "climb" in phases:
-        prob.set_val(
-            "climb.fltcond|vs",
-            np.ones((nn,)) * params.get("climb_vs_ftmin", 850.0),
-            units="ft/min",
-        )
-        prob.set_val(
-            "climb.fltcond|Ueas",
-            np.ones((nn,)) * params.get("climb_Ueas_kn", 104.0),
-            units="kn",
-        )
-
-    if "cruise" in phases:
-        prob.set_val(
-            "cruise.fltcond|vs",
-            np.ones((nn,)) * params.get("cruise_vs_ftmin", 0.01),
-            units="ft/min",
-        )
-        prob.set_val(
-            "cruise.fltcond|Ueas",
-            np.ones((nn,)) * params.get("cruise_Ueas_kn", 129.0),
-            units="kn",
-        )
-
-    if "descent" in phases:
-        vs_descent = params.get("descent_vs_ftmin", -400.0)
-        if vs_descent > 0:
-            vs_descent = -vs_descent
-        prob.set_val(
-            "descent.fltcond|vs",
-            np.ones((nn,)) * vs_descent,
-            units="ft/min",
-        )
-        prob.set_val(
-            "descent.fltcond|Ueas",
-            np.ones((nn,)) * params.get("descent_Ueas_kn", 100.0),
-            units="kn",
-        )
-
-    prob.set_val("cruise|h0", params.get("cruise_altitude_ft", 18000.0), units="ft")
-    prob.set_val("mission_range", params.get("mission_range_NM", 250.0), units="NM")
-
-    # Reserve phases
-    if mission_type == "with_reserve":
-        reserve_alt = params.get("reserve_altitude_ft", 15000.0)
-        prob.set_val("reserve|h0", reserve_alt, units="ft")
-
-        prob.set_val("reserve_climb.fltcond|vs",
-                     np.ones((nn,)) * params.get("reserve_climb_vs_ftmin", 1500.0),
-                     units="ft/min")
-        prob.set_val("reserve_climb.fltcond|Ueas",
-                     np.ones((nn,)) * params.get("reserve_climb_Ueas_kn", 124.0),
-                     units="kn")
-        prob.set_val("reserve_cruise.fltcond|vs",
-                     np.ones((nn,)) * 4.0, units="ft/min")
-        prob.set_val("reserve_cruise.fltcond|Ueas",
-                     np.ones((nn,)) * params.get("reserve_cruise_Ueas_kn", 170.0),
-                     units="kn")
-        reserve_descent_vs = params.get("reserve_descent_vs_ftmin", -600.0)
-        if reserve_descent_vs > 0:
-            reserve_descent_vs = -reserve_descent_vs
-        prob.set_val("reserve_descent.fltcond|vs",
-                     np.ones((nn,)) * reserve_descent_vs, units="ft/min")
-        prob.set_val("reserve_descent.fltcond|Ueas",
-                     np.ones((nn,)) * params.get("reserve_descent_Ueas_kn", 140.0),
-                     units="kn")
-        prob.set_val("loiter.fltcond|vs", np.zeros((nn,)), units="ft/min")
-        prob.set_val("loiter.fltcond|Ueas",
-                     np.ones((nn,)) * params.get("loiter_Ueas_kn", 200.0),
-                     units="kn")
-
-    # Takeoff speed guesses (configurable via mission_params)
-    if mission_type == "full":
-        prob.set_val("v0v1.fltcond|Utrue",
-                     np.ones((nn,)) * params.get("v0v1_Utrue_kn", 50), units="kn")
-        prob.set_val("v1vr.fltcond|Utrue",
-                     np.ones((nn,)) * params.get("v1vr_Utrue_kn", 85), units="kn")
-        prob.set_val("v1v0.fltcond|Utrue",
-                     np.ones((nn,)) * params.get("v1v0_Utrue_kn", 85), units="kn")
-        prob.set_val("rotate.fltcond|Utrue",
-                     np.ones((nn,)) * params.get("rotate_Utrue_kn", 80), units="kn")
-        prob.set_val("v0v1.throttle", np.ones((nn,)))
-        prob.set_val("v1vr.throttle", np.ones((nn,)))
-        prob.set_val("rotate.throttle", np.ones((nn,)))
-
-    # Payload
-    payload_lb = params.get("payload_lb")
-    if payload_lb is not None:
+    vals = _collect_mission_values(params, phases, num_nodes, is_hybrid, mission_type)
+    for path, spec in vals.items():
         try:
-            prob.set_val("payload", payload_lb, units="lb")
-        except KeyError:
+            units = spec.get("units") if isinstance(spec, dict) else None
+            val = spec.get("val") if isinstance(spec, dict) else spec
+            if units:
+                prob.set_val(path, val, units=units)
+            else:
+                prob.set_val(path, val)
+        except (KeyError, Exception):
             pass
-
-    # Hybridization fractions
-    if is_hybrid:
-        for phase in ("climb", "cruise", "descent"):
-            hyb = params.get(f"{phase}_hybridization")
-            if hyb is not None and phase in phases:
-                prob.set_val(f"{phase}.hybridization", hyb)
-
-        spec_energy = params.get("battery_specific_energy")
-        if spec_energy is not None:
-            try:
-                prob.set_val(
-                    "ac|propulsion|battery|specific_energy",
-                    spec_energy,
-                    units="W*h/kg",
-                )
-            except KeyError:
-                pass
 
 
 # ---------------------------------------------------------------------------
@@ -739,11 +781,20 @@ def _build_mission_problem(
     num_nodes: int,
     solver_settings: dict,
     propulsion_overrides: dict | None = None,
+    defer_setup: bool = False,
 ) -> tuple[om.Problem, dict]:
     """Build a complete OpenMDAO mission problem.
 
-    Returns (problem, metadata) with setup already called and mission
-    values set. The metadata dict includes _setup_done=True.
+    Args:
+        defer_setup: If True, skip prob.setup() and set_val() calls.
+            The model Group is returned with solvers configured but
+            not settled. Mission values are put into metadata as
+            initial_values_with_units for the materializer to apply.
+            Used by the multi-component materializer.
+
+    Returns (problem, metadata). When defer_setup=False (default),
+    setup is called and _setup_done=True. When defer_setup=True,
+    setup is NOT called and _setup_done is NOT set.
     """
     arch_info = PROPULSION_ARCHITECTURES[architecture]
     is_hybrid = arch_info["has_battery"] and arch_info["has_fuel"]
@@ -859,14 +910,9 @@ def _build_mission_problem(
         print_bound_enforce=False,
     )
 
-    prob.setup(check=False, mode="fwd")
-
-    # Set mission parameters
     params = {**DEFAULT_MISSION_PARAMS, **mission_params}
-    _set_mission_values(prob, params, phases, num_nodes, is_hybrid, mission_type)
 
     metadata = {
-        "_setup_done": True,
         "component_family": "ocp",
         "architecture": architecture,
         "mission_type": mission_type,
@@ -878,6 +924,19 @@ def _build_mission_problem(
         "has_takeoff": mission_type == "full",
         "has_reserve": mission_type == "with_reserve",
     }
+
+    if defer_setup:
+        # Deferred setup path: collect mission values as metadata
+        # instead of calling prob.set_val(). The materializer or
+        # outer Problem handles setup and value application.
+        metadata["initial_values_with_units"] = _collect_mission_values(
+            params, phases, num_nodes, is_hybrid, mission_type,
+        )
+    else:
+        # Normal path: setup + set values immediately
+        prob.setup(check=False, mode="fwd")
+        _set_mission_values(prob, params, phases, num_nodes, is_hybrid, mission_type)
+        metadata["_setup_done"] = True
 
     return prob, metadata
 
@@ -932,12 +991,14 @@ def build_ocp_basic_mission(
     operating_points: dict,
 ) -> tuple[om.Problem, dict]:
     """Build an OpenConcept basic mission (climb/cruise/descent)."""
-    ac_data = _load_aircraft_data(component_config)
-    architecture = _resolve_architecture(component_config)
-    num_nodes = component_config.get("num_nodes", 11)
-    mission_params = component_config.get("mission_params", {})
-    solver_settings = component_config.get("solver_settings", {})
-    propulsion_overrides = component_config.get("propulsion_overrides")
+    config = dict(component_config)
+    defer_setup = config.pop("_defer_setup", False)
+    ac_data = _load_aircraft_data(config)
+    architecture = _resolve_architecture(config)
+    num_nodes = config.get("num_nodes", 11)
+    mission_params = config.get("mission_params", {})
+    solver_settings = config.get("solver_settings", {})
+    propulsion_overrides = config.get("propulsion_overrides")
 
     return _build_mission_problem(
         aircraft_data=ac_data,
@@ -947,6 +1008,7 @@ def build_ocp_basic_mission(
         num_nodes=num_nodes,
         solver_settings=solver_settings,
         propulsion_overrides=propulsion_overrides,
+        defer_setup=defer_setup,
     )
 
 
@@ -955,12 +1017,14 @@ def build_ocp_full_mission(
     operating_points: dict,
 ) -> tuple[om.Problem, dict]:
     """Build an OpenConcept full mission with balanced-field takeoff."""
-    ac_data = _load_aircraft_data(component_config)
-    architecture = _resolve_architecture(component_config)
-    num_nodes = component_config.get("num_nodes", 11)
-    mission_params = component_config.get("mission_params", {})
-    solver_settings = component_config.get("solver_settings", {})
-    propulsion_overrides = component_config.get("propulsion_overrides")
+    config = dict(component_config)
+    defer_setup = config.pop("_defer_setup", False)
+    ac_data = _load_aircraft_data(config)
+    architecture = _resolve_architecture(config)
+    num_nodes = config.get("num_nodes", 11)
+    mission_params = config.get("mission_params", {})
+    solver_settings = config.get("solver_settings", {})
+    propulsion_overrides = config.get("propulsion_overrides")
 
     return _build_mission_problem(
         aircraft_data=ac_data,
@@ -970,6 +1034,7 @@ def build_ocp_full_mission(
         num_nodes=num_nodes,
         solver_settings=solver_settings,
         propulsion_overrides=propulsion_overrides,
+        defer_setup=defer_setup,
     )
 
 
@@ -978,12 +1043,14 @@ def build_ocp_mission_with_reserve(
     operating_points: dict,
 ) -> tuple[om.Problem, dict]:
     """Build an OpenConcept mission with reserve + loiter phases."""
-    ac_data = _load_aircraft_data(component_config)
-    architecture = _resolve_architecture(component_config)
-    num_nodes = component_config.get("num_nodes", 11)
-    mission_params = component_config.get("mission_params", {})
-    solver_settings = component_config.get("solver_settings", {})
-    propulsion_overrides = component_config.get("propulsion_overrides")
+    config = dict(component_config)
+    defer_setup = config.pop("_defer_setup", False)
+    ac_data = _load_aircraft_data(config)
+    architecture = _resolve_architecture(config)
+    num_nodes = config.get("num_nodes", 11)
+    mission_params = config.get("mission_params", {})
+    solver_settings = config.get("solver_settings", {})
+    propulsion_overrides = config.get("propulsion_overrides")
 
     return _build_mission_problem(
         aircraft_data=ac_data,
@@ -993,4 +1060,5 @@ def build_ocp_mission_with_reserve(
         num_nodes=num_nodes,
         solver_settings=solver_settings,
         propulsion_overrides=propulsion_overrides,
+        defer_setup=defer_setup,
     )

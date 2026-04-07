@@ -671,6 +671,10 @@ def _extract_summary(prob, metadata: dict, mode: str) -> dict:
     if metadata.get("component_family") == "ocp":
         return _extract_ocp_summary(prob, metadata, mode)
 
+    # Composite plan: extract per-component results
+    if metadata.get("_composite"):
+        return _extract_composite_summary(prob, metadata, mode)
+
     point_name = metadata.get("point_name", "AS_point_0")
     summary: dict = {"mode": mode}
 
@@ -764,6 +768,90 @@ def _extract_ocp_summary(prob, metadata: dict, mode: str) -> dict:
     summary["architecture"] = metadata.get("architecture", "unknown")
     summary["mission_type"] = metadata.get("mission_type", "unknown")
     summary["num_nodes"] = metadata.get("num_nodes")
+
+    return summary
+
+
+def _extract_composite_summary(prob, metadata: dict, mode: str) -> dict:
+    """Extract results from a composite (multi-component) problem."""
+    import numpy as np
+
+    summary: dict = {"mode": mode, "_composite": True, "components": {}}
+
+    for comp_id in metadata.get("component_ids", []):
+        comp_meta = metadata.get("component_metadata", {}).get(comp_id, {})
+        comp_type = metadata.get("component_types", {}).get(comp_id, "")
+        comp_summary: dict = {}
+
+        if comp_meta.get("component_family") == "ocp":
+            # OCP: extract fuel burn, OEW, MTOW with component prefix
+            def _safe_get(path, units=None):
+                try:
+                    full_path = f"{comp_id}.{path}"
+                    if units:
+                        val = prob.get_val(full_path, units=units)
+                    else:
+                        val = prob.get_val(full_path)
+                    return float(np.atleast_1d(val).flat[0])
+                except Exception:
+                    return None
+
+            phases = comp_meta.get("phases", ["climb", "cruise", "descent"])
+            for phase in reversed(phases):
+                val = _safe_get(f"{phase}.fuel_used_final")
+                if val is not None:
+                    comp_summary["fuel_burn_kg"] = val
+                    break
+
+            oew = _safe_get("climb.OEW", units="kg")
+            if oew is not None:
+                comp_summary["OEW_kg"] = oew
+
+            mtow = _safe_get("ac|weights|MTOW", units="kg")
+            if mtow is not None:
+                comp_summary["MTOW_kg"] = mtow
+
+            if comp_meta.get("has_takeoff"):
+                tofl = _safe_get("rotate.range_final")
+                if tofl is not None:
+                    comp_summary["TOFL_m"] = tofl
+
+        elif comp_type.startswith("oas/"):
+            # OAS: extract CL, CD
+            point_name = comp_meta.get("point_name", "aero_point_0")
+            for var in ("CL", "CD"):
+                try:
+                    val = prob.get_val(f"{comp_id}.{point_name}.{var}")
+                    comp_summary[var] = float(np.atleast_1d(val).flat[0])
+                except Exception:
+                    # Try surface-specific perf path
+                    for surf in comp_meta.get("surface_names", []):
+                        try:
+                            val = prob.get_val(
+                                f"{comp_id}.{point_name}.{surf}_perf.{var}"
+                            )
+                            comp_summary[var] = float(np.atleast_1d(val).flat[0])
+                            break
+                        except Exception:
+                            pass
+            cl = comp_summary.get("CL", 0)
+            cd = comp_summary.get("CD", 1)
+            if cd > 0:
+                comp_summary["L_over_D"] = cl / cd
+
+        else:
+            # Generic: try output_names
+            for output_name in comp_meta.get("output_names", []):
+                try:
+                    val = prob.get_val(f"{comp_id}.{output_name}")
+                    key = output_name.split(".")[-1]
+                    comp_summary[key] = float(
+                        np.atleast_1d(val).flat[0]
+                    )
+                except Exception:
+                    pass
+
+        summary["components"][comp_id] = comp_summary
 
     return summary
 
@@ -868,6 +956,9 @@ def _record_assessment(
     for key in ("fuel_burn_kg", "OEW_kg", "MTOW_kg", "TOFL_m", "battery_SOC_final"):
         if key in summary:
             assess_meta[key] = summary[key]
+    # Composite: include per-component summaries
+    if "components" in summary:
+        assess_meta["components"] = summary["components"]
 
     record_activity(
         activity_id=assess_activity_id,

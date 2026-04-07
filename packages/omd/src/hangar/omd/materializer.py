@@ -105,11 +105,8 @@ def materialize(
         factory = get_factory(comp["type"])
         prob, metadata = factory(comp["config"], operating_points)
     else:
-        # Multi-component: each factory builds a problem, we need
-        # to compose them. For now, only single-component is supported.
-        raise NotImplementedError(
-            "Multi-component plan materialization is not yet supported. "
-            "Stage 2 will add this capability."
+        prob, metadata = _materialize_composite(
+            components, operating_points, plan,
         )
 
     setup_done = metadata.get("_setup_done", False)
@@ -152,6 +149,83 @@ def materialize(
     # Configure recorder after setup
     rec_path = _configure_recorder(prob, recording_level, recorder_path)
     metadata["recorder_path"] = rec_path
+
+    return prob, metadata
+
+
+# ---------------------------------------------------------------------------
+# Multi-component composition
+# ---------------------------------------------------------------------------
+
+
+def _materialize_composite(
+    components: list[dict],
+    operating_points: dict,
+    plan: dict,
+) -> tuple[om.Problem, dict]:
+    """Compose multiple components into a single OpenMDAO Problem.
+
+    Each factory is called to build a Problem. The model Group is
+    extracted (before setup) and added as a subsystem named by the
+    component ID. Connections from the plan wire outputs to inputs
+    across components. Components are NOT promoted, so each lives
+    under its own namespace.
+
+    Returns (problem, metadata) where setup has NOT been called.
+    """
+    prob = om.Problem(reports=False)
+    component_metadata: dict[str, dict] = {}
+    component_types: dict[str, str] = {}
+    component_ids: list[str] = []
+    all_initial_values: dict[str, object] = {}
+    all_initial_values_with_units: dict[str, dict] = {}
+
+    for comp in components:
+        comp_id = comp["id"]
+        comp_type = comp["type"]
+        component_ids.append(comp_id)
+        component_types[comp_id] = comp_type
+
+        factory = get_factory(comp_type)
+
+        # Inject _defer_setup so OCP factories skip their internal setup
+        config = dict(comp["config"])
+        config["_defer_setup"] = True
+
+        inner_prob, inner_meta = factory(config, operating_points)
+
+        if inner_meta.get("_setup_done"):
+            raise RuntimeError(
+                f"Factory for '{comp_type}' (component '{comp_id}') called "
+                f"setup() despite _defer_setup=True. Cannot compose "
+                f"post-setup components."
+            )
+
+        # Extract the model Group and add as a subsystem
+        prob.model.add_subsystem(comp_id, inner_prob.model)
+
+        # Collect deferred initial values, prefixed with component ID
+        for path, val in inner_meta.get("initial_values", {}).items():
+            all_initial_values[f"{comp_id}.{path}"] = val
+
+        for path, spec in inner_meta.get("initial_values_with_units", {}).items():
+            all_initial_values_with_units[f"{comp_id}.{path}"] = spec
+
+        component_metadata[comp_id] = inner_meta
+
+    # Wire explicit connections from the plan
+    for conn in plan.get("connections", []):
+        prob.model.connect(conn["src"], conn["tgt"])
+
+    # Build composite metadata
+    metadata: dict = {
+        "_composite": True,
+        "component_ids": component_ids,
+        "component_types": component_types,
+        "component_metadata": component_metadata,
+        "initial_values": all_initial_values,
+        "initial_values_with_units": all_initial_values_with_units,
+    }
 
     return prob, metadata
 
