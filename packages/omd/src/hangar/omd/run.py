@@ -188,6 +188,26 @@ def _decompose_plan(
                     parent_id=plan_entity_id,
                 )
 
+    # Slot configurations
+    for comp in plan.get("components", []):
+        config = comp.get("config", {})
+        slots = config.get("slots", {})
+        comp_id = comp.get("id", "unknown")
+        for slot_name, slot_cfg in slots.items():
+            record_entity(
+                entity_id=f"{plan_entity_id}/slot/{comp_id}/{slot_name}",
+                entity_type="slot_config",
+                created_by="omd",
+                plan_id=plan_id,
+                metadata=json.dumps({
+                    "component_id": comp_id,
+                    "slot_name": slot_name,
+                    "provider": slot_cfg.get("provider"),
+                    "config": slot_cfg.get("config", {}),
+                }),
+                parent_id=plan_entity_id,
+            )
+
     # Decisions are recorded during assembly (assemble.py _record_decisions)
     # so we skip them here to avoid duplicates.
 
@@ -446,11 +466,16 @@ def run_plan(
             pass
 
     # Record run entity with component type metadata
-    component_type = None
     components = plan.get("components", [])
-    if components:
-        component_type = components[0].get("type")
-    run_metadata = json.dumps({"component_type": component_type}) if component_type else None
+    component_type = components[0].get("type") if components else None
+    run_meta_dict: dict = {}
+    if component_type:
+        run_meta_dict["component_type"] = component_type
+    if len(components) > 1:
+        run_meta_dict["component_types"] = {
+            c["id"]: c["type"] for c in components
+        }
+    run_metadata = json.dumps(run_meta_dict) if run_meta_dict else None
 
     record_entity(
         entity_id=run_id,

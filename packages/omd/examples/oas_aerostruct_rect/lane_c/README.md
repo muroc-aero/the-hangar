@@ -1,6 +1,10 @@
-# Lane C: Agent Prompts for OAS Aerostructural Analysis
+# Lane C: Agent Task Prompts
 
-Paste these prompts into Claude Code to run the analyses via `omd-cli`.
+Analysis task descriptions for an AI agent. The agent uses
+`/omd-cli-guide` to learn how to author plan YAML files, creates the
+plan, runs it, and reports results.
+
+## Prompts
 
 - `aerostruct_analysis.prompt.md` -- coupled aero+struct analysis
-- `all.prompt.md` -- full workflow
+- `all.prompt.md` -- full workflow with verification

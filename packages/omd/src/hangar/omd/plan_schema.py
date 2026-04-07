@@ -131,7 +131,26 @@ PLAN_SCHEMA: dict[str, Any] = {
                     "id": {"type": "string", "minLength": 1},
                     "type": {"type": "string", "minLength": 1},
                     "source": {"type": "string"},
-                    "config": {"type": "object"},
+                    "config": {
+                        "type": "object",
+                        "properties": {
+                            "slots": {
+                                "type": "object",
+                                "additionalProperties": {
+                                    "type": "object",
+                                    "required": ["provider"],
+                                    "properties": {
+                                        "provider": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                        },
+                                        "config": {"type": "object"},
+                                    },
+                                    "additionalProperties": False,
+                                },
+                            },
+                        },
+                    },
                 },
             },
         },

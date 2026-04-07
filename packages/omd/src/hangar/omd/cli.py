@@ -256,6 +256,7 @@ def plot_cmd(run_id: str | None, plot_type: str, output: str | None,
 
     # Look up component type from DB if we have a run_id
     component_type = None
+    component_types = None
     if run_id:
         try:
             init_analysis_db()
@@ -263,11 +264,20 @@ def plot_cmd(run_id: str | None, plot_type: str, output: str | None,
             if entity and entity.get("metadata"):
                 meta = _json.loads(entity["metadata"])
                 component_type = meta.get("component_type")
+                component_types = meta.get("component_types")
         except Exception:
             pass
 
     # Handle --list-types
     if list_types:
+        if component_types and len(component_types) > 1:
+            click.echo("Plot types for composite problem:")
+            for comp_id, ctype in component_types.items():
+                provider = get_plot_provider(ctype)
+                click.echo(f"  {comp_id} ({ctype}):")
+                for name in sorted(provider.keys()):
+                    click.echo(f"    {name}")
+            return
         if component_type:
             provider = get_plot_provider(component_type)
             click.echo(f"Plot types for {component_type}:")
@@ -312,6 +322,7 @@ def plot_cmd(run_id: str | None, plot_type: str, output: str | None,
         surface_name=surface,
         output_dir=out_dir,
         component_type=component_type,
+        component_types=component_types,
     )
 
     if saved:
@@ -437,10 +448,12 @@ def _omd_plots_handler(
             # Get component type from run entity metadata
             entity = query_entity(run_id)
             component_type = None
+            component_types = None
             if entity and entity.get("metadata"):
                 import json
                 meta = json.loads(entity["metadata"])
                 component_type = meta.get("component_type")
+                component_types = meta.get("component_types")
 
             generate_plots(
                 recorder_path=rec_path,
@@ -448,6 +461,7 @@ def _omd_plots_handler(
                 surface_name="wing",
                 output_dir=plots_dir,
                 component_type=component_type,
+                component_types=component_types,
             )
         except Exception as exc:
             body = _json.dumps({"error": str(exc)})

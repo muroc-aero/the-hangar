@@ -1,35 +1,26 @@
-# OAS Rectangular Wing: Aerostructural Analysis
+# Task: Rectangular Wing Aerostructural Analysis
 
-Run a coupled aero+struct analysis of a rectangular wing using `omd-cli`.
+Run a coupled aero+structural analysis of a rectangular wing using
+omd-cli. The wing uses a tube FEM structural model coupled with VLM
+aerodynamics.
 
-## Parameters
+## Requirements
 
-- Wing: rectangular, span=10m, chord=1m, num_y=7, tube FEM
+- Wing: rectangular, 10 m span, 1 m chord, num_y=7, tube FEM
 - Material: aluminum (E=70 GPa, G=30 GPa, yield=500 MPa, rho=3000 kg/m^3)
-- thickness_cp: [0.01, 0.02, 0.01] m
+- Tube thickness: [0.01, 0.02, 0.01] m (root, mid, tip)
 - Flight: velocity=248.136 m/s, alpha=5 deg, Mach=0.84
-- Solvers: Newton (coupled) + DirectSolver (linear)
+- Solvers: Newton on the coupled group, DirectSolver for linear
 
-## Steps
+## Deliverables
 
-1. Assemble:
-   ```
-   omd-cli assemble packages/omd/examples/oas_aerostruct_rect/lane_b/aerostruct_analysis/
-   ```
+1. Create a plan YAML for an `oas/AerostructPoint` analysis with the
+   parameters above
+2. Run the analysis and report CL, CD, structural mass, and failure index
+3. Record a result interpretation decision: is the structure safe
+   (failure < 0)? Are the aero coefficients reasonable?
+4. Generate structural deformation and von Mises stress plots
 
-2. Run:
-   ```
-   omd-cli run .../plan.yaml --mode analysis
-   ```
-
-3. Results:
-   ```
-   omd-cli results <run_id> --summary
-   ```
-
-## Expected Output
-
-- CL > 0, CD > 0
-- structural_mass > 0
-- Failure index < 0 (structure is safe)
-- Provenance chain recorded
+Use `/omd-cli-guide` for plan structure and component types. The
+aerostruct component type requires fem_model_type and material
+properties in the surface config.

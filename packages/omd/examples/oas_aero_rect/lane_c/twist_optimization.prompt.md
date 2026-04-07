@@ -1,34 +1,26 @@
-# OAS Rectangular Wing: Twist Optimization
+# Task: Rectangular Wing Twist Optimization
 
-Optimize twist distribution to minimize drag at a target CL using `omd-cli`.
+Optimize the twist distribution of a rectangular wing to minimize drag
+at a target lift coefficient using omd-cli.
 
-## Parameters
+## Requirements
 
-- Same wing and flight conditions as the aero analysis
+- Same wing and flight conditions as the aero analysis task (10 m span,
+  1 m chord, Mach=0.84, alpha=5 deg)
 - Design variable: twist_cp, bounds [-10, 15] deg
 - Constraint: CL = 0.5
-- Objective: minimize CD (scaler=10000)
+- Objective: minimize CD (use scaler=10000 for optimizer scaling)
 - Optimizer: SLSQP, maxiter=100
 
-## Steps
+## Deliverables
 
-1. Assemble:
-   ```
-   omd-cli assemble packages/omd/examples/oas_aero_rect/lane_b/twist_optimization/
-   ```
+1. Create a plan YAML with the optimization setup
+2. Run the optimization and report final CL, CD, and L/D
+3. Record a convergence assessment decision (did the optimizer converge?
+   is the CL constraint satisfied?)
+4. Compare the optimized CD against the baseline analysis CD and report
+   the drag reduction
+5. Generate convergence and planform plots
 
-2. Run optimization:
-   ```
-   omd-cli run packages/omd/examples/oas_aero_rect/lane_b/twist_optimization/plan.yaml --mode optimize
-   ```
-
-3. Query results:
-   ```
-   omd-cli results <run_id> --summary
-   ```
-
-## Expected Output
-
-- Status: converged
-- CL ~ 0.5 (constraint satisfied)
-- CD should decrease from baseline analysis
+Use `/omd-cli-guide` to learn the plan structure for optimization
+(design variables, constraints, objective, optimizer sections).

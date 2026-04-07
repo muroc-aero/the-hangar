@@ -2,6 +2,10 @@
 
 Verifies that running the same problem through direct OpenMDAO/OAS code
 and through the omd plan pipeline produces matching results.
+
+Run with -s to see comparison tables in the terminal:
+
+    uv run pytest packages/omd/examples/tests/test_parity.py -v -s
 """
 
 from __future__ import annotations
@@ -15,6 +19,37 @@ from hangar.omd.assemble import assemble_plan
 from hangar.omd.run import run_plan
 
 EXAMPLES_DIR = Path(__file__).parent.parent
+
+
+def _print_comparison(
+    name: str,
+    lane_a: dict,
+    lane_b: dict,
+    keys: list[str] | None = None,
+) -> None:
+    """Print a side-by-side comparison of lane A and lane B results."""
+    if keys is None:
+        keys = sorted(set(lane_a.keys()) | set(lane_b.keys()))
+
+    print(f"\n{'=' * 60}")
+    print(f"  {name}")
+    print(f"{'=' * 60}")
+    print(f"  {'Metric':<25s} {'Lane A':>14s} {'Lane B':>14s} {'Diff':>10s}")
+    print(f"  {'-' * 25} {'-' * 14} {'-' * 14} {'-' * 10}")
+    for k in keys:
+        a = lane_a.get(k)
+        b = lane_b.get(k)
+        if a is None or b is None:
+            a_str = f"{a}" if a is not None else "N/A"
+            b_str = f"{b}" if b is not None else "N/A"
+            print(f"  {k:<25s} {a_str:>14s} {b_str:>14s} {'':>10s}")
+            continue
+        if isinstance(a, (int, float)) and isinstance(b, (int, float)) and a != 0:
+            pct = 100.0 * (b - a) / abs(a)
+            print(f"  {k:<25s} {a:>14.6g} {b:>14.6g} {pct:>+9.4f}%")
+        else:
+            print(f"  {k:<25s} {str(a):>14s} {str(b):>14s}")
+    print(f"{'=' * 60}\n")
 
 
 class TestParaboloidParity:
@@ -31,6 +66,8 @@ class TestParaboloidParity:
         result = run_plan(out, mode="analysis", recording_level="minimal",
                           db_path=tmp_path / "analysis.db")
 
+        _print_comparison("Paraboloid Analysis", lane_a, result["summary"])
+
         assert result["summary"]["f_xy"] == pytest.approx(lane_a["f_xy"], rel=1e-12)
 
     def test_optimization_parity(self, tmp_path):
@@ -44,6 +81,8 @@ class TestParaboloidParity:
         assemble_plan(plan_dir, output=out)
         result = run_plan(out, mode="optimize", recording_level="minimal",
                           db_path=tmp_path / "analysis.db")
+
+        _print_comparison("Paraboloid Optimization", lane_a, result["summary"])
 
         assert result["summary"]["f_xy"] == pytest.approx(lane_a["f_xy"], rel=1e-4)
 
@@ -62,6 +101,9 @@ class TestOASAeroParity:
         assemble_plan(plan_dir, output=out)
         result = run_plan(out, mode="analysis", recording_level="minimal",
                           db_path=tmp_path / "analysis.db")
+
+        _print_comparison("OAS Aero Analysis", lane_a, result["summary"],
+                          keys=["CL", "CD"])
 
         assert result["summary"]["CL"] == pytest.approx(lane_a["CL"], rel=1e-6)
         assert result["summary"]["CD"] == pytest.approx(lane_a["CD"], rel=1e-6)
@@ -82,5 +124,34 @@ class TestOASAerostructParity:
         result = run_plan(out, mode="analysis", recording_level="minimal",
                           db_path=tmp_path / "analysis.db")
 
+        _print_comparison("OAS Aerostruct Analysis", lane_a, result["summary"],
+                          keys=["CL", "CD"])
+
         assert result["summary"]["CL"] == pytest.approx(lane_a["CL"], rel=1e-6)
         assert result["summary"]["CD"] == pytest.approx(lane_a["CD"], rel=1e-6)
+
+
+class TestOCPOASCoupledParity:
+
+    @pytest.mark.slow
+    def test_coupled_mission_parity(self, tmp_path):
+        sys.path.insert(0, str(EXAMPLES_DIR / "ocp_oas_coupled"))
+        from ocp_oas_coupled.lane_a.coupled_mission import run as lane_a_run
+
+        lane_a = lane_a_run()
+
+        plan_path = EXAMPLES_DIR / "ocp_oas_coupled" / "lane_b" / "coupled_mission" / "plan.yaml"
+        result = run_plan(plan_path, mode="analysis", recording_level="minimal",
+                          db_path=tmp_path / "analysis.db")
+
+        _print_comparison(
+            "OCP+OAS Coupled Mission (VLM drag slot)",
+            lane_a,
+            result["summary"],
+            keys=["fuel_burn_kg", "OEW_kg", "MTOW_kg"],
+        )
+
+        assert result["status"] in ("completed", "converged")
+        assert result["summary"]["fuel_burn_kg"] == pytest.approx(
+            lane_a["fuel_burn_kg"], rel=1e-3,
+        )

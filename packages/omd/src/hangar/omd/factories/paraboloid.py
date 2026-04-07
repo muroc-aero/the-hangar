@@ -56,6 +56,11 @@ def build_paraboloid(
         "point_name": "paraboloid",
         "output_names": ["paraboloid.f_xy"],
         "initial_values": {},
+        "var_paths": {
+            "f_xy": "paraboloid.f_xy",
+            "x": "x",
+            "y": "y",
+        },
     }
 
     # Capture initial values from operating_points

@@ -1,29 +1,21 @@
-# Paraboloid: Full Workflow
+# Task: Paraboloid Analysis and Optimization
 
-Run both paraboloid examples (analysis and optimization) using `omd-cli`,
-then verify the results match expected values.
+Run both a function evaluation and an optimization of the paraboloid
+f(x, y) = (x - 3)^2 + x*y + (y + 4)^2 - 3 using omd-cli.
 
-## Analysis
+## Part 1: Analysis
 
-1. Assemble: `omd-cli assemble packages/omd/examples/paraboloid/lane_b/analysis/`
-2. Run: `omd-cli run packages/omd/examples/paraboloid/lane_b/analysis/plan.yaml --mode analysis`
-3. Results: `omd-cli results <run_id> --summary`
-4. Expected: f_xy = 39.0
+Evaluate f at x=1.0, y=2.0. Report f_xy.
 
-## Optimization
+## Part 2: Optimization
 
-1. Assemble: `omd-cli assemble packages/omd/examples/paraboloid/lane_b/optimization/`
-2. Run: `omd-cli run packages/omd/examples/paraboloid/lane_b/optimization/plan.yaml --mode optimize`
-3. Results: `omd-cli results <run_id> --summary`
-4. Expected: x ~ 6.667, y ~ -7.333, f_xy ~ -27.333
+Minimize f with x in [-50, 50] and y in [-50, 50] using SLSQP.
+Report optimal x, y, and f_xy. Verify against the analytic minimum
+(x=20/3, y=-22/3, f=-82/3).
 
-## Verification
+## Part 3: Summary
 
-After both runs, check provenance for each plan:
-```
-omd-cli provenance ex-paraboloid-analysis --format text
-omd-cli provenance ex-paraboloid-opt --format text
-```
+Show provenance timelines for both runs and report a comparison table
+of the analysis and optimization results.
 
-Report a summary table with: analysis f_xy, optimization x/y/f_xy, and
-whether the provenance chains are complete.
+Use `/omd-cli-guide` to learn the plan YAML structure.

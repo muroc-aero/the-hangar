@@ -1,19 +1,25 @@
-# Lane C: Agent Prompts
+# Lane C: Agent Task Prompts
 
-These markdown files contain natural-language prompts for an AI agent
-(Claude Code) to run the paraboloid examples via `omd-cli`.
+These markdown files are analysis task descriptions for an AI agent.
+The agent receives the task, uses `/omd-cli-guide` (or `omd-cli --help`)
+to learn how to author plan YAML files, creates the plan, runs it, and
+reports results.
+
+The prompts describe *what* to do, not *how*. The agent figures out the
+plan structure, component types, and CLI commands from the skills and
+documentation.
+
+## Prompts
+
+- `analysis.prompt.md` -- evaluate the paraboloid at a point
+- `optimization.prompt.md` -- find the minimum
+- `all.prompt.md` -- both tasks in sequence
 
 ## Usage
 
 ```bash
-# Start Claude Code from the workspace root
 claude
-
-# Then paste the contents of any prompt file:
-# - analysis.prompt.md     (single analysis)
-# - optimization.prompt.md (optimization)
-# - all.prompt.md          (both in sequence)
+# Then paste the contents of any prompt file
 ```
 
-The agent calls `omd-cli` commands and reports results. Results should
-match Lane A and Lane B within machine precision.
+Results should match Lane A and Lane B.

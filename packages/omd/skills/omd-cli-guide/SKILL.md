@@ -50,6 +50,44 @@ my-plan/
 | `paraboloid/Paraboloid` | Trivial test component: f(x,y) |
 | `oas/AeroPoint` | OAS aero-only VLM analysis |
 | `oas/AerostructPoint` | OAS coupled aero+struct analysis |
+| `oas/AerostructMultipoint` | OAS multipoint aerostruct (cruise + maneuver) |
+| `ocp/BasicMission` | OpenConcept 3-phase mission (climb/cruise/descent) |
+| `ocp/FullMission` | OpenConcept full mission with balanced-field takeoff |
+| `ocp/MissionWithReserve` | OpenConcept mission with reserve + loiter phases |
+
+## Slot Providers
+
+Slots allow substituting components inside a factory's model. Currently
+supported for OCP mission components (drag slot):
+
+| Provider | Slot | Description |
+|----------|------|-------------|
+| `oas/vlm` | drag | VLMDragPolar (surrogate-trained VLM drag) |
+| `oas/aerostruct` | drag | AerostructDragPolar (surrogate-trained aero+struct drag) |
+
+Slots are specified in the component config:
+
+```yaml
+components:
+- id: mission
+  type: ocp/BasicMission
+  config:
+    aircraft_template: caravan
+    architecture: turboprop
+    num_nodes: 11
+    mission_params: { ... }
+    slots:
+      drag:
+        provider: oas/vlm
+        config:
+          num_x: 2
+          num_y: 7      # must be odd
+          num_twist: 4
+```
+
+The slot provider replaces the default drag model (PolarDrag) inside each
+flight phase. It also modifies the aircraft data dict: removes parabolic
+polar fields and adds any fields the provider needs (e.g., CD_nonwing).
 
 ## Quick Start
 

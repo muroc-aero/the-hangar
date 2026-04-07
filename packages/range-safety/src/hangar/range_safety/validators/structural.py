@@ -153,6 +153,47 @@ def validate_structural(
                         f"{missing}",
                     ))
 
+        # Slot provider checks
+        slots = config.get("slots", {})
+        for slot_name, slot_cfg in slots.items():
+            provider_name = slot_cfg.get("provider", "")
+
+            # Check provider is registered
+            try:
+                from hangar.omd.slots import list_slot_providers
+                known_providers = list_slot_providers()
+                if provider_name not in known_providers:
+                    findings.append(_finding(
+                        "slot_provider_exists",
+                        "error",
+                        f"Component '{comp_id}', slot '{slot_name}': "
+                        f"provider '{provider_name}' not registered. "
+                        f"Known: {known_providers}",
+                    ))
+            except ImportError:
+                pass  # omd not installed, skip
+
+            # OAS slot config checks
+            slot_config = slot_cfg.get("config", {})
+            if provider_name.startswith("oas/"):
+                slot_num_y = slot_config.get("num_y")
+                if slot_num_y is not None and slot_num_y % 2 == 0:
+                    findings.append(_finding(
+                        "slot_num_y_odd",
+                        "error",
+                        f"Component '{comp_id}', slot '{slot_name}': "
+                        f"num_y={slot_num_y} must be odd (OAS constraint)",
+                    ))
+
+                slot_num_x = slot_config.get("num_x")
+                if slot_num_x is not None and slot_num_x < 2:
+                    findings.append(_finding(
+                        "slot_mesh_params",
+                        "warning",
+                        f"Component '{comp_id}', slot '{slot_name}': "
+                        f"num_x={slot_num_x} < 2 may produce poor results",
+                    ))
+
     # -- Solver checks --
     solvers = plan.get("solvers", {})
     nl_solver = solvers.get("nonlinear", {})

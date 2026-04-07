@@ -1,20 +1,21 @@
-# OAS Rectangular Wing: Full Aero Workflow
+# Task: Rectangular Wing Aero Study
 
-Run aero analysis and twist optimization, then compare results.
+Run an aero analysis and twist optimization of a rectangular wing,
+then compare the results.
 
-## Analysis
+## Part 1: Baseline Analysis
 
-1. `omd-cli assemble packages/omd/examples/oas_aero_rect/lane_b/aero_analysis/`
-2. `omd-cli run .../plan.yaml --mode analysis`
-3. `omd-cli results <run_id> --summary`
+Analyze a rectangular wing (10 m span, 1 m chord) at Mach=0.84,
+alpha=5 deg using VLM with viscous drag. Report CL, CD, and L/D.
 
-## Optimization
+## Part 2: Twist Optimization
 
-1. `omd-cli assemble packages/omd/examples/oas_aero_rect/lane_b/twist_optimization/`
-2. `omd-cli run .../plan.yaml --mode optimize`
-3. `omd-cli results <run_id> --summary`
+Optimize the twist distribution to minimize CD while holding CL = 0.5.
+Use twist_cp bounds of [-10, 15] deg and SLSQP optimizer.
 
-## Report
+## Part 3: Comparison
 
-Compare baseline CD vs optimized CD. The optimization should reduce drag
-while maintaining CL = 0.5. Report CL, CD, L/D for both cases.
+Compare baseline and optimized CD. Report the drag reduction in percent.
+Generate planform and lift distribution plots for both cases.
+
+Use `/omd-cli-guide` to learn the plan YAML structure.

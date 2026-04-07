@@ -984,6 +984,15 @@ def _build_mission_problem(
 
     params = {**DEFAULT_MISSION_PARAMS, **mission_params}
 
+    # Build variable path mappings for the materializer
+    var_paths: dict[str, str] = {
+        "fuel_burn": "descent.fuel_used_final",
+        "OEW": "climb.OEW",
+        "MTOW": "ac|weights|MTOW",
+    }
+    if mission_type == "full":
+        var_paths["TOFL"] = "rotate.range_final"
+
     metadata = {
         "component_family": "ocp",
         "architecture": architecture,
@@ -995,6 +1004,10 @@ def _build_mission_problem(
         "is_hybrid": is_hybrid,
         "has_takeoff": mission_type == "full",
         "has_reserve": mission_type == "with_reserve",
+        "var_paths": var_paths,
+        "declared_slots": {
+            "drag": {"default": "PolarDrag"},
+        },
     }
 
     if defer_setup:

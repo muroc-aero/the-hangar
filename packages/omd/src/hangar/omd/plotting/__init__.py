@@ -63,6 +63,7 @@ def generate_plots(
     surface_name: str | None = None,
     output_dir: Path | None = None,
     component_type: str | None = None,
+    component_types: dict[str, str] | None = None,
 ) -> dict[str, Path]:
     """Generate one or more plot types and save as PNG files.
 
@@ -77,14 +78,31 @@ def generate_plots(
         output_dir: Directory to save PNGs. Uses current dir if None.
         component_type: Component type string (e.g., "oas/AerostructPoint").
             Used to select the right plot provider. If None, tries all.
+        component_types: Dict mapping component_id to type string for
+            composite problems. When provided with multiple types, plots
+            from each component type are generated with prefixed filenames.
 
     Returns:
         Dict mapping plot type to saved file path.
     """
     from hangar.omd.registry import get_plot_provider, get_all_plot_providers
 
+    # Track which plots come from which component (for filename prefixing)
+    _plot_source: dict[str, str] = {}  # plot_name -> component_id
+
     # Get available plots for this component type
-    if component_type:
+    if component_types and len(component_types) > 1:
+        # Composite: merge providers from all component types
+        available: dict = {}
+        for comp_id, ctype in component_types.items():
+            provider = get_plot_provider(ctype)
+            for pname, pfunc in provider.items():
+                if pname not in available:
+                    available[pname] = pfunc
+                    # Generic plots get no prefix
+                    if pname not in _GENERIC_PLOTS:
+                        _plot_source[pname] = comp_id
+    elif component_type:
         available = get_plot_provider(component_type)
     else:
         available = get_all_plot_providers()
@@ -130,7 +148,11 @@ def generate_plots(
                 kwargs.pop("run_id", None)
 
             fig = func(recorder_path, **kwargs)
-            out_path = output_dir / f"{ptype}.png"
+            # Prefix type-specific plots with component_id for composites
+            if ptype in _plot_source:
+                out_path = output_dir / f"{_plot_source[ptype]}_{ptype}.png"
+            else:
+                out_path = output_dir / f"{ptype}.png"
             fig.savefig(str(out_path), dpi=150, bbox_inches="tight")
             plt.close(fig)
             saved[ptype] = out_path

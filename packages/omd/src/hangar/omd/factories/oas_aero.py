@@ -187,11 +187,24 @@ def build_oas_aeropoint(
     for surface in surfaces:
         _connect_aero_surface(prob.model, surface["name"], point_name)
 
+    # Build variable path mappings for the materializer
+    surface_names = [s["name"] for s in surfaces]
+    var_paths: dict[str, str] = {}
+    for s_name in surface_names:
+        var_paths["twist_cp"] = f"{s_name}.twist_cp"
+        var_paths["chord_cp"] = f"{s_name}.chord_cp"
+        var_paths["t_over_c_cp"] = f"{s_name}.t_over_c_cp"
+        var_paths["S_ref"] = f"{point_name}.{s_name}.S_ref"
+    # Aero-only: perf outputs promoted directly to {point}.{var}
+    for perf_var in ("CL", "CD", "CDi", "CDv", "CDw", "CM"):
+        var_paths[perf_var] = f"{point_name}.{perf_var}"
+
     metadata = {
         "point_name": point_name,
-        "surface_names": [s["name"] for s in surfaces],
+        "surface_names": surface_names,
         "surfaces": surfaces,
         "flight_conditions": flight,
+        "var_paths": var_paths,
     }
 
     return prob, metadata

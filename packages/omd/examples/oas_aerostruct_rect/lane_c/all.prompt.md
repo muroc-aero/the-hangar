@@ -1,15 +1,20 @@
-# OAS Rectangular Wing: Aerostructural Workflow
+# Task: Rectangular Wing Aerostructural Study
 
-Run the aerostructural analysis, then verify results and provenance.
+Run a coupled aero+structural analysis of a rectangular aluminum wing
+with tube FEM, then verify the results and provenance chain.
 
-## Analysis
+## Requirements
 
-1. `omd-cli assemble packages/omd/examples/oas_aerostruct_rect/lane_b/aerostruct_analysis/`
-2. `omd-cli run .../plan.yaml --mode analysis`
-3. `omd-cli results <run_id> --summary`
+- Wing: rectangular, 10 m span, 1 m chord, tube FEM, aluminum
+- Flight: Mach=0.84, alpha=5 deg
+- See aerostruct_analysis.prompt.md for full parameter details
 
-## Verification
+## Deliverables
 
-4. `omd-cli provenance ex-oas-aerostruct-analysis --format text`
+1. Create the plan, run the analysis, and report CL, CD, L/D,
+   structural mass, and failure index
+2. Assess structural safety (failure < 0 means safe with margin)
+3. Show the provenance timeline for the run
+4. Generate structural deformation and planform plots
 
-Report: CL, CD, L/D, structural mass, failure index, and the provenance chain.
+Use `/omd-cli-guide` to learn the plan YAML structure.

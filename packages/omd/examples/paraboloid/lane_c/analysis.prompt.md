@@ -1,37 +1,13 @@
-# Paraboloid Analysis
+# Task: Paraboloid Analysis
 
-Run a paraboloid analysis using `omd-cli`. The function is:
+Evaluate the paraboloid function f(x, y) = (x - 3)^2 + x*y + (y + 4)^2 - 3
+at the point x=1.0, y=2.0 using omd-cli.
 
-    f(x, y) = (x - 3)^2 + x*y + (y + 4)^2 - 3
+## Deliverables
 
-## Parameters
+1. Create a plan YAML for a paraboloid analysis at the specified point
+2. Run the analysis and report the value of f_xy
+3. Show the provenance timeline for the run
 
-- x = 1.0
-- y = 2.0
-
-## Steps
-
-1. Assemble the plan:
-   ```
-   omd-cli assemble packages/omd/examples/paraboloid/lane_b/analysis/
-   ```
-
-2. Run the analysis:
-   ```
-   omd-cli run packages/omd/examples/paraboloid/lane_b/analysis/plan.yaml --mode analysis
-   ```
-
-3. Query the results (use the run_id from step 2):
-   ```
-   omd-cli results <run_id> --summary
-   ```
-
-4. View the provenance:
-   ```
-   omd-cli provenance ex-paraboloid-analysis --format text
-   ```
-
-## Expected Output
-
-- f_xy = 39.0 (exact)
-- Provenance shows: plan entity -> execute activity -> run record
+Use `/omd-cli-guide` to learn the plan YAML structure and available
+component types.

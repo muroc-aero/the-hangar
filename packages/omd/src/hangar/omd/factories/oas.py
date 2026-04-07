@@ -494,11 +494,32 @@ def build_oas_aerostruct(
             prob.model.connect("point_mass_locations",
                                f"{coupled_name}.point_mass_locations")
 
+    # Build variable path mappings for the materializer
+    surface_names = [s["name"] for s in surfaces]
+    var_paths: dict[str, str] = {}
+    for s_name in surface_names:
+        var_paths["twist_cp"] = f"{s_name}.twist_cp"
+        var_paths["thickness_cp"] = f"{s_name}.thickness_cp"
+        var_paths["chord_cp"] = f"{s_name}.chord_cp"
+        var_paths["spar_thickness_cp"] = f"{s_name}.spar_thickness_cp"
+        var_paths["skin_thickness_cp"] = f"{s_name}.skin_thickness_cp"
+        var_paths["t_over_c_cp"] = f"{s_name}.t_over_c_cp"
+        var_paths["S_ref"] = f"{point_name}.{s_name}.S_ref"
+        var_paths["structural_mass"] = f"{s_name}.structural_mass"
+        # Aerostruct: perf outputs nested under {point}.{surf}_perf.{var}
+        for perf_var in ("CL", "CD", "CDi", "CDv", "CDw", "CM"):
+            var_paths[perf_var] = f"{point_name}.{s_name}_perf.{perf_var}"
+        var_paths["failure"] = f"{point_name}.{s_name}_perf.failure"
+        var_paths["tsaiwu_sr"] = f"{point_name}.{s_name}_perf.tsaiwu_sr"
+    var_paths["L_equals_W"] = f"{point_name}.L_equals_W"
+    var_paths["fuelburn"] = "fuelburn"
+
     metadata = {
         "point_name": point_name,
-        "surface_names": [s["name"] for s in surfaces],
+        "surface_names": surface_names,
         "surfaces": surfaces,
         "flight_conditions": flight,
+        "var_paths": var_paths,
     }
 
     return prob, metadata
@@ -718,15 +739,38 @@ def build_oas_aerostruct_multipoint(
     for i, fp in enumerate(flight_points):
         point_labels.append(fp.get("name", f"point_{i}"))
 
+    # Build variable path mappings for the materializer
+    surface_names_list = [s["name"] for s in surfaces]
+    var_paths: dict[str, str] = {}
+    for s_name in surface_names_list:
+        var_paths["twist_cp"] = f"{s_name}.twist_cp"
+        var_paths["thickness_cp"] = f"{s_name}.thickness_cp"
+        var_paths["chord_cp"] = f"{s_name}.chord_cp"
+        var_paths["spar_thickness_cp"] = f"{s_name}.spar_thickness_cp"
+        var_paths["skin_thickness_cp"] = f"{s_name}.skin_thickness_cp"
+        var_paths["t_over_c_cp"] = f"{s_name}.t_over_c_cp"
+        var_paths["structural_mass"] = f"{s_name}.structural_mass"
+        # Per-point perf outputs (use first point for default resolution)
+        pt0 = point_names[0]
+        for perf_var in ("CL", "CD", "CDi", "CDv", "CDw", "CM"):
+            var_paths[perf_var] = f"{pt0}.{s_name}_perf.{perf_var}"
+        var_paths["failure"] = f"{pt0}.{s_name}_perf.failure"
+        var_paths["tsaiwu_sr"] = f"{pt0}.{s_name}_perf.tsaiwu_sr"
+    var_paths["L_equals_W"] = f"{point_names[0]}.L_equals_W"
+    var_paths["fuelburn"] = f"{point_names[0]}.fuelburn"
+    var_paths["fuel_vol_delta"] = "fuel_vol_delta.fuel_vol_delta"
+    var_paths["fuel_diff"] = "fuel_diff"
+
     metadata = {
         "point_names": point_names,
         "point_name": point_names[0],  # backwards compat
         "point_labels": point_labels,
-        "surface_names": [s["name"] for s in surfaces],
+        "surface_names": surface_names_list,
         "surfaces": surfaces,
         "flight_conditions": shared,
         "flight_points": flight_points,
         "multipoint": True,
+        "var_paths": var_paths,
     }
 
     return prob, metadata

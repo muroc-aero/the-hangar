@@ -37,3 +37,13 @@ markers = [
     "golden_physics: tier 1 physics invariant tests",
     "golden_numerics: tier 2 numeric baseline tests",
 ]
+filterwarnings = [
+    # Upstream numpy deprecations in openconcept (array-to-scalar)
+    "ignore:Conversion of an array with ndim > 0 to a scalar:DeprecationWarning",
+    # Upstream scipy sparse dtype cast
+    "ignore:Input has data type int64:FutureWarning",
+    # OpenMDAO recorder can't pickle dynamic aircraft model classes
+    "ignore:.*cannot be pickled.*:openmdao.utils.om_warnings.CaseRecorderWarning",
+    # OpenAeroStruct mesh generator span/root_chord ignored for CRM
+    "ignore:`span` and `root_chord`.*:RuntimeWarning",
+]

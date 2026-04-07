@@ -370,10 +370,24 @@ def _configure_driver(
     components = plan.get("components", [])
     component_type = components[0].get("type") if components else None
 
+    # Build var_paths: factory-provided mappings take precedence
+    var_paths = metadata.get("var_paths")
+    if metadata.get("_composite"):
+        # For composite problems, merge var_paths from each component,
+        # prefixed by component_id. Also keep unprefixed entries for
+        # single-component shorthand (first-wins).
+        merged_var_paths: dict[str, str] = {}
+        for comp_id, comp_meta in metadata.get("component_metadata", {}).items():
+            for short_name, full_path in comp_meta.get("var_paths", {}).items():
+                merged_var_paths[f"{comp_id}.{short_name}"] = f"{comp_id}.{full_path}"
+                if short_name not in merged_var_paths:
+                    merged_var_paths[short_name] = f"{comp_id}.{full_path}"
+        var_paths = merged_var_paths or var_paths
+
     for dv in plan.get("design_variables", []):
         dv_name = dv["name"]
         path = _resolve_var_path(dv_name, point_name, surface_names,
-                                 component_type)
+                                 component_type, var_paths=var_paths)
         kwargs: dict = {}
         if "lower" in dv:
             kwargs["lower"] = dv["lower"]
@@ -397,7 +411,8 @@ def _configure_driver(
             pt = point_names[pt_idx] if pt_idx < len(point_names) else point_names[0]
         else:
             pt = point_name
-        path = _resolve_var_path(con_name, pt, surface_names, component_type)
+        path = _resolve_var_path(con_name, pt, surface_names, component_type,
+                                 var_paths=var_paths)
         kwargs = {}
         if "upper" in con:
             kwargs["upper"] = con["upper"]
@@ -414,7 +429,7 @@ def _configure_driver(
     if obj:
         obj_name = obj["name"]
         path = _resolve_var_path(obj_name, point_name, surface_names,
-                                 component_type)
+                                 component_type, var_paths=var_paths)
         kwargs = {}
         if "scaler" in obj:
             kwargs["scaler"] = obj["scaler"]
@@ -426,11 +441,13 @@ def _resolve_var_path(
     point_name: str,
     surface_names: list[str],
     component_type: str | None = None,
+    var_paths: dict[str, str] | None = None,
 ) -> str:
     """Resolve a short variable name to a full OpenMDAO path.
 
     If the name already contains dots (looks like a full path),
-    return as-is. Otherwise, try common OAS conventions.
+    return as-is. Otherwise, check factory-provided var_paths first,
+    then fall back to common OAS/OCP conventions.
 
     Args:
         name: Short variable name (e.g. "CL", "twist_cp").
@@ -438,6 +455,8 @@ def _resolve_var_path(
         surface_names: List of surface names from metadata.
         component_type: Component type string (e.g. "oas/AeroPoint").
             Used to distinguish aero-only vs aerostruct path patterns.
+        var_paths: Factory-provided mapping of short names to full paths.
+            Takes precedence over hardcoded tables when present.
     """
     # Pipe-separated paths (OpenConcept convention) pass through as-is
     if "|" in name:
@@ -445,6 +464,10 @@ def _resolve_var_path(
 
     if "." in name:
         return name
+
+    # Factory-provided mapping takes precedence
+    if var_paths and name in var_paths:
+        return var_paths[name]
 
     # OCP short names
     _OCP_SHORT_NAMES = {

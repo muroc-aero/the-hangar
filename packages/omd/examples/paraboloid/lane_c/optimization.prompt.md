@@ -1,31 +1,20 @@
-# Paraboloid Optimization
+# Task: Paraboloid Optimization
 
-Optimize the paraboloid function using `omd-cli`:
+Find the minimum of f(x, y) = (x - 3)^2 + x*y + (y + 4)^2 - 3 using
+omd-cli with SLSQP optimization.
 
-    f(x, y) = (x - 3)^2 + x*y + (y + 4)^2 - 3
+## Requirements
 
-Minimize f subject to -50 <= x, y <= 50.
+- Design variables: x in [-50, 50], y in [-50, 50]
+- Objective: minimize f_xy
+- Optimizer: SLSQP, maxiter 50
 
-## Steps
+## Deliverables
 
-1. Assemble the optimization plan:
-   ```
-   omd-cli assemble packages/omd/examples/paraboloid/lane_b/optimization/
-   ```
+1. Create a plan YAML with the optimization setup
+2. Run the optimization and report the optimal x, y, and f_xy
+3. Record a convergence assessment decision
+4. Verify the result against the analytic minimum (x=20/3, y=-22/3, f=-82/3)
 
-2. Run the optimization:
-   ```
-   omd-cli run packages/omd/examples/paraboloid/lane_b/optimization/plan.yaml --mode optimize
-   ```
-
-3. Query the results:
-   ```
-   omd-cli results <run_id> --summary
-   ```
-
-## Expected Output
-
-- x ~ 6.667 (= 20/3)
-- y ~ -7.333 (= -22/3)
-- f_xy ~ -27.333 (= -82/3)
-- Status: converged
+Use `/omd-cli-guide` to learn how to set up design variables, objectives,
+and optimizer configuration in the plan YAML.
