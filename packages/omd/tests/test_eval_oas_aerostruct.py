@@ -52,7 +52,7 @@ class TestOASAerostructAnalysis:
         result = run_plan(out, mode="analysis",
                           recording_level="minimal",
                           db_path=tmp_path / "analysis.db")
-        assert result["summary"]["wing_structural_mass"] > 0
+        assert result["summary"]["wing_structural_mass_kg"] > 0
 
 
 class TestOASAerostructOptimization:

@@ -399,6 +399,8 @@ def _configure_driver(
             kwargs["ref"] = dv["ref"]
         if "ref0" in dv:
             kwargs["ref0"] = dv["ref0"]
+        if "units" in dv:
+            kwargs["units"] = dv["units"]
         prob.model.add_design_var(path, **kwargs)
 
     # Constraints
@@ -422,6 +424,8 @@ def _configure_driver(
             kwargs["equals"] = con["equals"]
         if "scaler" in con:
             kwargs["scaler"] = con["scaler"]
+        if "units" in con:
+            kwargs["units"] = con["units"]
         prob.model.add_constraint(path, **kwargs)
 
     # Objective
@@ -433,6 +437,8 @@ def _configure_driver(
         kwargs = {}
         if "scaler" in obj:
             kwargs["scaler"] = obj["scaler"]
+        if "units" in obj:
+            kwargs["units"] = obj["units"]
         prob.model.add_objective(path, **kwargs)
 
 

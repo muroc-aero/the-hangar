@@ -66,7 +66,9 @@ PLAN_SCHEMA: dict[str, Any] = {
         },
         "operating_points": {
             "oneOf": [
-                # Single-point: flat dict of flight conditions
+                # Single-point: flat dict of flight conditions.
+                # Values can be bare numbers/strings/arrays, or an object
+                # with "value" and optional "units" for explicit unit tagging.
                 {
                     "type": "object",
                     "additionalProperties": {
@@ -76,6 +78,20 @@ PLAN_SCHEMA: dict[str, Any] = {
                             {
                                 "type": "array",
                                 "items": {"type": "number"},
+                            },
+                            {
+                                "type": "object",
+                                "required": ["value"],
+                                "additionalProperties": False,
+                                "properties": {
+                                    "value": {
+                                        "oneOf": [
+                                            {"type": "number"},
+                                            {"type": "array", "items": {"type": "number"}},
+                                        ],
+                                    },
+                                    "units": {"type": "string"},
+                                },
                             },
                         ],
                     },
@@ -99,6 +115,20 @@ PLAN_SCHEMA: dict[str, Any] = {
                                             "type": "array",
                                             "items": {"type": "number"},
                                         },
+                                        {
+                                            "type": "object",
+                                            "required": ["value"],
+                                            "additionalProperties": False,
+                                            "properties": {
+                                                "value": {
+                                                    "oneOf": [
+                                                        {"type": "number"},
+                                                        {"type": "array", "items": {"type": "number"}},
+                                                    ],
+                                                },
+                                                "units": {"type": "string"},
+                                            },
+                                        },
                                     ],
                                 },
                             },
@@ -112,6 +142,20 @@ PLAN_SCHEMA: dict[str, Any] = {
                                     {
                                         "type": "array",
                                         "items": {"type": "number"},
+                                    },
+                                    {
+                                        "type": "object",
+                                        "required": ["value"],
+                                        "additionalProperties": False,
+                                        "properties": {
+                                            "value": {
+                                                "oneOf": [
+                                                    {"type": "number"},
+                                                    {"type": "array", "items": {"type": "number"}},
+                                                ],
+                                            },
+                                            "units": {"type": "string"},
+                                        },
                                     },
                                 ],
                             },

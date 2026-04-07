@@ -729,7 +729,7 @@ def _extract_summary(prob, metadata: dict, mode: str) -> dict:
                 if key in first:
                     summary[key] = first[key]
             for surf_name in metadata.get("surface_names", []):
-                for skey in (f"{surf_name}_structural_mass",
+                for skey in (f"{surf_name}_structural_mass_kg",
                              f"{surf_name}_failure"):
                     if skey in first:
                         summary[skey] = first[skey]
@@ -909,6 +909,16 @@ def _extract_point_summary(
     except Exception:
         pass
 
+    # Wing area (S_ref)
+    for surf_name in metadata.get("surface_names", []):
+        try:
+            s_ref = float(prob.get_val(
+                f"{point_name}.{surf_name}.S_ref", units="m**2"
+            )[0])
+            data[f"{surf_name}_S_ref_m2"] = s_ref
+        except Exception:
+            pass
+
     # Surface-specific results
     for surf_name in metadata.get("surface_names", []):
         for mass_path in (
@@ -916,8 +926,8 @@ def _extract_point_summary(
             f"{point_name}.total_perf.{surf_name}_structural_mass",
         ):
             try:
-                mass = float(np.sum(prob.get_val(mass_path)))
-                data[f"{surf_name}_structural_mass"] = mass
+                mass = float(np.sum(prob.get_val(mass_path, units="kg")))
+                data[f"{surf_name}_structural_mass_kg"] = mass
                 break
             except Exception:
                 pass

@@ -22,6 +22,14 @@ _OP_RANGES = {
     "re": (1e3, 1e9),  # Reynolds number per unit length
 }
 
+# Unit-confusion heuristics: if a value exceeds the threshold, it likely
+# uses the wrong unit system.  Key -> (threshold, likely_unit, expected_unit).
+_UNIT_CONFUSION_HINTS: dict[str, tuple[float, str, str]] = {
+    "velocity": (500.0, "knots", "m/s"),
+    "altitude": (50_000.0, "feet", "meters"),
+    "cruise_altitude": (50_000.0, "feet", "meters"),
+}
+
 
 def _finding(check: str, severity: str, message: str) -> dict:
     """Build a finding dict."""
@@ -57,7 +65,14 @@ def validate_heuristics(
     operating_points = plan.get("operating_points", {})
 
     # -- Operating point range checks --
-    for key, value in operating_points.items():
+    # Extract numeric value from bare numbers or {value:, units:} objects
+    def _op_value(v):
+        if isinstance(v, dict):
+            return v.get("value")
+        return v
+
+    for key, raw_value in operating_points.items():
+        value = _op_value(raw_value)
         if not isinstance(value, (int, float)):
             continue
         if key in _OP_RANGES:
@@ -68,6 +83,17 @@ def validate_heuristics(
                     "warning",
                     f"Operating point '{key}' = {value} is outside "
                     f"typical range [{lo}, {hi}]",
+                ))
+        # Unit confusion warnings
+        if key in _UNIT_CONFUSION_HINTS:
+            threshold, likely_unit, expected_unit = _UNIT_CONFUSION_HINTS[key]
+            if value > threshold:
+                findings.append(_finding(
+                    "unit_confusion",
+                    "warning",
+                    f"Operating point '{key}' = {value} looks like it may "
+                    f"be in {likely_unit} rather than {expected_unit}. "
+                    f"omd assumes SI units unless explicitly tagged.",
                 ))
 
     # -- DV bounds checks against catalog --
@@ -141,6 +167,34 @@ def validate_heuristics(
                 "Unconstrained optimization may produce physically "
                 "unrealistic results.",
             ))
+
+    # -- OCP mission_params unit confusion checks --
+    for comp in components:
+        config = comp.get("config", {})
+        mission_params = config.get("mission_params", {})
+        for mp_key, mp_val in mission_params.items():
+            if not isinstance(mp_val, (int, float)):
+                continue
+            # cruise_altitude_ft should be in feet; warn if suspiciously
+            # low (someone passing meters)
+            if mp_key == "cruise_altitude_ft" and mp_val < 200:
+                findings.append(_finding(
+                    "unit_confusion",
+                    "warning",
+                    f"Component '{comp.get('id', '?')}': "
+                    f"cruise_altitude_ft = {mp_val} is very low. "
+                    f"This parameter expects feet, not meters.",
+                ))
+            # mission_range_NM should be in nautical miles; warn if very
+            # large (someone passing meters or km)
+            if mp_key == "mission_range_NM" and mp_val > 10_000:
+                findings.append(_finding(
+                    "unit_confusion",
+                    "warning",
+                    f"Component '{comp.get('id', '?')}': "
+                    f"mission_range_NM = {mp_val} is very large. "
+                    f"This parameter expects nautical miles.",
+                ))
 
     # -- Mesh density for optimization --
     if objective and design_variables:

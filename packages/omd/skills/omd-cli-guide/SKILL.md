@@ -89,6 +89,37 @@ The slot provider replaces the default drag model (PolarDrag) inside each
 flight phase. It also modifies the aircraft data dict: removes parabolic
 polar fields and adds any fields the provider needs (e.g., CD_nonwing).
 
+## Unit Conventions
+
+omd assumes SI units by default for operating points and results unless
+a component type documents otherwise.
+
+| Component Family | Assumed Units |
+|-----------------|---------------|
+| OAS (oas/*) | SI: velocity in m/s, density (rho) in kg/m^3, angles in deg, lengths in m |
+| OCP (ocp/*) | Mixed: mission_params use suffixed names -- `cruise_altitude_ft` (feet), `mission_range_NM` (nautical miles), `climb_vs_ftmin` (ft/min), `climb_Ueas_kn` (knots). Results are returned in kg for mass, m for distance. |
+
+Operating point values can optionally include units:
+
+```yaml
+operating_points:
+  velocity: 248               # bare number, assumed m/s
+  altitude:                    # explicit units
+    value: 35000
+    units: ft
+```
+
+Design variables, constraints, and objectives support an optional `units` field
+that is passed directly to OpenMDAO:
+
+```yaml
+design_variables:
+- name: twist_cp
+  lower: -10
+  upper: 10
+  units: deg
+```
+
 ## Quick Start
 
 ```bash
@@ -134,29 +165,84 @@ points to the store copy.
 
 ## Decision Logging (Required)
 
-Agents MUST record decisions at these points in every omd workflow:
+Agents MUST record decisions at key points in every omd workflow. There are
+two mechanisms depending on context:
 
-| When | Decision Type | What to Log |
-|------|--------------|-------------|
-| After choosing mesh/fidelity | `formulation_decision` | Mesh resolution, solver choice, why this fidelity |
-| After each analysis run | `result_interpretation` | Key metrics, whether results are physically reasonable |
-| Before optimization | `dv_selection` | Which DVs, bounds, and why; constraint rationale |
-| After optimization | `convergence_assessment` | Iterations, constraint satisfaction, whether to accept |
-| On replan | `replan_reasoning` | What failed, diagnosis, what changed in the new version |
+### CLI vs MCP Decision Logging
 
-For MCP workflows, use `log_decision()`. For CLI workflows, add entries to
-`decisions.yaml` in the plan directory before re-assembling.
+| Context | Mechanism | Storage |
+|---------|-----------|---------|
+| **CLI workflow** (`omd-cli`) | Add entries to `decisions.yaml` in the plan directory, then re-assemble | Persisted in the assembled plan YAML and plan store |
+| **MCP workflow** (interactive) | Call `log_decision()` tool | Recorded in the SDK provenance DB with session context |
 
-**decisions.yaml format:**
+Use `decisions.yaml` when building plans from files. Use `log_decision()` when
+working interactively through MCP tool calls. Both produce provenance records,
+but through different paths.
+
+### Decision Types
+
+| Type | When | What to Log |
+|------|------|-------------|
+| `formulation_decision` | After choosing mesh, fidelity, solver | Mesh resolution (num_y, num_x), solver type, why this fidelity level was chosen |
+| `result_interpretation` | After each analysis run | Specific metric values (CL, CD, L/D, mass), whether they are physically reasonable, comparison to expectations |
+| `dv_selection` | Before optimization | Which DVs were chosen and why, bound rationale, constraint selection |
+| `convergence_assessment` | After optimization | Iteration count, constraint satisfaction, whether result is accepted or needs rerun |
+| `replan_reasoning` | When changing approach | What failed, root cause diagnosis, what changed in the new plan version |
+
+### CLI Workflow: Step by Step
+
+1. Create the plan directory with component YAML files
+2. **Log formulation decision** -- add an entry to `decisions.yaml` explaining
+   mesh/solver choices
+3. Run `omd-cli assemble my-plan/` to produce `plan.yaml`
+4. Run `omd-cli run plan.yaml --mode analysis`
+5. **Log result interpretation** -- add an entry to `decisions.yaml` with
+   specific values from the run output
+6. Run `omd-cli assemble my-plan/` again to capture the new decision
+7. If optimizing: **log dv_selection** before, **log convergence_assessment** after
+8. If replanning: **log replan_reasoning** explaining what changed and why
+
+### Agent Checklist
+
+Before running analysis:
+- [ ] Log `formulation_decision` with mesh density, solver, and fidelity rationale
+
+After running analysis:
+- [ ] Log `result_interpretation` with specific numeric values and physics reasoning
+
+Before running optimization:
+- [ ] Log `dv_selection` with DV names, bounds, and constraint choices
+
+After running optimization:
+- [ ] Log `convergence_assessment` with iteration count and constraint status
+
+On any replan:
+- [ ] Log `replan_reasoning` with failure diagnosis and changes made
+
+### decisions.yaml: Good vs Insufficient Examples
+
+**Good entry** -- specific values, physics reasoning, actionable conclusion:
 ```yaml
-- decision_type: formulation_decision
-  agent: have-agent
-  reasoning: "num_y=7 for quick iteration; tube FEM for weight estimation"
-  selected_action: "Proceed with low-fidelity mesh"
 - decision_type: result_interpretation
   agent: have-agent
-  reasoning: "CL=0.45, CD=0.035, L/D=12.9 -- consistent with rectangular wing at M=0.84"
-  selected_action: "Accept baseline; proceed to optimization"
+  reasoning: >
+    CL=0.45, CD=0.035, L/D=12.9 at M=0.84, alpha=5 deg.
+    CD is consistent with a rectangular wing at this Mach number
+    (wave drag onset near M=0.85). Structural mass 1,247 kg with
+    failure=-0.12 (safe, 12% margin below yield). L/D of 12.9 is
+    reasonable for an unswept rectangular planform.
+  selected_action: "Accept baseline results; proceed to twist optimization"
 ```
+
+**Insufficient entry** -- vague, no numbers, no physics reasoning:
+```yaml
+- decision_type: result_interpretation
+  agent: have-agent
+  reasoning: "Results look reasonable"
+  selected_action: "Proceed"
+```
+
+The difference: a good entry lets someone (or a future agent) understand
+*why* the results were accepted without re-running the analysis.
 
 See `commands.md` for full parameter reference and `examples/` for workflows.

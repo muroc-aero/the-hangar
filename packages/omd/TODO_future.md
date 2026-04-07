@@ -2,91 +2,38 @@
 
 ## Unit Consistency Review
 
-Audit how units flow through the full pipeline: plan YAML authoring,
-materialization, execution, result extraction, and display. The risk is
-that an agent or user specifies a value in one unit system in the plan
-but the factory or OpenMDAO expects a different unit, causing silent
-incorrect results rather than an error.
+**Status: DONE** (core items implemented)
 
-Areas to review:
+Completed:
+- Plan schema now accepts `{value: ..., units: ...}` objects in
+  operating_points alongside bare numbers (backward compatible)
+- Materializer passes `units` from DV/constraint/objective config to
+  OpenMDAO's `add_design_var()`, `add_constraint()`, `add_objective()`
+- Range-safety heuristics warn on likely unit confusion: velocity > 500
+  (probably knots), altitude > 50000 (probably feet), OCP mission_params
+  with suspiciously low cruise_altitude_ft or high mission_range_NM
+- OAS result extraction uses explicit units (structural_mass in kg,
+  S_ref in m^2); OCP already used explicit units
+- Unit conventions documented in omd-cli-guide skill
 
-1. **Plan YAML has no unit declarations.** Operating points values
-   (velocity, rho, alpha, re) are bare numbers with no units field.
-   The factories assume SI (m/s, kg/m^3, deg, 1/m) but the plan schema
-   does not enforce or document this. An agent writing velocity=248 could
-   mean m/s or knots. The catalog YAML files have unit annotations but
-   they are reference data, not validated against plan values.
-
-2. **OCP mission params mix unit systems.** The OCP factory accepts
-   cruise_altitude_ft (ft), mission_range_NM (NM), climb_vs_ftmin
-   (ft/min), climb_Ueas_kn (kn). These are converted internally via
-   OpenMDAO's set_val() with explicit units. But if someone passes
-   cruise_altitude in meters thinking the suffix "_ft" is just a name,
-   the analysis runs with wrong values silently.
-
-3. **Result extraction and display.** The run.py summary extracts values
-   from prob.get_val() sometimes with units (OCP: `units="kg"`) and
-   sometimes without (OAS: bare get_val). The results printed to terminal
-   and stored in the DB should always include units so downstream
-   consumers know what they are looking at.
-
-4. **Design variables and constraints.** The plan schema supports a
-   `units` field on DVs and constraints but it is optional and most
-   examples omit it. When present, it should be passed to
-   prob.model.add_design_var(units=...). Check whether the materializer
-   does this.
-
-5. **Cross-tool unit interfaces.** When OAS outputs (SI) feed into OCP
-   inputs (mixed imperial/SI via OpenConcept conventions), unit
-   conversion must happen at the boundary. The slot system handles this
-   via OpenMDAO's internal unit conversion (promotes with compatible
-   units), but explicit connections in composite plans may not.
-
-Recommendations:
-- Add a `units` field to operating_points in the plan schema (optional
-  but recommended, validated against known unit strings)
-- Add range-safety heuristic checks: warn if velocity > 500 (probably
-  knots not m/s), warn if altitude > 50000 (probably feet not meters)
-- Ensure the materializer passes DV/constraint `units` to OpenMDAO
-- Add units to result summary output and DB storage
-- Document the assumed unit system for each component type in the catalog
+Remaining (lower priority):
+- Cross-tool unit interfaces: when OAS outputs (SI) feed into OCP
+  inputs (mixed imperial/SI via OpenConcept conventions), unit
+  conversion must happen at the boundary. The slot system handles this
+  via OpenMDAO's internal unit conversion, but explicit connections in
+  composite plans may not validate unit compatibility.
 
 
 ## Decision Logging in omd-cli-guide Skill
 
-The omd-cli-guide skill has a "Decision Logging (Required)" section with a
-table of when to log decisions and a decisions.yaml format example. But the
-guidance is not concrete enough for agents to follow reliably. Problems:
+**Status: DONE**
 
-1. The table says "After choosing mesh/fidelity" and "After each analysis
-   run" but does not show the exact CLI or file workflow for recording a
-   decision in a plan-based (non-MCP) workflow. Agents need to know: write
-   an entry in decisions.yaml, then re-assemble the plan.
-
-2. The lane_c task prompts say "record a result interpretation decision"
-   but the skill does not explain what a good vs bad decision entry looks
-   like. Add concrete examples: a good interpretation that notes specific
-   values and physics reasoning, vs a vague one that just says "looks ok."
-
-3. The skill does not explain the difference between decisions.yaml entries
-   (recorded at plan authoring time, persisted in the plan store) and
-   `log_decision()` MCP tool calls (recorded in the SDK provenance DB
-   during interactive sessions). Agents need to know which mechanism to
-   use depending on whether they are in CLI or MCP mode.
-
-4. The decision types (formulation_decision, result_interpretation,
-   dv_selection, convergence_assessment, replan_reasoning) need short
-   descriptions of what each one means and when it fires. The current
-   table is a start but agents skip it because the "When" column is too
-   terse.
-
-Update the skill to include:
-- A step-by-step workflow for decision logging in CLI mode
-- Before/after examples of decision entries (good vs insufficient)
-- Clear distinction between decisions.yaml and log_decision() MCP tool
-- A checklist agents can follow: "before running, log formulation;
-  after running, log interpretation; before optimizing, log dv_selection;
-  after optimizing, log convergence_assessment"
+The omd-cli-guide skill now includes:
+- CLI vs MCP mechanism table (decisions.yaml vs log_decision())
+- Step-by-step CLI workflow for when to write decision entries
+- Agent checklist (before/after analysis, before/after optimization, on replan)
+- Good vs insufficient decision entry examples with explanation
+- Expanded decision type descriptions with specific guidance on what to log
 
 
 ## Direct-Coupled OAS Drag Slot Provider
@@ -118,6 +65,28 @@ Considerations:
 Create an example `ocp_oas_direct/` with three lanes once the provider
 works. The parity test should compare against the surrogate-coupled result
 and document the accuracy/performance tradeoff.
+
+
+## Multi-Component Composition Open Questions
+
+The multi-component materializer (`_materialize_composite`) works for
+side-by-side components and the slot system handles intra-component
+substitution. These open questions remain for more complex compositions:
+
+- **OCP drag_source: external** -- The OCP aircraft model always adds
+  PolarDrag internally. Replacing it via explicit inter-component
+  connections (not slots) requires either a config flag the factory
+  respects, or post-setup connection overrides. The slot system already
+  solves this for the surrogate-coupled case.
+- **Solver scoping** -- When two tools are composed, which Group gets
+  the Newton solver? The plan YAML `solvers:` section currently targets
+  the top-level model or the coupled group. Supporting solver targeting
+  for specific subsystems (e.g., `solvers.target: mission.coupled`)
+  would be needed for complex compositions.
+- **Variable promotion conflicts** -- OAS and OCP both promote
+  `fltcond|*` at different levels. The materializer uses no promotions
+  for composite components (each lives under its namespace), but
+  explicit connections need fully-qualified paths.
 
 
 ## P3: pyCycle Propulsion Slot
