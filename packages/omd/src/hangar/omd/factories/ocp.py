@@ -391,8 +391,14 @@ def _import_class(module_path: str, class_name: str) -> type:
 def _make_aircraft_model_class(
     architecture: str,
     propulsion_overrides: dict | None = None,
+    slots: dict | None = None,
 ) -> type:
     """Create an om.Group subclass wired for the given propulsion architecture.
+
+    Args:
+        slots: Optional dict of slot overrides. Keys are slot names
+            ("drag", "propulsion", etc.), values are dicts with
+            "provider" (registry name) and "config" (provider config).
 
     Mirrors the pattern from ocp/aircraft.py but is self-contained.
     """
@@ -425,31 +431,33 @@ def _make_aircraft_model_class(
             nn = self.options["num_nodes"]
             flight_phase = self.options["flight_phase"]
 
-            # Controls
-            controls = self.add_subsystem(
-                "controls", om.IndepVarComp(), promotes_outputs=["*"],
-            )
-
-            if not is_cfm56:
-                if num_engines == 1:
-                    controls.add_output("prop1rpm", val=np.ones((nn,)) * 2000, units="rpm")
-                else:
-                    controls.add_output("proprpm", val=np.ones((nn,)) * 2000, units="rpm")
-
-            if is_hybrid:
-                if flight_phase in ["climb", "cruise", "descent"]:
-                    controls.add_output("hybridization", val=0.0)
-                else:
-                    controls.add_output("hybridization", val=1.0)
-
-                self.add_subsystem(
-                    "hybrid_factor",
-                    LinearInterpolator(num_nodes=nn),
-                    promotes_inputs=[
-                        ("start_val", "hybridization"),
-                        ("end_val", "hybridization"),
-                    ],
+            # Controls (only add IndepVarComp if there are outputs to declare)
+            has_controls = (not is_cfm56) or is_hybrid
+            if has_controls:
+                controls = self.add_subsystem(
+                    "controls", om.IndepVarComp(), promotes_outputs=["*"],
                 )
+
+                if not is_cfm56:
+                    if num_engines == 1:
+                        controls.add_output("prop1rpm", val=np.ones((nn,)) * 2000, units="rpm")
+                    else:
+                        controls.add_output("proprpm", val=np.ones((nn,)) * 2000, units="rpm")
+
+                if is_hybrid:
+                    if flight_phase in ["climb", "cruise", "descent"]:
+                        controls.add_output("hybridization", val=0.0)
+                    else:
+                        controls.add_output("hybridization", val=1.0)
+
+                    self.add_subsystem(
+                        "hybrid_factor",
+                        LinearInterpolator(num_nodes=nn),
+                        promotes_inputs=[
+                            ("start_val", "hybridization"),
+                            ("end_val", "hybridization"),
+                        ],
+                    )
 
             # Propulsion
             if is_cfm56:
@@ -508,24 +516,37 @@ def _make_aircraft_model_class(
                         "propmodel.hybrid_split.power_split_fraction",
                     )
 
-            # Drag
-            if flight_phase not in ["v0v1", "v1v0", "v1vr", "rotate"]:
-                cd0_source = "ac|aero|polar|CD0_cruise"
+            # Drag (slot-aware: can substitute VLMDragPolar, AerostructDragPolar, etc.)
+            drag_slot = (slots or {}).get("drag")
+            if drag_slot is not None:
+                from hangar.omd.slots import get_slot_provider
+                provider_fn = get_slot_provider(drag_slot["provider"])
+                drag_comp, drag_prom_in, drag_prom_out = provider_fn(
+                    nn, flight_phase, drag_slot.get("config", {}),
+                )
+                self.add_subsystem(
+                    "drag", drag_comp,
+                    promotes_inputs=drag_prom_in,
+                    promotes_outputs=drag_prom_out,
+                )
             else:
-                cd0_source = "ac|aero|polar|CD0_TO"
+                if flight_phase not in ["v0v1", "v1v0", "v1vr", "rotate"]:
+                    cd0_source = "ac|aero|polar|CD0_cruise"
+                else:
+                    cd0_source = "ac|aero|polar|CD0_TO"
 
-            self.add_subsystem(
-                "drag",
-                PolarDrag(num_nodes=nn),
-                promotes_inputs=[
-                    "fltcond|CL",
-                    "ac|geom|*",
-                    ("CD0", cd0_source),
-                    "fltcond|q",
-                    ("e", "ac|aero|polar|e"),
-                ],
-                promotes_outputs=["drag"],
-            )
+                self.add_subsystem(
+                    "drag",
+                    PolarDrag(num_nodes=nn),
+                    promotes_inputs=[
+                        "fltcond|CL",
+                        "ac|geom|*",
+                        ("CD0", cd0_source),
+                        "fltcond|q",
+                        ("e", "ac|aero|polar|e"),
+                    ],
+                    promotes_outputs=["drag"],
+                )
 
             # Empty weight
             if WeightClass is not None:
@@ -782,6 +803,7 @@ def _build_mission_problem(
     solver_settings: dict,
     propulsion_overrides: dict | None = None,
     defer_setup: bool = False,
+    slots: dict | None = None,
 ) -> tuple[om.Problem, dict]:
     """Build a complete OpenMDAO mission problem.
 
@@ -791,6 +813,8 @@ def _build_mission_problem(
             not settled. Mission values are put into metadata as
             initial_values_with_units for the materializer to apply.
             Used by the multi-component materializer.
+        slots: Optional dict of slot overrides for the aircraft model.
+            Keys are slot names ("drag"), values have "provider" and "config".
 
     Returns (problem, metadata). When defer_setup=False (default),
     setup is called and _setup_done=True. When defer_setup=True,
@@ -800,7 +824,7 @@ def _build_mission_problem(
     is_hybrid = arch_info["has_battery"] and arch_info["has_fuel"]
     is_cfm56 = arch_info["prop_class"] == "CFM56"
 
-    AircraftModelClass = _make_aircraft_model_class(architecture, propulsion_overrides)
+    AircraftModelClass = _make_aircraft_model_class(architecture, propulsion_overrides, slots)
 
     if mission_type == "basic":
         MissionClass = BasicMission
@@ -823,17 +847,41 @@ def _build_mission_problem(
                 promotes_outputs=["*"],
             )
 
-            _register_fields(dv_comp, ac_data, _COMMON_FIELDS)
+            # Collect fields to remove/add based on active slot providers
+            _fields_to_remove: set[str] = set()
+            _fields_to_add: dict[str, dict] = {}
+            if slots:
+                from hangar.omd.slots import get_slot_provider
+                for _slot_cfg in slots.values():
+                    _prov = get_slot_provider(_slot_cfg["provider"])
+                    if hasattr(_prov, "removes_fields"):
+                        _fields_to_remove.update(_prov.removes_fields)
+                    if hasattr(_prov, "adds_fields"):
+                        _fields_to_add.update(_prov.adds_fields)
+
+            _common = [f for f in _COMMON_FIELDS if f not in _fields_to_remove]
+            _register_fields(dv_comp, ac_data, _common)
 
             if not is_cfm56:
-                _register_fields(dv_comp, ac_data, _PROPELLER_FIELDS)
-            _register_fields(dv_comp, ac_data, _FUSELAGE_FIELDS)
+                _propeller = [f for f in _PROPELLER_FIELDS if f not in _fields_to_remove]
+                _register_fields(dv_comp, ac_data, _propeller)
+            _fuselage = [f for f in _FUSELAGE_FIELDS if f not in _fields_to_remove]
+            _register_fields(dv_comp, ac_data, _fuselage)
             if is_hybrid:
-                _register_fields(dv_comp, ac_data, _HYBRID_FIELDS)
+                _hybrid = [f for f in _HYBRID_FIELDS if f not in _fields_to_remove]
+                _register_fields(dv_comp, ac_data, _hybrid)
             if arch_info["num_engines"] > 1:
                 _register_fields(dv_comp, ac_data, _MULTI_ENGINE_FIELDS)
             if is_cfm56:
                 _register_fields(dv_comp, ac_data, _OEW_FIELDS)
+
+            # Add fields from slot providers
+            for _field_path, _field_spec in _fields_to_add.items():
+                dv_comp.add_output(
+                    _field_path,
+                    val=_field_spec.get("value", 0.0),
+                    units=_field_spec.get("units"),
+                )
 
             if is_hybrid:
                 spec_energy = 300
@@ -993,6 +1041,7 @@ def build_ocp_basic_mission(
     """Build an OpenConcept basic mission (climb/cruise/descent)."""
     config = dict(component_config)
     defer_setup = config.pop("_defer_setup", False)
+    slots = config.get("slots")
     ac_data = _load_aircraft_data(config)
     architecture = _resolve_architecture(config)
     num_nodes = config.get("num_nodes", 11)
@@ -1009,6 +1058,7 @@ def build_ocp_basic_mission(
         solver_settings=solver_settings,
         propulsion_overrides=propulsion_overrides,
         defer_setup=defer_setup,
+        slots=slots,
     )
 
 
@@ -1019,6 +1069,7 @@ def build_ocp_full_mission(
     """Build an OpenConcept full mission with balanced-field takeoff."""
     config = dict(component_config)
     defer_setup = config.pop("_defer_setup", False)
+    slots = config.get("slots")
     ac_data = _load_aircraft_data(config)
     architecture = _resolve_architecture(config)
     num_nodes = config.get("num_nodes", 11)
@@ -1035,6 +1086,7 @@ def build_ocp_full_mission(
         solver_settings=solver_settings,
         propulsion_overrides=propulsion_overrides,
         defer_setup=defer_setup,
+        slots=slots,
     )
 
 
@@ -1045,6 +1097,7 @@ def build_ocp_mission_with_reserve(
     """Build an OpenConcept mission with reserve + loiter phases."""
     config = dict(component_config)
     defer_setup = config.pop("_defer_setup", False)
+    slots = config.get("slots")
     ac_data = _load_aircraft_data(config)
     architecture = _resolve_architecture(config)
     num_nodes = config.get("num_nodes", 11)
@@ -1061,4 +1114,5 @@ def build_ocp_mission_with_reserve(
         solver_settings=solver_settings,
         propulsion_overrides=propulsion_overrides,
         defer_setup=defer_setup,
+        slots=slots,
     )
