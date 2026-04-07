@@ -624,6 +624,21 @@ def _make_aircraft_model_class(
 # ---------------------------------------------------------------------------
 
 
+def _phase_array(nn: int, value) -> np.ndarray:
+    """Convert a mission param value to a (nn,) array.
+
+    Accepts:
+        scalar (int/float) -- broadcast to constant array
+        [start, end] list  -- expanded via np.linspace
+        list/array of length nn -- used as-is
+    """
+    if isinstance(value, (list, tuple)):
+        if len(value) == 2:
+            return np.linspace(float(value[0]), float(value[1]), nn)
+        return np.array(value, dtype=float)
+    return np.ones((nn,)) * float(value)
+
+
 def _collect_mission_values(
     params: dict,
     phases: list[str],
@@ -635,40 +650,47 @@ def _collect_mission_values(
 
     This is the declarative equivalent of _set_mission_values -- same data,
     returned as a dict instead of applied to a Problem.
+
+    Phase speed values can be scalars (broadcast to constant arrays) or
+    two-element [start, end] lists (expanded via np.linspace). This matches
+    the upstream OpenConcept convention where speeds vary across nodes.
     """
     nn = num_nodes
     vals: dict[str, dict] = {}
 
     if "climb" in phases:
         vals["climb.fltcond|vs"] = {
-            "val": np.ones((nn,)) * params.get("climb_vs_ftmin", 850.0),
+            "val": _phase_array(nn, params.get("climb_vs_ftmin", 850.0)),
             "units": "ft/min",
         }
         vals["climb.fltcond|Ueas"] = {
-            "val": np.ones((nn,)) * params.get("climb_Ueas_kn", 104.0),
+            "val": _phase_array(nn, params.get("climb_Ueas_kn", 104.0)),
             "units": "kn",
         }
 
     if "cruise" in phases:
         vals["cruise.fltcond|vs"] = {
-            "val": np.ones((nn,)) * params.get("cruise_vs_ftmin", 0.01),
+            "val": _phase_array(nn, params.get("cruise_vs_ftmin", 0.01)),
             "units": "ft/min",
         }
         vals["cruise.fltcond|Ueas"] = {
-            "val": np.ones((nn,)) * params.get("cruise_Ueas_kn", 129.0),
+            "val": _phase_array(nn, params.get("cruise_Ueas_kn", 129.0)),
             "units": "kn",
         }
 
     if "descent" in phases:
-        vs_descent = params.get("descent_vs_ftmin", -400.0)
-        if vs_descent > 0:
-            vs_descent = -vs_descent
+        vs_raw = params.get("descent_vs_ftmin", -400.0)
+        # Negate scalar descent speeds; for [start, end] lists, negate both
+        if isinstance(vs_raw, (list, tuple)):
+            vs_descent = [-abs(v) for v in vs_raw]
+        else:
+            vs_descent = -abs(float(vs_raw))
         vals["descent.fltcond|vs"] = {
-            "val": np.ones((nn,)) * vs_descent,
+            "val": _phase_array(nn, vs_descent),
             "units": "ft/min",
         }
         vals["descent.fltcond|Ueas"] = {
-            "val": np.ones((nn,)) * params.get("descent_Ueas_kn", 100.0),
+            "val": _phase_array(nn, params.get("descent_Ueas_kn", 100.0)),
             "units": "kn",
         }
 
@@ -688,57 +710,59 @@ def _collect_mission_values(
             "units": "ft",
         }
         vals["reserve_climb.fltcond|vs"] = {
-            "val": np.ones((nn,)) * params.get("reserve_climb_vs_ftmin", 1500.0),
+            "val": _phase_array(nn, params.get("reserve_climb_vs_ftmin", 1500.0)),
             "units": "ft/min",
         }
         vals["reserve_climb.fltcond|Ueas"] = {
-            "val": np.ones((nn,)) * params.get("reserve_climb_Ueas_kn", 124.0),
+            "val": _phase_array(nn, params.get("reserve_climb_Ueas_kn", 124.0)),
             "units": "kn",
         }
         vals["reserve_cruise.fltcond|vs"] = {
-            "val": np.ones((nn,)) * 4.0,
+            "val": _phase_array(nn, params.get("reserve_cruise_vs_ftmin", 4.0)),
             "units": "ft/min",
         }
         vals["reserve_cruise.fltcond|Ueas"] = {
-            "val": np.ones((nn,)) * params.get("reserve_cruise_Ueas_kn", 170.0),
+            "val": _phase_array(nn, params.get("reserve_cruise_Ueas_kn", 170.0)),
             "units": "kn",
         }
-        reserve_descent_vs = params.get("reserve_descent_vs_ftmin", -600.0)
-        if reserve_descent_vs > 0:
-            reserve_descent_vs = -reserve_descent_vs
+        rsv_descent_raw = params.get("reserve_descent_vs_ftmin", -600.0)
+        if isinstance(rsv_descent_raw, (list, tuple)):
+            rsv_descent = [-abs(v) for v in rsv_descent_raw]
+        else:
+            rsv_descent = -abs(float(rsv_descent_raw))
         vals["reserve_descent.fltcond|vs"] = {
-            "val": np.ones((nn,)) * reserve_descent_vs,
+            "val": _phase_array(nn, rsv_descent),
             "units": "ft/min",
         }
         vals["reserve_descent.fltcond|Ueas"] = {
-            "val": np.ones((nn,)) * params.get("reserve_descent_Ueas_kn", 140.0),
+            "val": _phase_array(nn, params.get("reserve_descent_Ueas_kn", 140.0)),
             "units": "kn",
         }
         vals["loiter.fltcond|vs"] = {
-            "val": np.zeros((nn,)),
+            "val": _phase_array(nn, params.get("loiter_vs_ftmin", 0.0)),
             "units": "ft/min",
         }
         vals["loiter.fltcond|Ueas"] = {
-            "val": np.ones((nn,)) * params.get("loiter_Ueas_kn", 200.0),
+            "val": _phase_array(nn, params.get("loiter_Ueas_kn", 200.0)),
             "units": "kn",
         }
 
     # Takeoff speed guesses
     if mission_type == "full":
         vals["v0v1.fltcond|Utrue"] = {
-            "val": np.ones((nn,)) * params.get("v0v1_Utrue_kn", 50),
+            "val": _phase_array(nn, params.get("v0v1_Utrue_kn", 50)),
             "units": "kn",
         }
         vals["v1vr.fltcond|Utrue"] = {
-            "val": np.ones((nn,)) * params.get("v1vr_Utrue_kn", 85),
+            "val": _phase_array(nn, params.get("v1vr_Utrue_kn", 85)),
             "units": "kn",
         }
         vals["v1v0.fltcond|Utrue"] = {
-            "val": np.ones((nn,)) * params.get("v1v0_Utrue_kn", 85),
+            "val": _phase_array(nn, params.get("v1v0_Utrue_kn", 85)),
             "units": "kn",
         }
         vals["rotate.fltcond|Utrue"] = {
-            "val": np.ones((nn,)) * params.get("rotate_Utrue_kn", 80),
+            "val": _phase_array(nn, params.get("rotate_Utrue_kn", 80)),
             "units": "kn",
         }
         vals["v0v1.throttle"] = {"val": np.ones((nn,))}
