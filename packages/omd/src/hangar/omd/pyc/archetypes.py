@@ -141,7 +141,37 @@ class Turbojet(pyc.Cycle):
 
         self.linear_solver = om.DirectSolver()
 
+        # Store params for guess_nonlinear
+        self._params = params
+
         super().setup()
+
+    def guess_nonlinear(self, inputs, outputs, residuals):
+        """Apply Newton initial guesses at the start of every solve.
+
+        When this Cycle is embedded inside an outer Newton (e.g. OCP
+        mission solver), a one-time set_val before run_model gets
+        overwritten by the outer solver before the inner Newton
+        converges. This method runs at the start of every Newton solve
+        loop, ensuring the balance variables start from good values.
+
+        The FlightConditions balance variables (Pt, Tt) are critical --
+        without them the FC sub-solver diverges, which cascades into
+        wrong flow station values for the rest of the cycle.
+        """
+        design = self.options["design"]
+        if design:
+            outputs["balance.FAR"] = DEFAULT_TURBOJET_DESIGN_GUESSES["FAR"]
+            outputs["balance.W"] = DEFAULT_TURBOJET_DESIGN_GUESSES["W"]
+            outputs["balance.turb_PR"] = DEFAULT_TURBOJET_DESIGN_GUESSES["turb_PR"]
+            outputs["fc.balance.Pt"] = DEFAULT_TURBOJET_DESIGN_GUESSES["fc_Pt"]
+            outputs["fc.balance.Tt"] = DEFAULT_TURBOJET_DESIGN_GUESSES["fc_Tt"]
+        else:
+            outputs["balance.FAR"] = DEFAULT_TURBOJET_OD_GUESSES["FAR"]
+            outputs["balance.W"] = DEFAULT_TURBOJET_OD_GUESSES["W"]
+            outputs["balance.Nmech"] = DEFAULT_TURBOJET_OD_GUESSES["Nmech"]
+            outputs["fc.balance.Pt"] = DEFAULT_TURBOJET_OD_GUESSES["fc_Pt"]
+            outputs["fc.balance.Tt"] = DEFAULT_TURBOJET_OD_GUESSES["fc_Tt"]
 
 
 class MPTurbojet(pyc.MPCycle):

@@ -61,9 +61,19 @@ All runtime data lives under `hangar_data/omd/` (configurable via `OMD_DATA_ROOT
   - `paraboloid.py` -- `build_paraboloid()`: trivial test component
 - `pyc/` -- self-contained pyCycle integration (no dependency on hangar.pyc)
   - `defaults.py` -- default parameters, initial guesses, archetype metadata
-  - `archetypes.py` -- Turbojet and MPTurbojet Cycle classes
+  - `archetypes.py` -- Turbojet, MPTurbojet, and archetype registry (6 engine types)
   - `builders.py` -- problem assembly (design-point and multipoint)
   - `results.py` -- result extraction (performance, flow stations, components)
+  - `surrogate.py` -- deck generation, save/load, MetaModelUnStructuredComp integration
+  - `hbtf.py` -- HBTF and MPHbtf dual-spool high-bypass turbofan
+  - `ab_turbojet.py` -- afterburning turbojet
+  - `turboshaft.py` -- single-spool and multi-spool turboshaft
+  - `mixedflow_turbofan.py` -- mixed-flow turbofan with afterburner
+- `slots.py` -- slot provider registry for composable OCP tool integration
+  - `_DirectPyCyclePropGroup` -- native pyCycle turbojet in OCP solver chain
+  - `_DirectPyCycleHBTFPropGroup` -- native pyCycle HBTF in OCP solver chain
+  - `PyCycleSurrogateGroup` -- Kriging surrogate from pyCycle off-design sweeps
+  - `_DirectVLMDragGroup` -- direct-coupled OAS VLM drag
 - `plotting/` -- factory-aware plot generation
   - `__init__.py` -- `generate_plots()` entry point, N2 HTML handling
   - `_common.py` -- shared helpers: CaseReader access, span extraction, mirroring, elliptical lift
@@ -154,11 +164,39 @@ Key differences from OAS factories:
 - **Model IS the root**: `prob.model = Turbojet(params=...)` -- the Cycle class IS the model
 - **No solver section needed**: Newton + DirectSolver are configured inside `Turbojet.setup()`
 - **Newton guesses are critical**: must be set after `setup()` via `initial_values`
+- **guess_nonlinear**: Turbojet and HBTF override `guess_nonlinear()` to apply balance
+  variable guesses at the start of every Newton solve. Critical when embedded in an outer
+  Newton (e.g. OCP mission solver) where one-time `set_val` guesses get overwritten.
 - **CEA thermo sub-solvers print output**: these are internal to pyCycle elements and not
   controlled by the top-level solver iprint setting
 
-Available archetypes: turbojet (HBTF planned). Each archetype defines element topology,
+Available archetypes: turbojet, hbtf, ab_turbojet, single_spool_turboshaft,
+multi_spool_turboshaft, mixedflow_turbofan. Each defines element topology,
 flow connections, balance equations, and solver configuration.
+
+## pyCycle-OCP slot providers
+
+Three propulsion slot providers for coupling pyCycle into OCP missions:
+
+| Provider | Class | Approach |
+|----------|-------|----------|
+| `pyc/turbojet` | `_DirectPyCyclePropGroup` | Native MPTurbojet in solver chain |
+| `pyc/hbtf` | `_DirectPyCycleHBTFPropGroup` | Native MPHbtf with T4 throttle |
+| `pyc/surrogate` | `PyCycleSurrogateGroup` | Kriging surrogate from off-design sweep |
+
+**Direct-coupled** (Path 2): pyCycle runs as native OpenMDAO Group inside OCP.
+Analytic partials flow through the solver chain. Execution order matters: slicers
+must be added before the cycle subsystem (RunOnce executes in add order).
+
+**Surrogate-coupled** (Path 1): `generate_deck()` runs pyCycle off-design across
+a grid, then `PyCycleSurrogateGroup` wraps the results in a Kriging surrogate.
+No convergence risk, much faster (~1ms vs ~2s per node), but approximate.
+
+Key lessons from integration:
+- Subsystem execution order in Groups with RunOnce matters -- inputs must compute first
+- `guess_nonlinear` on Cycle classes is essential for embedded convergence
+- ExecComp unit passthrough: use same units on input/output, let connections convert
+- `apply_initial_guesses` must handle both promoted and non-promoted paths
 
 ## Key conventions
 - Plot functions match oas-cli style: 6x3.6 in figures, suptitle with run_id,

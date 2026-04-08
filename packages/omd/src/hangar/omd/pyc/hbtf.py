@@ -7,7 +7,11 @@ Dual-spool with fan, LPC, HPC, HPT, LPT, core and bypass nozzles.
 import openmdao.api as om
 import pycycle.api as pyc
 
-from hangar.omd.pyc.defaults import DEFAULT_HBTF_PARAMS
+from hangar.omd.pyc.defaults import (
+    DEFAULT_HBTF_PARAMS,
+    DEFAULT_HBTF_DESIGN_GUESSES,
+    DEFAULT_HBTF_OD_GUESSES,
+)
 
 
 class HBTF(pyc.Cycle):
@@ -192,7 +196,34 @@ class HBTF(pyc.Cycle):
 
         self.linear_solver = om.DirectSolver()
 
+        # Store params for guess_nonlinear
+        self._params = params
+
         super().setup()
+
+    def guess_nonlinear(self, inputs, outputs, residuals):
+        """Apply Newton initial guesses at the start of every solve.
+
+        Critical for convergence when embedded inside an outer Newton
+        (e.g. OCP mission solver). Without this, balance outputs drift
+        to bad values between outer Newton iterations.
+        """
+        design = self.options["design"]
+        if design:
+            outputs["balance.FAR"] = DEFAULT_HBTF_DESIGN_GUESSES["FAR"]
+            outputs["balance.W"] = DEFAULT_HBTF_DESIGN_GUESSES["W"]
+            outputs["balance.lpt_PR"] = DEFAULT_HBTF_DESIGN_GUESSES["lpt_PR"]
+            outputs["balance.hpt_PR"] = DEFAULT_HBTF_DESIGN_GUESSES["hpt_PR"]
+            outputs["fc.balance.Pt"] = DEFAULT_HBTF_DESIGN_GUESSES["fc_Pt"]
+            outputs["fc.balance.Tt"] = DEFAULT_HBTF_DESIGN_GUESSES["fc_Tt"]
+        else:
+            outputs["balance.FAR"] = DEFAULT_HBTF_OD_GUESSES["FAR"]
+            outputs["balance.W"] = DEFAULT_HBTF_OD_GUESSES["W"]
+            outputs["balance.BPR"] = DEFAULT_HBTF_OD_GUESSES["BPR"]
+            outputs["balance.lp_Nmech"] = DEFAULT_HBTF_OD_GUESSES["lp_Nmech"]
+            outputs["balance.hp_Nmech"] = DEFAULT_HBTF_OD_GUESSES["hp_Nmech"]
+            outputs["fc.balance.Pt"] = DEFAULT_HBTF_OD_GUESSES.get("fc_Pt", 5.2)
+            outputs["fc.balance.Tt"] = DEFAULT_HBTF_OD_GUESSES.get("fc_Tt", 440.0)
 
 
 class MPHbtf(pyc.MPCycle):

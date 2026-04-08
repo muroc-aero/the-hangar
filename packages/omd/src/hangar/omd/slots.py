@@ -83,10 +83,12 @@ def _register_builtins() -> None:
         logger.info("VLM not available, oas/vlm-direct slot not registered")
 
     try:
-        from hangar.pyc.builders import build_design_problem  # noqa: F401
+        from hangar.omd.pyc.archetypes import Turbojet  # noqa: F401
         register_slot_provider("pyc/turbojet", _pyc_turbojet_propulsion_provider)
+        register_slot_provider("pyc/hbtf", _pyc_hbtf_propulsion_provider)
+        register_slot_provider("pyc/surrogate", _pyc_surrogate_propulsion_provider)
     except ImportError:
-        logger.info("pyCycle not available, pyc/turbojet slot not registered")
+        logger.info("pyCycle not available, pyCycle slots not registered")
 
 
 # ---------------------------------------------------------------------------
@@ -548,8 +550,8 @@ class _DirectPyCyclePropGroup(om.Group):
         params = dict(self.options["engine_params"])
         params["thermo_method"] = self.options["thermo_method"]
 
-        from hangar.pyc.archetypes.turbojet import MPTurbojet
-        from hangar.pyc.config.defaults import (
+        from hangar.omd.pyc.archetypes import MPTurbojet
+        from hangar.omd.pyc.defaults import (
             DEFAULT_TURBOJET_PARAMS,
             DEFAULT_TURBOJET_DESIGN_GUESSES,
             DEFAULT_TURBOJET_OD_GUESSES,
@@ -570,7 +572,45 @@ class _DirectPyCyclePropGroup(om.Group):
         ]
 
         # ============================================================
+        #  Throttle -> Fn_target conversion (must run before cycle)
+        # ============================================================
+        self.add_subsystem(
+            "thr_to_Fn",
+            om.ExecComp(
+                "Fn_target = throttle * design_Fn",
+                throttle={"shape": (nn,)},
+                design_Fn={"val": design_Fn, "units": "lbf"},
+                Fn_target={"shape": (nn,), "units": "lbf"},
+                has_diag_partials=True,
+            ),
+            promotes_inputs=["throttle"],
+        )
+
+        # ============================================================
+        #  Slice (nn,) inputs to per-node scalars (must run before cycle)
+        # ============================================================
+        for i in range(nn):
+            # Altitude: OCP provides meters, pyCycle expects feet
+            # NodeSlicer outputs in meters; OpenMDAO converts to ft
+            self.add_subsystem(
+                f"slice_h_{i}",
+                _NodeSlicer(nn=nn, index=i, units="m"),
+                promotes_inputs=[("vec_in", "fltcond|h")],
+            )
+            self.add_subsystem(
+                f"slice_M_{i}",
+                _NodeSlicer(nn=nn, index=i),
+                promotes_inputs=[("vec_in", "fltcond|M")],
+            )
+            self.add_subsystem(
+                f"slice_Fn_{i}",
+                _NodeSlicer(nn=nn, index=i, units="lbf"),
+            )
+            self.connect("thr_to_Fn.Fn_target", f"slice_Fn_{i}.vec_in")
+
+        # ============================================================
         #  MPTurbojet: 1 design + nn off-design Turbojet Groups
+        #  Added AFTER slicers so flight conditions are computed first
         # ============================================================
         self.add_subsystem(
             "cycle",
@@ -592,46 +632,8 @@ class _DirectPyCyclePropGroup(om.Group):
         self.set_input_defaults("cycle.DESIGN.comp.eff", merged_params["comp_eff"])
         self.set_input_defaults("cycle.DESIGN.turb.eff", merged_params["turb_eff"])
 
-        # ============================================================
-        #  Throttle -> Fn_target conversion
-        # ============================================================
-        self.add_subsystem(
-            "thr_to_Fn",
-            om.ExecComp(
-                "Fn_target = throttle * design_Fn",
-                throttle={"shape": (nn,)},
-                design_Fn={"val": design_Fn, "units": "lbf"},
-                Fn_target={"shape": (nn,), "units": "lbf"},
-                has_diag_partials=True,
-            ),
-            promotes_inputs=["throttle"],
-        )
-
-        # ============================================================
-        #  Slice (nn,) inputs to per-node scalars
-        # ============================================================
+        # Connect slicers to off-design point inputs
         for i in range(nn):
-            # Altitude: OCP provides meters, pyCycle expects feet
-            # NodeSlicer outputs in meters; OpenMDAO converts to ft
-            self.add_subsystem(
-                f"slice_h_{i}",
-                _NodeSlicer(nn=nn, index=i, units="m"),
-                promotes_inputs=[("vec_in", "fltcond|h")],
-            )
-            self.add_subsystem(
-                f"slice_M_{i}",
-                _NodeSlicer(nn=nn, index=i),
-                promotes_inputs=[("vec_in", "fltcond|M")],
-            )
-            self.add_subsystem(
-                f"slice_Fn_{i}",
-                _NodeSlicer(nn=nn, index=i, units="lbf"),
-            )
-            self.connect("thr_to_Fn.Fn_target", f"slice_Fn_{i}.vec_in")
-
-            # Connect to off-design point inputs.
-            # fc.alt and fc.MN are promoted inputs of FlightConditions
-            # (from Ambient and FlowStart respectively).
             self.connect(f"slice_h_{i}.scalar_out", f"cycle.OD_{i}.fc.alt")
             self.connect(f"slice_M_{i}.scalar_out", f"cycle.OD_{i}.fc.MN")
             self.connect(
@@ -649,14 +651,16 @@ class _DirectPyCyclePropGroup(om.Group):
             self.connect(f"cycle.OD_{i}.burner.Wfuel", f"gather_Wfuel.in_{i}")
 
         # ============================================================
-        #  Unit passthrough: OpenMDAO handles lbf->kN, lbm/s->kg/s
+        #  Unit passthrough: declare inputs and outputs in the OCP
+        #  interface units (kN, kg/s). OpenMDAO converts automatically
+        #  at the connection from gather outputs (lbf, lbm/s).
         # ============================================================
         self.add_subsystem(
             "unit_conv",
             om.ExecComp(
                 ["thrust = Fn_in", "fuel_flow = Wfuel_in"],
-                Fn_in={"shape": (nn,), "units": "lbf"},
-                Wfuel_in={"shape": (nn,), "units": "lbm/s"},
+                Fn_in={"shape": (nn,), "units": "kN"},
+                Wfuel_in={"shape": (nn,), "units": "kg/s"},
                 thrust={"shape": (nn,), "units": "kN"},
                 fuel_flow={"shape": (nn,), "units": "kg/s"},
                 has_diag_partials=True,
@@ -673,37 +677,43 @@ class _DirectPyCyclePropGroup(om.Group):
         variables have poor default values (FAR=0.3, Nmech=1.5) that
         will cause divergence without proper initialization.
 
-        Uses the promoted path through prob (no prefix needed -- the
-        Group's subsystem paths are resolved via OpenMDAO's path lookup).
+        Tries both promoted and absolute paths to handle cases where
+        the group is promoted (standalone) vs not promoted (embedded).
         """
-        from hangar.pyc.config.defaults import (
+        from hangar.omd.pyc.defaults import (
             DEFAULT_TURBOJET_DESIGN_GUESSES,
             DEFAULT_TURBOJET_OD_GUESSES,
         )
 
         nn = self.options["nn"]
 
-        # Find this group's absolute path in the model
-        abs_name = self.pathname
-        base = f"{abs_name}." if abs_name else ""
+        def _try_set(name, val, **kwargs):
+            """Try setting value, falling back to prefixed path."""
+            abs_name = self.pathname
+            for prefix in ["", f"{abs_name}." if abs_name else ""]:
+                try:
+                    prob.set_val(f"{prefix}{name}", val, **kwargs)
+                    return
+                except (KeyError, RuntimeError):
+                    continue
 
         # Design-point guesses
         dg = DEFAULT_TURBOJET_DESIGN_GUESSES
-        prob.set_val(f"{base}cycle.DESIGN.balance.FAR", dg["FAR"])
-        prob.set_val(f"{base}cycle.DESIGN.balance.W", dg["W"])
-        prob.set_val(f"{base}cycle.DESIGN.balance.turb_PR", dg["turb_PR"])
-        prob.set_val(f"{base}cycle.DESIGN.fc.conv.balance.Pt", dg["fc_Pt"])
-        prob.set_val(f"{base}cycle.DESIGN.fc.conv.balance.Tt", dg["fc_Tt"])
+        _try_set("cycle.DESIGN.balance.FAR", dg["FAR"])
+        _try_set("cycle.DESIGN.balance.W", dg["W"])
+        _try_set("cycle.DESIGN.balance.turb_PR", dg["turb_PR"])
+        _try_set("cycle.DESIGN.fc.balance.Pt", dg["fc_Pt"])
+        _try_set("cycle.DESIGN.fc.balance.Tt", dg["fc_Tt"])
 
         # Off-design guesses
         og = DEFAULT_TURBOJET_OD_GUESSES
         for i in range(nn):
-            pt = f"{base}cycle.OD_{i}"
-            prob.set_val(f"{pt}.balance.W", og["W"])
-            prob.set_val(f"{pt}.balance.FAR", og["FAR"])
-            prob.set_val(f"{pt}.balance.Nmech", og["Nmech"])
-            prob.set_val(f"{pt}.fc.conv.balance.Pt", og["fc_Pt"])
-            prob.set_val(f"{pt}.fc.conv.balance.Tt", og["fc_Tt"])
+            pt = f"cycle.OD_{i}"
+            _try_set(f"{pt}.balance.W", og["W"])
+            _try_set(f"{pt}.balance.FAR", og["FAR"])
+            _try_set(f"{pt}.balance.Nmech", og["Nmech"])
+            _try_set(f"{pt}.fc.balance.Pt", og["fc_Pt"])
+            _try_set(f"{pt}.fc.balance.Tt", og["fc_Tt"])
 
 
 
@@ -745,3 +755,253 @@ _pyc_turbojet_propulsion_provider.removes_fields = [
     "ac|propulsion|propeller|diameter",
 ]
 _pyc_turbojet_propulsion_provider.adds_fields = {}
+
+
+# ---------------------------------------------------------------------------
+# pyCycle HBTF propulsion provider (direct-coupled)
+# ---------------------------------------------------------------------------
+
+
+class _DirectPyCycleHBTFPropGroup(om.Group):
+    """Direct-coupled pyCycle HBTF propulsion group.
+
+    Same architecture as ``_DirectPyCyclePropGroup`` but wraps an
+    ``MPHbtf`` (dual-spool high-bypass turbofan) instead of a turbojet.
+    The HBTF is more relevant for transport aircraft missions.
+
+    The HBTF has ``guess_nonlinear`` on the Cycle class, so the inner
+    Newton gets good starting values every outer iteration.
+    """
+
+    def initialize(self):
+        self.options.declare("nn", types=int)
+        self.options.declare("design_alt", default=35000.0, desc="Design altitude (ft)")
+        self.options.declare("design_MN", default=0.8, desc="Design Mach number")
+        self.options.declare("design_Fn", default=5900.0, desc="Design thrust (lbf)")
+        self.options.declare("design_T4", default=2857.0, desc="Design T4 (degR)")
+        self.options.declare("engine_params", types=dict, default={})
+        self.options.declare("thermo_method", default="CEA")
+
+    def setup(self):
+        nn = self.options["nn"]
+        design_Fn = self.options["design_Fn"]
+        params = dict(self.options["engine_params"])
+        params["thermo_method"] = self.options["thermo_method"]
+
+        from hangar.omd.pyc.archetypes import MPHbtf
+        from hangar.omd.pyc.defaults import (
+            DEFAULT_HBTF_PARAMS,
+            DEFAULT_HBTF_DESIGN_GUESSES,
+            DEFAULT_HBTF_OD_GUESSES,
+        )
+
+        merged_params = {**DEFAULT_HBTF_PARAMS, **params}
+
+        od_points = [
+            {
+                "name": f"OD_{i}",
+                "MN": self.options["design_MN"],
+                "alt": self.options["design_alt"],
+                "throttle_mode": "T4",
+            }
+            for i in range(nn)
+        ]
+
+        # Throttle -> T4 target (must run before cycle)
+        idle_T4 = 1800.0  # degR, approximate idle
+        max_T4 = self.options["design_T4"]
+        self.add_subsystem(
+            "thr_to_T4",
+            om.ExecComp(
+                f"T4 = {idle_T4} + throttle * {max_T4 - idle_T4}",
+                throttle={"shape": (nn,)},
+                T4={"shape": (nn,), "units": "degR"},
+                has_diag_partials=True,
+            ),
+            promotes_inputs=["throttle"],
+        )
+
+        # Slice (nn,) inputs to per-node scalars (must run before cycle)
+        for i in range(nn):
+            self.add_subsystem(
+                f"slice_h_{i}",
+                _NodeSlicer(nn=nn, index=i, units="m"),
+                promotes_inputs=[("vec_in", "fltcond|h")],
+            )
+            self.add_subsystem(
+                f"slice_M_{i}",
+                _NodeSlicer(nn=nn, index=i),
+                promotes_inputs=[("vec_in", "fltcond|M")],
+            )
+            self.add_subsystem(
+                f"slice_T4_{i}",
+                _NodeSlicer(nn=nn, index=i, units="degR"),
+            )
+            self.connect("thr_to_T4.T4", f"slice_T4_{i}.vec_in")
+
+        # MPHbtf: 1 design + nn off-design (added AFTER slicers)
+        self.add_subsystem(
+            "cycle",
+            MPHbtf(params=merged_params, od_points=od_points),
+        )
+
+        # Fix design-point inputs
+        self.set_input_defaults(
+            "cycle.DESIGN.fc.alt", self.options["design_alt"], units="ft",
+        )
+        self.set_input_defaults("cycle.DESIGN.fc.MN", self.options["design_MN"])
+        self.set_input_defaults(
+            "cycle.DESIGN.Fn_DES", design_Fn, units="lbf",
+        )
+        self.set_input_defaults(
+            "cycle.DESIGN.T4_MAX", self.options["design_T4"], units="degR",
+        )
+
+        # Connect slicers to off-design inputs
+        for i in range(nn):
+            self.connect(f"slice_h_{i}.scalar_out", f"cycle.OD_{i}.fc.alt")
+            self.connect(f"slice_M_{i}.scalar_out", f"cycle.OD_{i}.fc.MN")
+            self.connect(f"slice_T4_{i}.scalar_out", f"cycle.OD_{i}.T4_MAX")
+
+        # Gather per-node outputs
+        self.add_subsystem("gather_Fn", _NodeGatherer(nn=nn, units="lbf"))
+        self.add_subsystem("gather_Wfuel", _NodeGatherer(nn=nn, units="lbm/s"))
+        for i in range(nn):
+            self.connect(f"cycle.OD_{i}.perf.Fn", f"gather_Fn.in_{i}")
+            self.connect(f"cycle.OD_{i}.burner.Wfuel", f"gather_Wfuel.in_{i}")
+
+        # Unit passthrough (OpenMDAO converts at connection boundary)
+        self.add_subsystem(
+            "unit_conv",
+            om.ExecComp(
+                ["thrust = Fn_in", "fuel_flow = Wfuel_in"],
+                Fn_in={"shape": (nn,), "units": "kN"},
+                Wfuel_in={"shape": (nn,), "units": "kg/s"},
+                thrust={"shape": (nn,), "units": "kN"},
+                fuel_flow={"shape": (nn,), "units": "kg/s"},
+                has_diag_partials=True,
+            ),
+            promotes_outputs=["thrust", "fuel_flow"],
+        )
+        self.connect("gather_Fn.vec_out", "unit_conv.Fn_in")
+        self.connect("gather_Wfuel.vec_out", "unit_conv.Wfuel_in")
+
+    def apply_initial_guesses(self, prob):
+        """Set HBTF Newton initial guesses after prob.setup()."""
+        from hangar.omd.pyc.defaults import (
+            DEFAULT_HBTF_DESIGN_GUESSES,
+            DEFAULT_HBTF_OD_GUESSES,
+        )
+
+        nn = self.options["nn"]
+
+        def _try_set(name, val, **kwargs):
+            abs_name = self.pathname
+            for prefix in ["", f"{abs_name}." if abs_name else ""]:
+                try:
+                    prob.set_val(f"{prefix}{name}", val, **kwargs)
+                    return
+                except (KeyError, RuntimeError):
+                    continue
+
+        dg = DEFAULT_HBTF_DESIGN_GUESSES
+        _try_set("cycle.DESIGN.balance.FAR", dg["FAR"])
+        _try_set("cycle.DESIGN.balance.W", dg["W"])
+        _try_set("cycle.DESIGN.balance.lpt_PR", dg["lpt_PR"])
+        _try_set("cycle.DESIGN.balance.hpt_PR", dg["hpt_PR"])
+        _try_set("cycle.DESIGN.fc.balance.Pt", dg["fc_Pt"])
+        _try_set("cycle.DESIGN.fc.balance.Tt", dg["fc_Tt"])
+
+        og = DEFAULT_HBTF_OD_GUESSES
+        for i in range(nn):
+            pt = f"cycle.OD_{i}"
+            _try_set(f"{pt}.balance.FAR", og["FAR"])
+            _try_set(f"{pt}.balance.W", og["W"])
+            _try_set(f"{pt}.balance.BPR", og["BPR"])
+            _try_set(f"{pt}.balance.lp_Nmech", og["lp_Nmech"])
+            _try_set(f"{pt}.balance.hp_Nmech", og["hp_Nmech"])
+            _try_set(f"{pt}.fc.balance.Pt", og.get("fc_Pt", 5.2))
+            _try_set(f"{pt}.fc.balance.Tt", og.get("fc_Tt", 440.0))
+
+
+def _pyc_hbtf_propulsion_provider(
+    nn: int,
+    flight_phase: str,
+    config: dict,
+) -> tuple[om.Group, list[str], list[str]]:
+    """Build a direct-coupled pyCycle HBTF for the propulsion slot."""
+    component = _DirectPyCycleHBTFPropGroup(
+        nn=nn,
+        design_alt=config.get("design_alt", 35000.0),
+        design_MN=config.get("design_MN", 0.8),
+        design_Fn=config.get("design_Fn", 5900.0),
+        design_T4=config.get("design_T4", 2857.0),
+        engine_params=config.get("engine_params", {}),
+        thermo_method=config.get("thermo_method", "CEA"),
+    )
+
+    promotes_inputs = [
+        "fltcond|h",
+        "fltcond|M",
+        "throttle",
+    ]
+    promotes_outputs = ["thrust", "fuel_flow"]
+
+    return component, promotes_inputs, promotes_outputs
+
+
+_pyc_hbtf_propulsion_provider.slot_name = "propulsion"
+_pyc_hbtf_propulsion_provider.removes_fields = [
+    "ac|propulsion|engine|rating",
+    "ac|propulsion|propeller|diameter",
+]
+_pyc_hbtf_propulsion_provider.adds_fields = {}
+
+
+# ---------------------------------------------------------------------------
+# pyCycle surrogate propulsion provider
+# ---------------------------------------------------------------------------
+
+
+def _pyc_surrogate_propulsion_provider(
+    nn: int,
+    flight_phase: str,
+    config: dict,
+) -> tuple[om.Group, list[str], list[str]]:
+    """Build a surrogate-coupled pyCycle propulsion model.
+
+    Uses pre-computed or on-demand generated thrust/fuel_flow decks
+    trained via Kriging surrogates from pyCycle off-design sweeps.
+    Much faster than direct coupling and no nested Newton convergence
+    issues.
+    """
+    from hangar.omd.pyc.surrogate import PyCycleSurrogateGroup
+
+    component = PyCycleSurrogateGroup(
+        nn=nn,
+        archetype=config.get("archetype", "turbojet"),
+        design_alt=config.get("design_alt", 0.0),
+        design_MN=config.get("design_MN", 0.000001),
+        design_Fn=config.get("design_Fn", 11800.0),
+        design_T4=config.get("design_T4", 2370.0),
+        engine_params=config.get("engine_params", {}),
+        deck_path=config.get("deck_path", None),
+        grid_spec=config.get("grid_spec", None),
+    )
+
+    promotes_inputs = [
+        "fltcond|h",
+        "fltcond|M",
+        "throttle",
+    ]
+    promotes_outputs = ["thrust", "fuel_flow"]
+
+    return component, promotes_inputs, promotes_outputs
+
+
+_pyc_surrogate_propulsion_provider.slot_name = "propulsion"
+_pyc_surrogate_propulsion_provider.removes_fields = [
+    "ac|propulsion|engine|rating",
+    "ac|propulsion|propeller|diameter",
+]
+_pyc_surrogate_propulsion_provider.adds_fields = {}

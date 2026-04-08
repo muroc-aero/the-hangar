@@ -74,90 +74,50 @@ Completed:
 
 ## P3: pyCycle Propulsion Slot
 
-**Status: PARTIAL** (mechanism works, full mission convergence needs work)
+**Status: DONE** (both surrogate and direct paths working)
 
 Completed:
-- OCP factory now declares `"propulsion"` slot alongside `"drag"`
-- Propulsion slot check added before the existing propulsion code block
-  in `_make_aircraft_model_class()`
-- `pyc/turbojet` provider registered in `slots.py` using
-  `_PyCycleTurbojetDirect` -- builds a pyCycle multipoint problem
-  (1 design + nn off-design) and runs all points in a single solve
-- Component works correctly in isolation: 22s for 11 nodes, physically
-  reasonable thrust (10-44 kN) and fuel flow (0.2-1.3 kg/s)
+- OCP factory declares `"propulsion"` slot alongside `"drag"`
+- Propulsion slot check in `_make_aircraft_model_class()`
 - Three-lane example structure in `examples/ocp_pyc_coupled/`
 
+**Path 1 (surrogate-coupled):** `pyc/surrogate` slot provider
+- `hangar.omd.pyc.surrogate` module: deck generation, save/load, MetaModel
+- `generate_deck()` runs pyCycle off-design across (alt, MN, throttle) grid
+- Individual point evaluation for robustness (one failed point doesn't kill chunk)
+- `PyCycleSurrogateGroup` wraps `MetaModelUnStructuredComp` with Kriging
+- Supports both turbojet and HBTF archetypes
+- Pre-computed decks via `save_deck()`/`load_deck()` for fast startup
+- No convergence risk at mission level (smooth surrogate)
+
+**Path 2 (direct-coupled):** `pyc/turbojet` and `pyc/hbtf` slot providers
+- `_DirectPyCyclePropGroup` wraps MPTurbojet with slicer/gatherer pattern
+- `_DirectPyCycleHBTFPropGroup` wraps MPHbtf with T4 throttle mapping
+
+Root causes of convergence blocker (all fixed):
+1. **Execution order**: cycle was added before slicers, so OD points
+   ran with default inputs. Fixed by reordering: slicers first, then cycle.
+2. **FC balance guesses**: `fc.balance.Pt` and `fc.balance.Tt` were not
+   included in `guess_nonlinear`. Without these, the FlightConditions
+   sub-solver diverges.
+3. **Path naming**: `apply_initial_guesses` used `fc.conv.balance.Pt`
+   (from hangar.pyc) but correct path is `fc.balance.Pt`.
+4. **Promotion handling**: pathname-based paths failed when group was
+   promoted. Fixed with try/fallback approach.
+5. **Unit conversion**: ExecComp passthrough with mismatched units.
+   Fixed by using same units on input and output, letting OpenMDAO
+   convert at connection boundaries.
+
+All 6 engine archetypes available in `hangar.omd.pyc`: turbojet, hbtf,
+ab_turbojet, single_spool_turboshaft, multi_spool_turboshaft, mixedflow_turbofan.
+`guess_nonlinear` added to Turbojet and HBTF for embedded convergence.
+
 Remaining:
-- **Newton convergence in OCP mission**: The ExplicitComponent+FD
-  approach is architecturally wrong. pyCycle is a Group with implicit
-  balance components and its own Newton solver. Wrapping it as
-  ExplicitComponent hides the internal solver from the outer Newton,
-  and FD partials through a nested Newton are noisy by nature (FD step
-  1e-4 vs cycle convergence tolerance 1e-6).
-
-  The fix is **native Group integration** -- add pyCycle Turbojet
-  instances directly as OpenMDAO subsystems (like `_DirectVLMDragGroup`
-  does with nn VLM instances). pyCycle's element-level
-  `compute_partials` then propagate through the linear solver chain,
-  giving the outer Newton a clean Jacobian.
-
-  Implementation plan (in progress):
-  `_DirectPyCyclePropGroup` (om.Group) wraps MPTurbojet with nn
-  off-design Turbojet instances. Slicer/Gatherer pattern from VLM
-  direct handles (nn,) vectorization. Alt/MN connections to FC work
-  (verified data reaches `readAtmTable.alt`), and Fn_target connects
-  correctly to the off-design balance.
-
-  Current blocker: the off-design Newton converges to wrong solutions
-  when MPTurbojet is embedded inside the Group. The standalone
-  `build_multipoint_problem` works correctly for the same conditions.
-  Root cause is likely initial-guess propagation -- the `set_input_defaults`
-  from MPTurbojet's setup and the `apply_initial_guesses` calls may
-  conflict with how the outer Group resolves promoted paths.
-
-  Next steps:
-  1. Debug initial-guess flow: compare `prob[path]` for all balance
-     variables (FAR, W, Nmech, fc Pt/Tt) between standalone
-     `build_multipoint_problem` and Group-embedded MPTurbojet right
-     after setup, before run_model. The difference will pinpoint
-     which guesses are lost during embedding.
-  2. May need to call `set_val` on absolute paths (not promoted) for
-     the balance outputs -- promotion through nested Groups can lose
-     values when `set_input_defaults` and `set_val` interact.
-  3. Consider overriding `guess_nonlinear()` on the Turbojet class
-     to apply guesses inside the Newton solve loop rather than
-     relying on one-time set_val before run_model.
-  4. Add variable scaling (`ref`/`ref0`) for thrust, fuel_flow,
-     throttle to improve conditioning.
-
-  Architecture observations from review:
-  - pyCycle's FlightConditions promotes `alt` (from Ambient) and `MN`
-    (from FlowStart) as Group inputs -- they ARE connectable. The
-    auto_ivc issue does NOT apply here. Connections from slicers to
-    `cycle.OD_{i}.fc.alt` and `cycle.OD_{i}.fc.MN` are accepted and
-    data reaches the atmosphere model (verified via get_val).
-  - The off-design Turbojet balance variables (FAR val=0.3, Nmech
-    val=1.5) have terrible defaults. The standalone builder fixes
-    this by calling `_apply_turbojet_od_guesses` after setup. When
-    embedded in a Group, `apply_initial_guesses()` tries to do the
-    same via `prob.set_val()`, but the balance outputs may already be
-    at wrong values from a previous Group-level default resolution.
-  - Key diagnostic: standalone OD converges to FAR=0.0166, W=47,
-    Nmech=7679. Group-embedded converges to FAR=0.003, W=58,
-    Nmech=5854. The W and Nmech are in the right ballpark but FAR
-    is 5x too low, suggesting the FAR guess didn't propagate.
-  - pyCycle MCP server timing: design point ~4s, off-design ~3-6s.
-    The multipoint approach (all nn in one solve) takes ~22s for
-    nn=11, so amortized cost is ~2s/node -- acceptable for mission
-    analysis if the convergence issue is resolved.
-
-  Additional gaps to address:
-  - Only turbojet archetype implemented (HBTF, turbofan, turboshaft
-    params exist in defaults.py but no archetype classes)
-  - Design variables (comp_PR, eff, Nmech) not exposed through slot
-  - No engine weight estimation
-  - T4, OPR, flow station details not surfaced through slot interface
-- Parity test blocked on mission convergence
+- Full OCP mission convergence test (outer Newton driving throttle/CL
+  with pyCycle in the loop) not yet validated -- standalone slot tests pass
+- Design variables (comp_PR, eff, Nmech) not exposed through slot
+- No engine weight estimation
+- T4, OPR, flow station details not surfaced through slot interface
 
 
 ## P4: Component Catalog System
