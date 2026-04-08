@@ -1,0 +1,62 @@
+# Slot provider catalog entry: oas/aerostruct
+# Reference data for plan authoring -- not executable code.
+
+provider: oas/aerostruct
+slot_name: drag
+coupling_level: surrogate
+source: openconcept.aerodynamics.openaerostruct.aerostructural.AerostructDragPolar
+description: >
+  Surrogate-coupled aerostructural drag provider. Like oas/vlm but
+  includes structural deformation in the surrogate training. Captures
+  wing weight and structural failure in addition to drag.
+
+config:
+  num_x:
+    type: integer
+    default: 2
+  num_y:
+    type: integer
+    default: 6
+  num_twist:
+    type: integer
+    default: 4
+  num_toverc:
+    type: integer
+    default: 4
+  num_skin:
+    type: integer
+    default: 4
+  num_spar:
+    type: integer
+    default: 4
+  surf_options:
+    type: object
+    default: {}
+
+inputs:
+  - fltcond|CL
+  - fltcond|M
+  - fltcond|h
+  - fltcond|q
+  - ac|geom|wing|S_ref
+  - ac|geom|wing|AR
+  - ac|geom|wing|taper
+  - ac|geom|wing|c4sweep
+  - ac|geom|wing|twist
+  - ac|geom|wing|toverc
+  - ac|geom|wing|skin_thickness
+  - ac|geom|wing|spar_thickness
+  - ac|aero|CD_nonwing
+
+outputs:
+  - drag
+  - ac|weights|W_wing
+  - failure
+
+removes_fields:
+  - ac|aero|polar|e
+  - ac|aero|polar|CD0_TO
+  - ac|aero|polar|CD0_cruise
+
+adds_fields:
+  ac|aero|CD_nonwing: 0.0145

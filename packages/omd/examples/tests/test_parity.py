@@ -155,3 +155,38 @@ class TestOCPOASCoupledParity:
         assert result["summary"]["fuel_burn_kg"] == pytest.approx(
             lane_a["fuel_burn_kg"], rel=1e-3,
         )
+
+
+class TestOCPOASDirectCoupledParity:
+
+    @pytest.mark.slow
+    def test_direct_coupled_mission_parity(self, tmp_path):
+        # Clear cached 'shared' module from prior examples to avoid
+        # importing the wrong shared.py (e.g., ocp_oas_coupled's).
+        for mod_name in list(sys.modules):
+            if mod_name == "shared" or mod_name.startswith("ocp_oas_direct"):
+                del sys.modules[mod_name]
+
+        sys.path.insert(0, str(EXAMPLES_DIR / "ocp_oas_direct"))
+        from ocp_oas_direct.lane_a.direct_coupled_mission import run as lane_a_run
+
+        lane_a = lane_a_run()
+
+        plan_path = (
+            EXAMPLES_DIR / "ocp_oas_direct" / "lane_b"
+            / "direct_coupled_mission" / "plan.yaml"
+        )
+        result = run_plan(plan_path, mode="analysis", recording_level="minimal",
+                          db_path=tmp_path / "analysis.db")
+
+        _print_comparison(
+            "OCP+OAS Direct-Coupled Mission (VLM-direct drag slot)",
+            lane_a,
+            result["summary"],
+            keys=["fuel_burn_kg", "OEW_kg", "MTOW_kg"],
+        )
+
+        assert result["status"] in ("completed", "converged")
+        assert result["summary"]["fuel_burn_kg"] == pytest.approx(
+            lane_a["fuel_burn_kg"], rel=1e-3,
+        )

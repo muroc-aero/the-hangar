@@ -1,0 +1,99 @@
+# Component catalog entry: pyCycle Turbojet
+# Reference data for plan authoring -- not executable code.
+
+type: pyc/Turbojet
+source: pycycle
+description: >
+  Single-spool turbojet thermodynamic cycle. Compressor, burner, turbine,
+  and nozzle. Sized at a design point, then evaluated at off-design
+  conditions with fixed nozzle geometry.
+archetype: turbojet
+
+inputs:
+  design_conditions:
+    alt:
+      type: number
+      units: ft
+      default: 0
+      description: Design-point altitude
+    MN:
+      type: number
+      default: 0.0001
+      description: Design-point Mach number
+    Fn_target:
+      type: number
+      units: lbf
+      default: 11800
+      description: Design-point net thrust target
+    T4_target:
+      type: number
+      units: degR
+      default: 2370
+      description: Turbine inlet temperature target (max ~3600 degR)
+
+  component_params:
+    comp_PR:
+      type: number
+      default: 13.5
+      description: Compressor pressure ratio
+    comp_eff:
+      type: number
+      default: 0.83
+      description: Compressor isentropic efficiency
+    turb_eff:
+      type: number
+      default: 0.86
+      description: Turbine isentropic efficiency
+    burner_dPqP:
+      type: number
+      default: 0.03
+      description: Combustor fractional pressure loss
+    nozz_Cv:
+      type: number
+      default: 0.99
+      description: Nozzle velocity coefficient
+    Nmech:
+      type: number
+      units: rpm
+      default: 8070
+      description: Shaft mechanical speed
+
+  thermo_method:
+    type: string
+    enum: [TABULAR, CEA]
+    default: TABULAR
+    description: >
+      Thermodynamic property method. TABULAR is faster; CEA is more
+      accurate for extreme conditions.
+
+outputs:
+  Fn:
+    units: lbf
+    description: Net thrust
+  TSFC:
+    units: lbm/hr/lbf
+    description: Thrust-specific fuel consumption (lower is better)
+  OPR:
+    units: dimensionless
+    description: Overall pressure ratio
+  Wfuel:
+    units: lbm/s
+    description: Fuel mass flow rate
+
+recommended_solvers:
+  nonlinear:
+    type: NewtonSolver
+    options:
+      maxiter: 15
+      atol: 1.0e-6
+      rtol: 1.0e-6
+      solve_subsystems: true
+  linear:
+    type: DirectSolver
+
+known_issues:
+  - "T4_target should not exceed ~3600 degR (material limits)"
+  - "Design point MUST be run before off-design"
+  - "Off-design may not converge at conditions far from the design point"
+  - "MN must be > 0 (use 0.0001 for static conditions)"
+  - "FD partials from the internal Newton are noisy -- coupling into outer solvers requires care"

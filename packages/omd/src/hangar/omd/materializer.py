@@ -127,6 +127,10 @@ def materialize(
     if not setup_done:
         prob.setup()
 
+    # Validate connection units for composite problems
+    if metadata.get("_composite"):
+        _validate_connection_units(prob, plan)
+
     # Set initial values from metadata (factory-provided)
     for name, val in metadata.get("initial_values", {}).items():
         try:
@@ -230,6 +234,51 @@ def _materialize_composite(
     return prob, metadata
 
 
+def _validate_connection_units(prob: om.Problem, plan: dict) -> None:
+    """Warn when explicit connections have incompatible units.
+
+    Called after setup for composite problems. Uses OpenMDAO's unit
+    system to check that connected source and target variables have
+    compatible units.
+    """
+    connections = plan.get("connections", [])
+    if not connections:
+        return
+
+    try:
+        from openmdao.utils.units import unit_conversion
+    except ImportError:
+        return
+
+    for conn in connections:
+        src, tgt = conn["src"], conn["tgt"]
+        try:
+            src_meta = prob.model.get_io_metadata(
+                iotypes="output", includes=[src],
+            )
+            tgt_meta = prob.model.get_io_metadata(
+                iotypes="input", includes=[tgt],
+            )
+        except Exception:
+            continue
+
+        if not src_meta or not tgt_meta:
+            continue
+
+        src_units = next(iter(src_meta.values())).get("units")
+        tgt_units = next(iter(tgt_meta.values())).get("units")
+
+        if src_units and tgt_units:
+            try:
+                unit_conversion(src_units, tgt_units)
+            except Exception:
+                logger.warning(
+                    "Connection '%s' -> '%s': incompatible units "
+                    "(%s vs %s). OpenMDAO may fail at runtime.",
+                    src, tgt, src_units, tgt_units,
+                )
+
+
 # ---------------------------------------------------------------------------
 # Solver configuration
 # ---------------------------------------------------------------------------
@@ -244,31 +293,77 @@ def _configure_solvers(
 
     For OAS aerostruct, solvers are applied to the coupled group
     inside the analysis point.
+
+    The ``solvers`` key in a plan can be either a single dict or a list
+    of dicts. Each dict may include an optional ``target`` key naming the
+    subsystem to apply the solvers to (e.g., ``"mission.coupled"``).
+    When ``target`` is absent, solvers apply to the default location
+    (the coupled group for OAS, or the model root as fallback).
+
+    Examples::
+
+        # Single solver scope (backward compatible)
+        solvers:
+          nonlinear: {type: NewtonSolver, options: {maxiter: 20}}
+          linear: {type: DirectSolver}
+
+        # Multiple solver scopes
+        solvers:
+          - target: mission.analysis
+            nonlinear: {type: NewtonSolver, options: {maxiter: 20}}
+            linear: {type: DirectSolver}
+          - target: oas_wing.aero_point_0.coupled
+            nonlinear: {type: NonlinearBlockGS, options: {maxiter: 50}}
     """
     solver_config = plan.get("solvers")
     if not solver_config:
         return
 
-    point_name = metadata.get("point_name", "AS_point_0")
+    # Normalize to list-of-dicts
+    if isinstance(solver_config, dict):
+        solver_entries = [solver_config]
+    elif isinstance(solver_config, list):
+        solver_entries = solver_config
+    else:
+        return
 
-    # Determine the target group for solvers
-    # For aerostruct, it's the coupled group inside the point
-    # We store the solver config and apply it after setup in a callback,
-    # or we apply it to the model and let OAS use its defaults for the coupled group
-    nl_config = solver_config.get("nonlinear")
-    if nl_config:
-        solver_type = nl_config["type"]
-        options = nl_config.get("options", {})
-        if solver_type in _NONLINEAR_SOLVERS:
-            # Store for post-setup application
-            metadata["_nl_solver"] = {"type": solver_type, "options": options}
+    # Store all entries for post-setup application
+    solver_specs = []
+    for entry in solver_entries:
+        spec: dict = {}
+        target = entry.get("target")
+        if target:
+            spec["target"] = target
 
-    lin_config = solver_config.get("linear")
-    if lin_config:
-        solver_type = lin_config["type"]
-        options = lin_config.get("options", {})
-        if solver_type in _LINEAR_SOLVERS:
-            metadata["_lin_solver"] = {"type": solver_type, "options": options}
+        nl_config = entry.get("nonlinear")
+        if nl_config:
+            solver_type = nl_config["type"]
+            options = nl_config.get("options", {})
+            if solver_type in _NONLINEAR_SOLVERS:
+                spec["nl"] = {"type": solver_type, "options": options}
+
+        lin_config = entry.get("linear")
+        if lin_config:
+            solver_type = lin_config["type"]
+            options = lin_config.get("options", {})
+            if solver_type in _LINEAR_SOLVERS:
+                spec["lin"] = {"type": solver_type, "options": options}
+
+        if spec:
+            solver_specs.append(spec)
+
+    if solver_specs:
+        metadata["_solver_specs"] = solver_specs
+
+    # Backward compatibility: also populate the old keys for specs
+    # without an explicit target (default behavior)
+    default_specs = [s for s in solver_specs if "target" not in s]
+    if default_specs:
+        ds = default_specs[0]
+        if "nl" in ds:
+            metadata["_nl_solver"] = ds["nl"]
+        if "lin" in ds:
+            metadata["_lin_solver"] = ds["lin"]
 
 
 def apply_solvers_post_setup(prob: om.Problem, metadata: dict) -> None:
@@ -288,7 +383,50 @@ def apply_solvers_post_setup(prob: om.Problem, metadata: dict) -> None:
     iterations return an approximate answer rather than raising an
     exception, which lets gradient-based optimizers proceed.
     """
-    # Determine target groups: multipoint has multiple coupled groups
+    # Handle targeted solver specs (new list-of-dicts format)
+    solver_specs = metadata.pop("_solver_specs", None)
+    if solver_specs:
+        for spec in solver_specs:
+            target_path = spec.get("target")
+            if target_path:
+                # Explicit target path
+                try:
+                    target_groups = [prob.model._get_subsystem(target_path)]
+                except Exception:
+                    logger.warning(
+                        "Solver target '%s' not found after setup; skipping",
+                        target_path,
+                    )
+                    continue
+            else:
+                # Default: use the OAS coupled group or model root
+                target_groups = _resolve_default_solver_targets(prob, metadata)
+
+            _apply_solver_spec_to_targets(spec, target_groups)
+
+        # Clean up old-style keys if they were also populated
+        metadata.pop("_nl_solver", None)
+        metadata.pop("_lin_solver", None)
+        return
+
+    # Backward-compatible path: old-style single solver config
+    targets = _resolve_default_solver_targets(prob, metadata)
+
+    nl_config = metadata.pop("_nl_solver", None)
+    if nl_config:
+        for target in targets:
+            _apply_nl_solver(nl_config, target)
+
+    lin_config = metadata.pop("_lin_solver", None)
+    if lin_config:
+        for target in targets:
+            _apply_lin_solver(lin_config, target)
+
+
+def _resolve_default_solver_targets(
+    prob: om.Problem, metadata: dict,
+) -> list:
+    """Find default solver targets (coupled groups or model root)."""
     point_names = metadata.get("point_names")
     if point_names is None:
         point_names = [metadata.get("point_name", "AS_point_0")]
@@ -304,32 +442,42 @@ def apply_solvers_post_setup(prob: om.Problem, metadata: dict) -> None:
 
     if not targets:
         targets = [prob.model]
+    return targets
 
-    nl_config = metadata.pop("_nl_solver", None)
-    if nl_config:
-        for target in targets:
-            solver_cls = _NONLINEAR_SOLVERS[nl_config["type"]]
-            solver = solver_cls()
-            # Newton solver needs safe defaults for use inside optimization
-            if nl_config["type"] == "NewtonSolver":
-                if "solve_subsystems" not in nl_config["options"]:
-                    solver.options["solve_subsystems"] = True
-                # Let unconverged Newton return approximate answers rather
-                # than raising, so SLSQP can continue with noisy gradients.
-                if "err_on_non_converge" not in nl_config["options"]:
-                    solver.options["err_on_non_converge"] = False
-            for key, val in nl_config["options"].items():
-                solver.options[key] = val
-            target.nonlinear_solver = solver
 
-    lin_config = metadata.pop("_lin_solver", None)
-    if lin_config:
-        for target in targets:
-            solver_cls = _LINEAR_SOLVERS[lin_config["type"]]
-            solver = solver_cls()
-            for key, val in lin_config["options"].items():
-                solver.options[key] = val
-            target.linear_solver = solver
+def _apply_solver_spec_to_targets(spec: dict, targets: list) -> None:
+    """Apply a solver spec dict to a list of target groups."""
+    nl = spec.get("nl")
+    if nl:
+        for t in targets:
+            _apply_nl_solver(nl, t)
+    lin = spec.get("lin")
+    if lin:
+        for t in targets:
+            _apply_lin_solver(lin, t)
+
+
+def _apply_nl_solver(config: dict, target) -> None:
+    """Apply a nonlinear solver config to a target group."""
+    solver_cls = _NONLINEAR_SOLVERS[config["type"]]
+    solver = solver_cls()
+    if config["type"] == "NewtonSolver":
+        if "solve_subsystems" not in config["options"]:
+            solver.options["solve_subsystems"] = True
+        if "err_on_non_converge" not in config["options"]:
+            solver.options["err_on_non_converge"] = False
+    for key, val in config["options"].items():
+        solver.options[key] = val
+    target.nonlinear_solver = solver
+
+
+def _apply_lin_solver(config: dict, target) -> None:
+    """Apply a linear solver config to a target group."""
+    solver_cls = _LINEAR_SOLVERS[config["type"]]
+    solver = solver_cls()
+    for key, val in config["options"].items():
+        solver.options[key] = val
+    target.linear_solver = solver
 
 
 # ---------------------------------------------------------------------------

@@ -38,110 +38,117 @@ The omd-cli-guide skill now includes:
 
 ## Direct-Coupled OAS Drag Slot Provider
 
-The current `oas/vlm` slot provider uses OpenConcept's `VLMDragPolar`,
-which pre-trains a surrogate at initialization and interpolates at runtime.
-The full VLM never runs inside the Newton loop. This is surrogate-coupled,
-not direct-coupled.
+**Status: DONE**
 
-Build a new slot provider (`oas/vlm-direct` or similar) that wraps raw OAS
-aero groups (Geometry + AeroPoint) and runs the VLM solver at every Newton
-iteration. This would be true tight coupling in the MDO sense.
+Implemented `oas/vlm-direct` slot provider in `slots.py`. Uses OpenConcept's
+`VLM` group (atmosphere + AeroPoint) per node with a shared
+`TrapezoidalPlanformMesh`. A `BalanceComp` with nn residuals drives alpha
+to match OCP's `fltcond|CL`, solved by the parent Newton.
 
-Considerations:
-- Performance: VLM per-node per-iteration will be slow for high node counts.
-   May need to limit to coarse meshes or low node counts for practical use.
-- Interface: the provider must accept the same flight condition promotes as
-   VLMDragPolar (`fltcond|CL`, `fltcond|M`, `fltcond|h`, `fltcond|q`) and
-   produce `drag` output, but internally it builds an OAS AeroPoint that
-   takes velocity/alpha/Mach/rho and computes forces. The mapping between
-   OCP flight condition variables and OAS inputs needs careful handling.
-- Derivatives: OAS provides analytic partials, so gradient-based optimization
-   through the direct-coupled path is possible. This is the main advantage
-   over surrogate coupling for optimization problems.
-- The `oas/aerostruct` slot provider has the same surrogate limitation
-   (uses `AerostructDragPolar`). A direct-coupled aerostruct provider would
-   also be valuable.
-
-Create an example `ocp_oas_direct/` with three lanes once the provider
-works. The parity test should compare against the surrogate-coupled result
-and document the accuracy/performance tradeoff.
+Key details:
+- `_DirectVLMDragGroup`: nn independent VLM instances, shared twisted mesh,
+  `_NodeSlicer`/`_NodeGatherer` helper components for vectorization
+- Converges in 2 Newton iterations (~30s total for nn=11, num_y=5)
+- Fuel burn within 0.01% of surrogate-coupled (`oas/vlm`) result
+- Three-lane example in `examples/ocp_oas_direct/` with parity test
+- The `oas/aerostruct` direct-coupled variant is a natural extension
 
 
 ## Multi-Component Composition Open Questions
 
-The multi-component materializer (`_materialize_composite`) works for
-side-by-side components and the slot system handles intra-component
-substitution. These open questions remain for more complex compositions:
+**Status: DONE** (core items implemented)
 
-- **OCP drag_source: external** -- The OCP aircraft model always adds
-  PolarDrag internally. Replacing it via explicit inter-component
-  connections (not slots) requires either a config flag the factory
-  respects, or post-setup connection overrides. The slot system already
-  solves this for the surrogate-coupled case.
-- **Solver scoping** -- When two tools are composed, which Group gets
-  the Newton solver? The plan YAML `solvers:` section currently targets
-  the top-level model or the coupled group. Supporting solver targeting
-  for specific subsystems (e.g., `solvers.target: mission.coupled`)
-  would be needed for complex compositions.
-- **Variable promotion conflicts** -- OAS and OCP both promote
-  `fltcond|*` at different levels. The materializer uses no promotions
-  for composite components (each lives under its namespace), but
-  explicit connections need fully-qualified paths.
+Completed:
+- **drag_source: external** -- OCP factory now checks
+  `slots.drag_source` and skips adding any drag component when set to
+  `"external"`, leaving drag to be supplied via explicit connections in
+  a composite plan.
+- **Solver scoping** -- `_configure_solvers()` now accepts a list of
+  solver specs, each with an optional `target` path. The materializer
+  resolves targets via `prob.model._get_subsystem()` after setup.
+  Backward compatible with the existing single-dict format.
+- **Connection unit validation** -- `_validate_connection_units()` runs
+  after setup for composite problems, warning when explicit connections
+  have incompatible units via OpenMDAO's unit system.
 
 
 ## P3: pyCycle Propulsion Slot
 
-Implement a `pyc/turbojet` slot provider in `slots.py` that replaces OCP's
-TurbopropPropulsionSystem with a pyCycle thermodynamic model. The provider
-callable signature matches the existing pattern:
-`(nn, flight_phase, config) -> (component, promotes_in, promotes_out)`.
+**Status: PARTIAL** (mechanism works, full mission convergence needs work)
 
-Steps:
-1. Add `"propulsion"` to the OCP factory's `declared_slots` metadata
-2. Implement propulsion slot consumption in the OCP aircraft model's setup(),
-   alongside the existing drag slot pattern (lines 520-531 in ocp.py)
-3. Write the `_pyc_turbojet_provider()` function in `slots.py` with
-   `removes_fields` (OCP propulsion fields like `ac|propulsion|engine|rating`)
-   and `adds_fields` (pyCycle-specific params)
-4. Register with `register_slot_provider("pyc/turbojet", ...)`
-5. Create example `ocp_pyc_coupled/` with three lanes (raw Python, plan YAML,
-   agent prompt) and a parity test
+Completed:
+- OCP factory now declares `"propulsion"` slot alongside `"drag"`
+- Propulsion slot check added before the existing propulsion code block
+  in `_make_aircraft_model_class()`
+- `pyc/turbojet` provider registered in `slots.py` using
+  `_PyCycleTurbojetDirect` -- builds a pyCycle multipoint problem
+  (1 design + nn off-design) and runs all points in a single solve
+- Component works correctly in isolation: 22s for 11 nodes, physically
+  reasonable thrust (10-44 kN) and fuel flow (0.2-1.3 kg/s)
+- Three-lane example structure in `examples/ocp_pyc_coupled/`
 
-This proves the slot pattern generalizes beyond drag to propulsion, and beyond
-OAS to pyCycle. A future OAS factory could similarly declare slots (e.g.,
-`"viscous_model"`) using the same pattern.
+Remaining:
+- **Newton convergence in OCP mission**: The ExplicitComponent+FD
+  approach is architecturally wrong. pyCycle is a Group with implicit
+  balance components and its own Newton solver. Wrapping it as
+  ExplicitComponent hides the internal solver from the outer Newton,
+  and FD partials through a nested Newton are noisy by nature (FD step
+  1e-4 vs cycle convergence tolerance 1e-6).
+
+  The fix is **native Group integration** -- add pyCycle Turbojet
+  instances directly as OpenMDAO subsystems (like `_DirectVLMDragGroup`
+  does with nn VLM instances). pyCycle's element-level
+  `compute_partials` then propagate through the linear solver chain,
+  giving the outer Newton a clean Jacobian.
+
+  Implementation plan (in progress):
+  `_DirectPyCyclePropGroup` (om.Group) wraps MPTurbojet with nn
+  off-design Turbojet instances. Slicer/Gatherer pattern from VLM
+  direct handles (nn,) vectorization. Alt/MN connections to FC work
+  (verified data reaches `readAtmTable.alt`), and Fn_target connects
+  correctly to the off-design balance.
+
+  Current blocker: the off-design Newton converges to wrong solutions
+  when MPTurbojet is embedded inside the Group. The standalone
+  `build_multipoint_problem` works correctly for the same conditions.
+  Root cause is likely initial-guess propagation -- the `set_input_defaults`
+  from MPTurbojet's setup and the `apply_initial_guesses` calls may
+  conflict with how the outer Group resolves promoted paths.
+
+  Next steps:
+  1. Debug initial-guess flow by comparing prob[] values between
+     standalone and Group-embedded MPTurbojet after setup
+  2. May need to call set_val on the exact absolute balance variable
+     paths instead of promoted names
+  3. Consider using `guess_nonlinear()` override on the Turbojet
+     class to set guesses inside the Newton solve loop
+  4. Add variable scaling (`ref`/`ref0`) for thrust, fuel_flow,
+     throttle to improve conditioning
+
+  Additional gaps to address:
+  - Only turbojet archetype implemented (HBTF, turbofan, turboshaft
+    params exist in defaults.py but no archetype classes)
+  - Design variables (comp_PR, eff, Nmech) not exposed through slot
+  - No engine weight estimation
+  - T4, OPR, flow station details not surfaced through slot interface
+- Parity test blocked on mission convergence
 
 
 ## P4: Component Catalog System
 
-Expand `catalog/oas/` (which has AeroPoint.yaml and AerostructPoint.yaml)
-into a full component catalog covering all registered component types and
-slot providers.
+**Status: DONE**
 
-New catalog entries needed:
-- `catalog/ocp/BasicMission.yaml`
-- `catalog/ocp/FullMission.yaml`
-- `catalog/ocp/MissionWithReserve.yaml`
-- `catalog/pyc/Turbojet.yaml`
-- `catalog/slots/oas_vlm.yaml`
-- `catalog/slots/oas_aerostruct.yaml`
-
-Each entry should include:
-- `type`: component type string matching the factory registry
-- `inputs`: schema with types, units, defaults, descriptions
-- `outputs`: with units and descriptions
-- `recommended_solvers`, `recommended_dvs`, `recommended_constraints`
-- `known_issues`: list of gotchas
-- `available_slots`: which slots this component declares (for slot-aware types)
-
-The range-safety structural validator already loads from `catalog/` via
-`_load_catalog()`. Extend the validator to:
-- Validate OCP-specific config fields (architecture, mission_params) using
-  catalog schemas
-- Validate pyCycle-specific config fields
-- Cross-check slot provider config against catalog slot provider entries
-
-Consider whether the catalog replaces or supplements factory-provided
-`var_paths` from P2. The catalog is reference data for plan authoring
-(what agents read), while var_paths are runtime data for the materializer.
-Both may be needed.
+Completed:
+- `catalog/ocp/BasicMission.yaml` -- inputs, outputs, available_slots, known_issues
+- `catalog/ocp/FullMission.yaml` -- extends BasicMission with takeoff
+- `catalog/ocp/MissionWithReserve.yaml` -- extends with reserve/loiter
+- `catalog/pyc/Turbojet.yaml` -- design conditions, component params, thermo_method
+- `catalog/slots/oas_vlm.yaml` -- surrogate-coupled, with performance notes
+- `catalog/slots/oas_vlm_direct.yaml` -- direct-coupled, analytic partials
+- `catalog/slots/oas_aerostruct.yaml` -- surrogate aerostructural
+- `catalog/slots/pyc_turbojet.yaml` -- direct pyCycle with known issues
+- Range-safety structural validator extended with:
+  - OCP num_nodes odd check
+  - OCP aircraft_template validation against known templates
+  - OCP architecture validation against known architectures
+  - pyCycle T4_target limit check (> 3600 degR warning)

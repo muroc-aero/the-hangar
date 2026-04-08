@@ -1,0 +1,64 @@
+# Component catalog entry: OCP MissionWithReserve
+# Reference data for plan authoring -- not executable code.
+
+type: ocp/MissionWithReserve
+source: openconcept
+description: >
+  Basic mission plus reserve climb/cruise/descent and loiter segments.
+  Used for regulatory fuel reserve calculations.
+import_path: openconcept.mission.MissionWithReserve
+
+inputs:
+  aircraft_template:
+    type: string
+    enum: [caravan, b738, kingair, tbm850]
+  architecture:
+    type: string
+    enum: [turboprop, twin_turboprop, series_hybrid, twin_series_hybrid, twin_turbofan]
+  num_nodes:
+    type: integer
+    minimum: 3
+    description: Flight condition nodes per phase (MUST be odd)
+  mission_params:
+    cruise_altitude_ft:
+      type: number
+      units: ft
+    mission_range_NM:
+      type: number
+      units: NM
+    climb_vs_ftmin:
+      type: number
+      units: ft/min
+    climb_Ueas_kn:
+      type: number
+      units: kn
+    cruise_Ueas_kn:
+      type: number
+      units: kn
+    descent_vs_ftmin:
+      type: number
+      units: ft/min
+    descent_Ueas_kn:
+      type: number
+      units: kn
+
+outputs:
+  fuel_burn_kg:
+    units: kg
+    description: Total fuel burn including reserves
+  OEW_kg:
+    units: kg
+  MTOW_kg:
+    units: kg
+
+available_slots:
+  drag:
+    default: PolarDrag
+    compatible_providers: [oas/vlm, oas/aerostruct, oas/vlm-direct]
+  propulsion:
+    default: architecture-dependent
+    compatible_providers: [pyc/turbojet]
+
+known_issues:
+  - "num_nodes must be odd"
+  - "Reserve segments add significant compute time"

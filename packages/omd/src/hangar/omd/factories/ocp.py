@@ -459,8 +459,20 @@ def _make_aircraft_model_class(
                         ],
                     )
 
-            # Propulsion
-            if is_cfm56:
+            # Propulsion (slot-aware: can substitute pyCycle turbojet, etc.)
+            propulsion_slot = (slots or {}).get("propulsion")
+            if propulsion_slot is not None:
+                from hangar.omd.slots import get_slot_provider
+                prop_provider_fn = get_slot_provider(propulsion_slot["provider"])
+                prop_comp, prop_prom_in, prop_prom_out = prop_provider_fn(
+                    nn, flight_phase, propulsion_slot.get("config", {}),
+                )
+                self.add_subsystem(
+                    "propmodel", prop_comp,
+                    promotes_inputs=prop_prom_in,
+                    promotes_outputs=prop_prom_out,
+                )
+            elif is_cfm56:
                 self.add_subsystem(
                     "propmodel",
                     PropClass(num_nodes=nn, plot=False),
@@ -517,8 +529,14 @@ def _make_aircraft_model_class(
                     )
 
             # Drag (slot-aware: can substitute VLMDragPolar, AerostructDragPolar, etc.)
+            # drag_source: "external" in the slots dict skips the drag
+            # component entirely, leaving drag to be provided by an
+            # external connection in a composite plan.
+            drag_source = (slots or {}).get("drag_source", "internal")
             drag_slot = (slots or {}).get("drag")
-            if drag_slot is not None:
+            if drag_source == "external":
+                pass  # no drag component; expects external connection
+            elif drag_slot is not None:
                 from hangar.omd.slots import get_slot_provider
                 provider_fn = get_slot_provider(drag_slot["provider"])
                 drag_comp, drag_prom_in, drag_prom_out = provider_fn(
@@ -1007,6 +1025,7 @@ def _build_mission_problem(
         "var_paths": var_paths,
         "declared_slots": {
             "drag": {"default": "PolarDrag"},
+            "propulsion": {"default": architecture},
         },
     }
 

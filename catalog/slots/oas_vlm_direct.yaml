@@ -1,0 +1,57 @@
+# Slot provider catalog entry: oas/vlm-direct
+# Reference data for plan authoring -- not executable code.
+
+provider: oas/vlm-direct
+slot_name: drag
+coupling_level: direct
+source: hangar.omd.slots._DirectVLMDragGroup
+description: >
+  Direct-coupled VLM drag provider. Runs the full OAS VLM solver at
+  every Newton iteration for each flight-condition node. Gives exact
+  VLM results and analytic partials at the cost of higher per-iteration
+  expense. Best for optimization with aerodynamic design variables.
+
+config:
+  num_x:
+    type: integer
+    default: 2
+    description: Streamwise mesh panels
+  num_y:
+    type: integer
+    default: 5
+    description: Spanwise mesh panels (half-wing, must be odd, keep small)
+  num_twist:
+    type: integer
+    default: 4
+    description: Twist spline control points
+  surf_options:
+    type: object
+    default: null
+    description: OAS surface dict overrides
+
+inputs:
+  - fltcond|CL
+  - fltcond|M
+  - fltcond|h
+  - fltcond|q
+  - ac|geom|wing|S_ref
+  - ac|geom|wing|AR
+  - ac|geom|wing|taper
+  - ac|geom|wing|c4sweep
+  - ac|geom|wing|twist
+  - ac|aero|CD_nonwing
+
+outputs:
+  - drag
+
+removes_fields:
+  - ac|aero|polar|e
+  - ac|aero|polar|CD0_TO
+  - ac|aero|polar|CD0_cruise
+
+adds_fields:
+  ac|aero|CD_nonwing: 0.0145
+
+performance:
+  runtime: "~30 seconds for nn=11, num_y=5 (full Newton convergence)"
+  partials: analytic (through OAS VLM)

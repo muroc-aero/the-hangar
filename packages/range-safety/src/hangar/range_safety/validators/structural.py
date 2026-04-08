@@ -194,6 +194,51 @@ def validate_structural(
                         f"num_x={slot_num_x} < 2 may produce poor results",
                     ))
 
+            # pyCycle slot config checks
+            if provider_name.startswith("pyc/"):
+                T4 = slot_config.get("design_T4")
+                if T4 is not None and T4 > 3600:
+                    findings.append(_finding(
+                        "slot_pyc_t4_limit",
+                        "warning",
+                        f"Component '{comp_id}', slot '{slot_name}': "
+                        f"design_T4={T4} degR exceeds material limit (3600)",
+                    ))
+
+        # OCP-specific checks
+        if comp_type.startswith("ocp/"):
+            num_nodes = config.get("num_nodes")
+            if num_nodes is not None and num_nodes % 2 == 0:
+                findings.append(_finding(
+                    "ocp_num_nodes_odd",
+                    "error",
+                    f"Component '{comp_id}': "
+                    f"num_nodes={num_nodes} must be odd (Simpson's rule)",
+                ))
+
+            template = config.get("aircraft_template")
+            known_templates = {"caravan", "b738", "kingair", "tbm850"}
+            if template and template not in known_templates:
+                findings.append(_finding(
+                    "ocp_template_valid",
+                    "error",
+                    f"Component '{comp_id}': "
+                    f"aircraft_template='{template}' not in {sorted(known_templates)}",
+                ))
+
+            arch = config.get("architecture")
+            known_archs = {
+                "turboprop", "twin_turboprop", "series_hybrid",
+                "twin_series_hybrid", "twin_turbofan",
+            }
+            if arch and arch not in known_archs:
+                findings.append(_finding(
+                    "ocp_architecture_valid",
+                    "error",
+                    f"Component '{comp_id}': "
+                    f"architecture='{arch}' not in {sorted(known_archs)}",
+                ))
+
     # -- Solver checks --
     solvers = plan.get("solvers", {})
     nl_solver = solvers.get("nonlinear", {})

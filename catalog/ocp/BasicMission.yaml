@@ -1,0 +1,91 @@
+# Component catalog entry: OCP BasicMission
+# Reference data for plan authoring -- not executable code.
+
+type: ocp/BasicMission
+source: openconcept
+description: >
+  Climb/cruise/descent mission analysis using OpenConcept. Computes fuel
+  burn, segment durations, and flight profiles for a given aircraft and
+  propulsion architecture.
+import_path: openconcept.mission.BasicMission
+
+inputs:
+  aircraft_template:
+    type: string
+    enum: [caravan, b738, kingair, tbm850]
+    description: Built-in aircraft data template
+  architecture:
+    type: string
+    enum: [turboprop, twin_turboprop, series_hybrid, twin_series_hybrid, twin_turbofan]
+    description: Propulsion architecture
+  num_nodes:
+    type: integer
+    minimum: 3
+    description: Flight condition nodes per phase (MUST be odd for Simpson's rule)
+  mission_params:
+    cruise_altitude_ft:
+      type: number
+      units: ft
+      description: Cruise altitude
+    mission_range_NM:
+      type: number
+      units: NM
+      description: Total mission range
+    climb_vs_ftmin:
+      type: number
+      units: ft/min
+      description: Climb vertical speed
+    climb_Ueas_kn:
+      type: number
+      units: kn
+      description: Climb equivalent airspeed
+    cruise_Ueas_kn:
+      type: number
+      units: kn
+      description: Cruise equivalent airspeed
+    descent_vs_ftmin:
+      type: number
+      units: ft/min
+      description: Descent vertical speed (positive value, auto-negated)
+    descent_Ueas_kn:
+      type: number
+      units: kn
+      description: Descent equivalent airspeed
+
+outputs:
+  fuel_burn_kg:
+    units: kg
+    description: Total mission fuel burn
+  OEW_kg:
+    units: kg
+    description: Operating empty weight
+  MTOW_kg:
+    units: kg
+    description: Maximum takeoff weight
+
+available_slots:
+  drag:
+    default: PolarDrag
+    compatible_providers: [oas/vlm, oas/aerostruct, oas/vlm-direct]
+    description: Drag model (parabolic polar, VLM surrogate, or direct VLM)
+  propulsion:
+    default: architecture-dependent
+    compatible_providers: [pyc/turbojet]
+    description: Propulsion model
+
+recommended_solvers:
+  nonlinear:
+    type: NewtonSolver
+    options:
+      maxiter: 20
+      atol: 1.0e-8
+      rtol: 1.0e-8
+      solve_subsystems: true
+  linear:
+    type: DirectSolver
+
+known_issues:
+  - "num_nodes must be odd (3, 5, 7, ...) for Simpson's rule integration"
+  - "Hybrid architectures require battery_weight in aircraft data"
+  - "Architecture changes invalidate the cached problem"
+  - "descent_vs is provided as a positive number and automatically negated"

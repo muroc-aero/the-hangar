@@ -1,0 +1,57 @@
+# Slot provider catalog entry: oas/vlm
+# Reference data for plan authoring -- not executable code.
+
+provider: oas/vlm
+slot_name: drag
+coupling_level: surrogate
+source: openconcept.aerodynamics.VLMDragPolar
+description: >
+  Surrogate-coupled VLM drag provider. Pre-trains a structured surrogate
+  at initialization by running OAS VLM across a grid of (Mach, alpha,
+  altitude), then interpolates at runtime. The full VLM never runs inside
+  the Newton loop.
+
+config:
+  num_x:
+    type: integer
+    default: 2
+    description: Streamwise mesh panels
+  num_y:
+    type: integer
+    default: 6
+    description: Spanwise mesh panels (half-wing, must be odd)
+  num_twist:
+    type: integer
+    default: 4
+    description: Twist spline control points
+  surf_options:
+    type: object
+    default: {}
+    description: OAS surface dict overrides
+
+inputs:
+  - fltcond|CL
+  - fltcond|M
+  - fltcond|h
+  - fltcond|q
+  - ac|geom|wing|S_ref
+  - ac|geom|wing|AR
+  - ac|geom|wing|taper
+  - ac|geom|wing|c4sweep
+  - ac|geom|wing|twist
+  - ac|aero|CD_nonwing
+
+outputs:
+  - drag
+
+removes_fields:
+  - ac|aero|polar|e
+  - ac|aero|polar|CD0_TO
+  - ac|aero|polar|CD0_cruise
+
+adds_fields:
+  ac|aero|CD_nonwing: 0.0145
+
+performance:
+  training_time: "~6-8 seconds at init"
+  runtime: "milliseconds per iteration"

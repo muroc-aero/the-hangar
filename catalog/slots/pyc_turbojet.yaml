@@ -1,0 +1,64 @@
+# Slot provider catalog entry: pyc/turbojet
+# Reference data for plan authoring -- not executable code.
+
+provider: pyc/turbojet
+slot_name: propulsion
+coupling_level: direct
+source: hangar.omd.slots._PyCycleTurbojetDirect
+description: >
+  Direct-coupled pyCycle turbojet propulsion provider. Builds a multipoint
+  pyCycle problem (1 design + nn off-design) and runs all points in a
+  single solve. Replaces OCP's default propulsion model.
+
+config:
+  design_alt:
+    type: number
+    units: ft
+    default: 35000
+    description: Design-point altitude
+  design_MN:
+    type: number
+    default: 0.8
+    description: Design-point Mach number
+  design_Fn:
+    type: number
+    units: lbf
+    default: 11800
+    description: Design-point net thrust target
+  design_T4:
+    type: number
+    units: degR
+    default: 2370
+    description: Turbine inlet temperature target
+  thermo_method:
+    type: string
+    enum: [TABULAR, CEA]
+    default: TABULAR
+  engine_params:
+    type: object
+    default: {}
+    description: Override default pyCycle turbojet parameters
+
+inputs:
+  - fltcond|h
+  - fltcond|M
+  - throttle
+
+outputs:
+  - thrust
+  - fuel_flow
+
+removes_fields:
+  - ac|propulsion|engine|rating
+  - ac|propulsion|propeller|diameter
+
+adds_fields: {}
+
+performance:
+  runtime: "~22 seconds for nn=11 per compute call"
+  partials: finite-difference (noisy from internal Newton)
+
+known_issues:
+  - "FD partials from pyCycle's internal Newton cause outer Newton convergence issues"
+  - "Full OCP mission integration needs solver research (NLBGS or analytic partials)"
+  - "Works correctly in isolation; mission-level coupling is the challenge"
