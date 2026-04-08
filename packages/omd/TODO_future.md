@@ -116,14 +116,40 @@ Remaining:
   conflict with how the outer Group resolves promoted paths.
 
   Next steps:
-  1. Debug initial-guess flow by comparing prob[] values between
-     standalone and Group-embedded MPTurbojet after setup
-  2. May need to call set_val on the exact absolute balance variable
-     paths instead of promoted names
-  3. Consider using `guess_nonlinear()` override on the Turbojet
-     class to set guesses inside the Newton solve loop
+  1. Debug initial-guess flow: compare `prob[path]` for all balance
+     variables (FAR, W, Nmech, fc Pt/Tt) between standalone
+     `build_multipoint_problem` and Group-embedded MPTurbojet right
+     after setup, before run_model. The difference will pinpoint
+     which guesses are lost during embedding.
+  2. May need to call `set_val` on absolute paths (not promoted) for
+     the balance outputs -- promotion through nested Groups can lose
+     values when `set_input_defaults` and `set_val` interact.
+  3. Consider overriding `guess_nonlinear()` on the Turbojet class
+     to apply guesses inside the Newton solve loop rather than
+     relying on one-time set_val before run_model.
   4. Add variable scaling (`ref`/`ref0`) for thrust, fuel_flow,
-     throttle to improve conditioning
+     throttle to improve conditioning.
+
+  Architecture observations from review:
+  - pyCycle's FlightConditions promotes `alt` (from Ambient) and `MN`
+    (from FlowStart) as Group inputs -- they ARE connectable. The
+    auto_ivc issue does NOT apply here. Connections from slicers to
+    `cycle.OD_{i}.fc.alt` and `cycle.OD_{i}.fc.MN` are accepted and
+    data reaches the atmosphere model (verified via get_val).
+  - The off-design Turbojet balance variables (FAR val=0.3, Nmech
+    val=1.5) have terrible defaults. The standalone builder fixes
+    this by calling `_apply_turbojet_od_guesses` after setup. When
+    embedded in a Group, `apply_initial_guesses()` tries to do the
+    same via `prob.set_val()`, but the balance outputs may already be
+    at wrong values from a previous Group-level default resolution.
+  - Key diagnostic: standalone OD converges to FAR=0.0166, W=47,
+    Nmech=7679. Group-embedded converges to FAR=0.003, W=58,
+    Nmech=5854. The W and Nmech are in the right ballpark but FAR
+    is 5x too low, suggesting the FAR guess didn't propagate.
+  - pyCycle MCP server timing: design point ~4s, off-design ~3-6s.
+    The multipoint approach (all nn in one solve) takes ~22s for
+    nn=11, so amortized cost is ~2s/node -- acceptable for mission
+    analysis if the convergence issue is resolved.
 
   Additional gaps to address:
   - Only turbojet archetype implemented (HBTF, turbofan, turboshaft
