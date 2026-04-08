@@ -3,7 +3,7 @@
 ## What this is
 omd materializes YAML analysis plans into OpenMDAO problems, runs them, and
 records results with PROV-Agent provenance tracking. It uses a factory registry
-to support different component types (OAS aero, OAS aerostruct, paraboloid)
+to support different component types (OAS aero, OAS aerostruct, pyCycle, paraboloid)
 and a plot provider registry so each factory brings its own visualization.
 
 ## Architecture
@@ -57,7 +57,13 @@ All runtime data lives under `hangar_data/omd/` (configurable via `OMD_DATA_ROOT
 - `factories/` -- component builders
   - `oas.py` -- `build_oas_aerostruct()`: coupled aero+struct with Newton solver
   - `oas_aero.py` -- `build_oas_aeropoint()`: aero-only VLM analysis
+  - `pyc.py` -- `build_pyc_turbojet_design()`, `build_pyc_turbojet_multipoint()`: pyCycle gas turbine
   - `paraboloid.py` -- `build_paraboloid()`: trivial test component
+- `pyc/` -- self-contained pyCycle integration (no dependency on hangar.pyc)
+  - `defaults.py` -- default parameters, initial guesses, archetype metadata
+  - `archetypes.py` -- Turbojet and MPTurbojet Cycle classes
+  - `builders.py` -- problem assembly (design-point and multipoint)
+  - `results.py` -- result extraction (performance, flow stations, components)
 - `plotting/` -- factory-aware plot generation
   - `__init__.py` -- `generate_plots()` entry point, N2 HTML handling
   - `_common.py` -- shared helpers: CaseReader access, span extraction, mirroring, elliptical lift
@@ -77,6 +83,8 @@ All runtime data lives under `hangar_data/omd/` (configurable via `OMD_DATA_ROOT
 |------|---------|---------------|-------------|
 | `oas/AerostructPoint` | `build_oas_aerostruct` | `OAS_AEROSTRUCT_PLOTS` | Coupled aero+struct |
 | `oas/AeroPoint` | `build_oas_aeropoint` | `OAS_AERO_PLOTS` | Aero-only VLM |
+| `pyc/TurbojetDesign` | `build_pyc_turbojet_design` | (generic only) | Single-spool turbojet design point |
+| `pyc/TurbojetMultipoint` | `build_pyc_turbojet_multipoint` | (generic only) | Turbojet design + off-design |
 | `paraboloid/Paraboloid` | `build_paraboloid` | (generic only) | Test component |
 
 ## Plot types
@@ -99,6 +107,58 @@ All aero plots plus:
 - `vonmises` -- peak von Mises stress with yield/SF failure limit
 - `skin_spar` -- skin and spar thickness (wingbox only)
 - `t_over_c` -- thickness-to-chord ratio
+
+## How to add a new factory
+
+1. **Create the factory function** in `factories/<tool>.py` matching the signature:
+   `(component_config: dict, operating_points: dict) -> (om.Problem, metadata: dict)`
+   - Build an `om.Problem` but do NOT call `setup()` (the materializer does that)
+   - Return metadata with at least `point_name` and `output_names`
+   - Use `initial_values` for post-setup value assignment (Newton guesses, etc.)
+   - Use `initial_values_with_units` for values that need unit conversion
+2. **Register** in `registry.py` `_register_builtins()` with a `try/except ImportError`
+3. **Add a test fixture** in `tests/fixtures/<name>/` (metadata.yaml, operating_points.yaml, components/*.yaml)
+4. **Add a parity test** in `tests/test_eval_multilane.py` (Lane A: direct API, Lane B: omd pipeline)
+
+### Factory patterns
+
+**Subsystem pattern** (OAS, paraboloid): `prob.model.add_subsystem("name", Component())`
+**Model-is-root pattern** (pyCycle): `prob.model = CycleClass(params=...)`
+Both work. The materializer calls `setup()` after all factories return. For composition
+(`_materialize_composite`), the model is extracted via `inner_prob.model` and added as a
+named subsystem -- internal connections use relative paths and still work.
+
+## Factory metadata keys
+
+| Key | Type | Used by | Description |
+|-----|------|---------|-------------|
+| `point_name` | str | materializer, run.py | Analysis point subsystem name |
+| `point_names` | list[str] | materializer | Multiple points (multipoint) |
+| `surface_names` | list[str] | materializer | OAS surface identifiers |
+| `output_names` | list[str] | run.py | Full OpenMDAO paths for summary extraction |
+| `var_paths` | dict[str,str] | materializer | Short name -> full path for DVs/constraints/objectives |
+| `initial_values` | dict[str,float] | materializer | Values set via `prob.set_val(name, val)` after setup |
+| `initial_values_with_units` | dict[str,dict] | materializer | Values with units: `{"val": 1.0, "units": "ft"}` |
+| `_setup_done` | bool | materializer | True if factory already called setup (skip materializer setup) |
+| `_composite` | bool | materializer | Set by materializer for multi-component plans |
+| `component_family` | str | run.py | Dispatch key for result extraction ("ocp" triggers OCP path) |
+| `multipoint` | bool | run.py | Triggers per-point result extraction |
+| `archetype_meta` | dict | (available) | pyCycle archetype metadata for rich result extraction |
+
+## pyCycle in omd
+
+The `pyc/` subpackage provides self-contained pyCycle support with no dependency on
+`hangar.pyc`. It uses upstream `pycycle` directly.
+
+Key differences from OAS factories:
+- **Model IS the root**: `prob.model = Turbojet(params=...)` -- the Cycle class IS the model
+- **No solver section needed**: Newton + DirectSolver are configured inside `Turbojet.setup()`
+- **Newton guesses are critical**: must be set after `setup()` via `initial_values`
+- **CEA thermo sub-solvers print output**: these are internal to pyCycle elements and not
+  controlled by the top-level solver iprint setting
+
+Available archetypes: turbojet (HBTF planned). Each archetype defines element topology,
+flow connections, balance equations, and solver configuration.
 
 ## Key conventions
 - Plot functions match oas-cli style: 6x3.6 in figures, suptitle with run_id,

@@ -180,3 +180,24 @@ def _register_builtins() -> None:
                          plot_provider=OCP_MISSION_PLOTS)
     except ImportError:
         logger.info("OpenConcept not available, OCP factories not registered")
+
+    # pyCycle factories: optional, require pycycle
+    try:
+        from hangar.omd.factories.pyc import (
+            build_pyc_turbojet_design,
+            build_pyc_turbojet_multipoint,
+            build_pyc_hbtf_design,
+            build_pyc_ab_turbojet_design,
+            build_pyc_single_turboshaft_design,
+            build_pyc_multi_turboshaft_design,
+            build_pyc_mixedflow_design,
+        )
+        register_factory("pyc/TurbojetDesign", build_pyc_turbojet_design)
+        register_factory("pyc/TurbojetMultipoint", build_pyc_turbojet_multipoint)
+        register_factory("pyc/HBTFDesign", build_pyc_hbtf_design)
+        register_factory("pyc/ABTurbojetDesign", build_pyc_ab_turbojet_design)
+        register_factory("pyc/SingleTurboshaftDesign", build_pyc_single_turboshaft_design)
+        register_factory("pyc/MultiTurboshaftDesign", build_pyc_multi_turboshaft_design)
+        register_factory("pyc/MixedFlowDesign", build_pyc_mixedflow_design)
+    except ImportError:
+        logger.info("pyCycle not available, pyCycle factories not registered")

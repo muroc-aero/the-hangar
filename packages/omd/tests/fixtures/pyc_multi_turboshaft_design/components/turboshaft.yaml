@@ -1,0 +1,13 @@
+id: multi_turboshaft
+type: pyc/MultiTurboshaftDesign
+config:
+  thermo_method: CEA
+  lpc_PR: 5.0
+  lpc_eff: 0.89
+  hpc_axi_PR: 3.0
+  hpc_axi_eff: 0.89
+  hpc_centri_PR: 2.7
+  hpc_centri_eff: 0.88
+  hpt_eff: 0.89
+  lpt_eff: 0.9
+  pt_eff: 0.85

@@ -1,0 +1,8 @@
+id: ab_turbojet
+type: pyc/ABTurbojetDesign
+config:
+  thermo_method: CEA
+  comp_PR: 13.5
+  comp_eff: 0.83
+  turb_eff: 0.86
+  Nmech: 8070.0

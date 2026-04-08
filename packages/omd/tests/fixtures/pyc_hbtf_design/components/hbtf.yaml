@@ -1,0 +1,12 @@
+id: hbtf
+type: pyc/HBTFDesign
+config:
+  thermo_method: CEA
+  fan_PR: 1.685
+  fan_eff: 0.8948
+  lpc_PR: 1.935
+  lpc_eff: 0.9243
+  hpc_PR: 9.369
+  hpc_eff: 0.8707
+  hpt_eff: 0.8888
+  lpt_eff: 0.8996

@@ -1,0 +1,12 @@
+id: mixedflow
+type: pyc/MixedFlowDesign
+config:
+  thermo_method: CEA
+  fan_PR: 3.3
+  fan_eff: 0.8948
+  lpc_PR: 1.935
+  lpc_eff: 0.9243
+  hpc_PR: 4.9
+  hpc_eff: 0.8707
+  hpt_eff: 0.8888
+  lpt_eff: 0.8996

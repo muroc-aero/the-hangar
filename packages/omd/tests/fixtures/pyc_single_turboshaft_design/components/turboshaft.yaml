@@ -1,0 +1,10 @@
+id: turboshaft
+type: pyc/SingleTurboshaftDesign
+config:
+  thermo_method: CEA
+  comp_PR: 13.5
+  comp_eff: 0.83
+  turb_eff: 0.86
+  pt_eff: 0.9
+  HP_Nmech: 8070.0
+  LP_Nmech: 5000.0
