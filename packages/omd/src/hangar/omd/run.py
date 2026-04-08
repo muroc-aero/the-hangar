@@ -741,6 +741,56 @@ def _extract_summary(prob, metadata: dict, mode: str) -> dict:
     return summary
 
 
+# Per-phase profile variables to extract from OCP missions.
+# Maps output key -> (OpenMDAO variable name, units).
+_OCP_PROFILE_VARS: dict[str, tuple[str, str | None]] = {
+    "altitude_m": ("fltcond|h", "m"),
+    "velocity_ms": ("fltcond|Utrue", "m/s"),
+    "mach": ("fltcond|M", None),
+    "thrust_kN": ("thrust", "kN"),
+    "drag_N": ("drag", "N"),
+    "fuel_flow_kgs": ("fuel_flow", "kg/s"),
+    "weight_kg": ("weight", "kg"),
+}
+
+
+def _extract_ocp_profiles(prob, phases: list[str], prefix: str = "") -> dict:
+    """Extract per-phase profile arrays from a solved OCP mission.
+
+    Parameters
+    ----------
+    prob : om.Problem
+        Solved OpenMDAO problem.
+    phases : list[str]
+        Phase names (e.g. ["climb", "cruise", "descent"]).
+    prefix : str
+        Optional prefix for composite problems (e.g. "mission.").
+
+    Returns
+    -------
+    dict
+        ``{phase: {key: [values], ...}, ...}`` or empty if nothing found.
+    """
+    import numpy as np
+
+    profiles: dict = {}
+    for phase in phases:
+        phase_data: dict = {}
+        for key, (var, units) in _OCP_PROFILE_VARS.items():
+            path = f"{prefix}{phase}.{var}"
+            try:
+                if units:
+                    val = prob.get_val(path, units=units)
+                else:
+                    val = prob.get_val(path)
+                phase_data[key] = np.atleast_1d(val).tolist()
+            except (KeyError, Exception):
+                pass
+        if phase_data:
+            profiles[phase] = phase_data
+    return profiles
+
+
 def _extract_ocp_summary(prob, metadata: dict, mode: str) -> dict:
     """Extract key results from a solved OpenConcept mission problem."""
     import numpy as np
@@ -794,6 +844,11 @@ def _extract_ocp_summary(prob, metadata: dict, mode: str) -> dict:
     summary["mission_type"] = metadata.get("mission_type", "unknown")
     summary["num_nodes"] = metadata.get("num_nodes")
 
+    # Per-phase profiles (altitude, speed, thrust, drag, etc.)
+    profiles = _extract_ocp_profiles(prob, phases)
+    if profiles:
+        summary["profiles"] = profiles
+
     return summary
 
 
@@ -840,6 +895,13 @@ def _extract_composite_summary(prob, metadata: dict, mode: str) -> dict:
                 tofl = _safe_get("rotate.range_final")
                 if tofl is not None:
                     comp_summary["TOFL_m"] = tofl
+
+            # Per-phase profiles
+            comp_profiles = _extract_ocp_profiles(
+                prob, phases, prefix=f"{comp_id}."
+            )
+            if comp_profiles:
+                comp_summary["profiles"] = comp_profiles
 
         elif comp_type.startswith("oas/"):
             # OAS: extract CL, CD

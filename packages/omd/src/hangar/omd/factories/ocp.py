@@ -119,6 +119,7 @@ _CARAVAN_DATA: dict = {
         },
         "weights": {
             "MTOW": {"value": 3970, "units": "kg"},
+            "OEW": {"value": 2145, "units": "kg"},
             "W_fuel_max": {"value": 1018, "units": "kg"},
             "MLW": {"value": 3358, "units": "kg"},
         },
@@ -205,6 +206,7 @@ _KINGAIR_DATA: dict = {
         },
         "weights": {
             "MTOW": {"value": 4581, "units": "kg"},
+            "OEW": {"value": 2585, "units": "kg"},
             "W_fuel_max": {"value": 1166, "units": "kg"},
             "MLW": {"value": 4355, "units": "kg"},
             "W_battery": {"value": 100, "units": "kg"},
@@ -255,6 +257,7 @@ _TBM850_DATA: dict = {
         },
         "weights": {
             "MTOW": {"value": 3353, "units": "kg"},
+            "OEW": {"value": 2073, "units": "kg"},
             "W_fuel_max": {"value": 2000, "units": "lb"},
             "MLW": {"value": 7000, "units": "lb"},
         },
@@ -567,7 +570,33 @@ def _make_aircraft_model_class(
                 )
 
             # Empty weight
-            if WeightClass is not None:
+            weight_slot = (slots or {}).get("weight")
+            if weight_slot is not None:
+                from hangar.omd.slots import get_slot_provider as _get_wt_provider
+                wt_provider_fn = _get_wt_provider(weight_slot["provider"])
+                wt_comp, wt_prom_in, wt_prom_out = wt_provider_fn(
+                    nn, flight_phase, weight_slot.get("config", {}),
+                )
+                self.add_subsystem(
+                    "OEW", wt_comp,
+                    promotes_inputs=wt_prom_in,
+                    promotes_outputs=wt_prom_out,
+                )
+            elif propulsion_slot is not None:
+                # Propulsion slot providers don't expose W_engine/W_propeller.
+                # Use OEW passthrough (same as CFM56 path).
+                passthru = om.ExecComp(
+                    "OEW=x",
+                    x={"val": 1.0, "units": "kg"},
+                    OEW={"val": 1.0, "units": "kg"},
+                )
+                self.add_subsystem(
+                    "OEW",
+                    passthru,
+                    promotes_inputs=[("x", "ac|weights|OEW")],
+                    promotes_outputs=["OEW"],
+                )
+            elif WeightClass is not None:
                 self.add_subsystem(
                     "OEW",
                     WeightClass(),
@@ -914,7 +943,7 @@ def _build_mission_problem(
                 _register_fields(dv_comp, ac_data, _hybrid)
             if arch_info["num_engines"] > 1:
                 _register_fields(dv_comp, ac_data, _MULTI_ENGINE_FIELDS)
-            if is_cfm56:
+            if is_cfm56 or (slots and "propulsion" in slots):
                 _register_fields(dv_comp, ac_data, _OEW_FIELDS)
 
             # Add fields from slot providers
@@ -1010,6 +1039,24 @@ def _build_mission_problem(
     }
     if mission_type == "full":
         var_paths["TOFL"] = "rotate.range_final"
+
+    # Collect design variables declared by active slot providers
+    _slot_subsys_map = {"propulsion": "propmodel", "drag": "drag"}
+    if slots:
+        from hangar.omd.slots import get_slot_provider
+        for slot_name, slot_cfg in slots.items():
+            if isinstance(slot_cfg, dict) and "provider" in slot_cfg:
+                provider = get_slot_provider(slot_cfg["provider"])
+                slot_dvs = getattr(provider, "design_variables", {})
+                subsys = _slot_subsys_map.get(slot_name, slot_name)
+                first_phase = phases[0] if phases else "climb"
+                for short_name, rel_path in slot_dvs.items():
+                    if "|" in rel_path:
+                        # Pipe-separated = promoted to top level
+                        var_paths[short_name] = rel_path
+                    else:
+                        # Dot-separated = nested inside subsystem
+                        var_paths[short_name] = f"{first_phase}.{subsys}.{rel_path}"
 
     metadata = {
         "component_family": "ocp",

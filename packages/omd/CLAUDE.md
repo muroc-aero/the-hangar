@@ -74,6 +74,7 @@ All runtime data lives under `hangar_data/omd/` (configurable via `OMD_DATA_ROOT
   - `_DirectPyCycleHBTFPropGroup` -- native pyCycle HBTF in OCP solver chain
   - `PyCycleSurrogateGroup` -- Kriging surrogate from pyCycle off-design sweeps
   - `_DirectVLMDragGroup` -- direct-coupled OAS VLM drag
+  - `_ParametricWeightGroup` -- parametric OEW model (weight slot)
 - `plotting/` -- factory-aware plot generation
   - `__init__.py` -- `generate_plots()` entry point, N2 HTML handling
   - `_common.py` -- shared helpers: CaseReader access, span extraction, mirroring, elliptical lift
@@ -197,6 +198,53 @@ Key lessons from integration:
 - `guess_nonlinear` on Cycle classes is essential for embedded convergence
 - ExecComp unit passthrough: use same units on input/output, let connections convert
 - `apply_initial_guesses` must handle both promoted and non-promoted paths
+- Direct-coupled pyCycle converges in a full OCP mission (Newton-in-Newton works)
+- Dual-surrogate coupling (VLM + pyCycle surrogates) produces singular Jacobians;
+  use at least one direct-coupled provider when combining both slots
+
+## Slot provider design variables
+
+Slot providers declare a `design_variables` attribute mapping short names to
+internal OpenMDAO paths. The OCP factory collects these into `var_paths` so the
+materializer can resolve them for optimization.
+
+| Provider | DVs |
+|----------|-----|
+| `pyc/turbojet` | comp_PR, comp_eff, turb_eff |
+| `pyc/hbtf` | fan_PR, fan_eff, hpc_PR, hpc_eff |
+| `pyc/surrogate` | (none -- baked into deck) |
+| `oas/vlm` | twist_cp |
+| `oas/vlm-direct` | twist_cp |
+| `oas/aerostruct` | twist_cp, toverc_cp |
+
+Pipe-separated paths (e.g., `ac|geom|wing|twist`) are promoted to top level.
+Dot-separated paths (e.g., `cycle.DESIGN.comp.PR`) are prefixed with
+`{first_phase}.{subsystem}.` (e.g., `climb.propmodel.cycle.DESIGN.comp.PR`).
+
+## Weight slot
+
+OCP declares three slots: drag, propulsion, and weight. The weight slot
+replaces the default `WeightClass` empty-weight model.
+
+| Provider | Class | Description |
+|----------|-------|-------------|
+| `ocp/parametric-weight` | `_ParametricWeightGroup` | OEW = sum of component weights |
+
+Weight model precedence in `_make_aircraft_model_class()`:
+1. Weight slot provider (if `slots["weight"]` provided)
+2. OEW passthrough (if propulsion slot is active -- no component weights available)
+3. Architecture-specific WeightClass (default)
+4. CFM56 passthrough (OEW from input)
+
+The parametric weight provider supports `use_wing_weight: true` to read
+`ac|weights|W_wing` from an aerostruct drag slot.
+
+## OCP per-phase profile extraction
+
+`_extract_ocp_summary()` extracts per-phase arrays stored in
+`summary["profiles"][phase]`. Variables: altitude_m, velocity_ms, mach,
+thrust_kN, drag_N, fuel_flow_kgs, weight_kg. Each is a list of length
+num_nodes.
 
 ## Key conventions
 - Plot functions match oas-cli style: 6x3.6 in figures, suptitle with run_id,

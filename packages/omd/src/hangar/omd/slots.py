@@ -90,6 +90,9 @@ def _register_builtins() -> None:
     except ImportError:
         logger.info("pyCycle not available, pyCycle slots not registered")
 
+    # Weight slot (no external dependencies)
+    register_slot_provider("ocp/parametric-weight", _parametric_weight_provider)
+
 
 # ---------------------------------------------------------------------------
 # OAS VLM drag provider
@@ -140,6 +143,9 @@ _oas_vlm_drag_provider.removes_fields = [
     "ac|aero|polar|CD0_TO",
     "ac|aero|polar|CD0_cruise",
 ]
+_oas_vlm_drag_provider.design_variables = {
+    "twist_cp": "ac|geom|wing|twist",
+}
 _oas_vlm_drag_provider.adds_fields = {
     "ac|aero|CD_nonwing": {"value": 0.0145},
 }
@@ -209,6 +215,10 @@ _oas_aerostruct_drag_provider.removes_fields = [
     "ac|aero|polar|CD0_TO",
     "ac|aero|polar|CD0_cruise",
 ]
+_oas_aerostruct_drag_provider.design_variables = {
+    "twist_cp": "ac|geom|wing|twist",
+    "toverc_cp": "ac|geom|wing|toverc",
+}
 _oas_aerostruct_drag_provider.adds_fields = {
     "ac|aero|CD_nonwing": {"value": 0.0145},
 }
@@ -501,6 +511,9 @@ _oas_vlm_direct_drag_provider.removes_fields = [
     "ac|aero|polar|CD0_TO",
     "ac|aero|polar|CD0_cruise",
 ]
+_oas_vlm_direct_drag_provider.design_variables = {
+    "twist_cp": "ac|geom|wing|twist",
+}
 _oas_vlm_direct_drag_provider.adds_fields = {
     "ac|aero|CD_nonwing": {"value": 0.0145},
 }
@@ -754,6 +767,11 @@ _pyc_turbojet_propulsion_provider.removes_fields = [
     "ac|propulsion|engine|rating",
     "ac|propulsion|propeller|diameter",
 ]
+_pyc_turbojet_propulsion_provider.design_variables = {
+    "comp_PR": "cycle.DESIGN.comp.PR",
+    "comp_eff": "cycle.DESIGN.comp.eff",
+    "turb_eff": "cycle.DESIGN.turb.eff",
+}
 _pyc_turbojet_propulsion_provider.adds_fields = {}
 
 
@@ -955,6 +973,12 @@ _pyc_hbtf_propulsion_provider.removes_fields = [
     "ac|propulsion|engine|rating",
     "ac|propulsion|propeller|diameter",
 ]
+_pyc_hbtf_propulsion_provider.design_variables = {
+    "fan_PR": "cycle.DESIGN.fan.PR",
+    "fan_eff": "cycle.DESIGN.fan.eff",
+    "hpc_PR": "cycle.DESIGN.hpc.PR",
+    "hpc_eff": "cycle.DESIGN.hpc.eff",
+}
 _pyc_hbtf_propulsion_provider.adds_fields = {}
 
 
@@ -1004,4 +1028,70 @@ _pyc_surrogate_propulsion_provider.removes_fields = [
     "ac|propulsion|engine|rating",
     "ac|propulsion|propeller|diameter",
 ]
+_pyc_surrogate_propulsion_provider.design_variables = {}  # surrogates don't expose internal DVs
 _pyc_surrogate_propulsion_provider.adds_fields = {}
+
+
+# ---------------------------------------------------------------------------
+# OCP parametric weight provider
+# ---------------------------------------------------------------------------
+
+
+class _ParametricWeightGroup(om.ExplicitComponent):
+    """Parametric weight model: OEW = sum of component weights.
+
+    Accepts optional structural weight from an aerostruct drag slot
+    via the ``W_struct`` input. All inputs have configurable defaults.
+    """
+
+    def initialize(self):
+        self.options.declare("W_struct_default", default=500.0, types=float)
+        self.options.declare("W_engine_default", default=200.0, types=float)
+        self.options.declare("W_systems_default", default=800.0, types=float)
+        self.options.declare("W_payload_equip_default", default=300.0, types=float)
+
+    def setup(self):
+        self.add_input("W_struct", val=self.options["W_struct_default"], units="kg")
+        self.add_input("W_engine", val=self.options["W_engine_default"], units="kg")
+        self.add_input("W_systems", val=self.options["W_systems_default"], units="kg")
+        self.add_input("W_payload_equip", val=self.options["W_payload_equip_default"], units="kg")
+        self.add_output("OEW", units="kg")
+        self.declare_partials("OEW", "*", val=1.0)
+
+    def compute(self, inputs, outputs):
+        outputs["OEW"] = (
+            inputs["W_struct"]
+            + inputs["W_engine"]
+            + inputs["W_systems"]
+            + inputs["W_payload_equip"]
+        )
+
+
+def _parametric_weight_provider(
+    nn: int,
+    flight_phase: str,
+    config: dict,
+) -> tuple[om.ExplicitComponent, list[str], list[str]]:
+    """Build a parametric weight model for the weight slot."""
+    component = _ParametricWeightGroup(
+        W_struct_default=float(config.get("W_struct", 500.0)),
+        W_engine_default=float(config.get("W_engine", 200.0)),
+        W_systems_default=float(config.get("W_systems", 800.0)),
+        W_payload_equip_default=float(config.get("W_payload_equip", 300.0)),
+    )
+
+    promotes_inputs = ["W_engine", "W_systems", "W_payload_equip"]
+    if config.get("use_wing_weight"):
+        # Connect W_struct to the aerostruct drag slot output
+        promotes_inputs.append(("W_struct", "ac|weights|W_wing"))
+    else:
+        promotes_inputs.append("W_struct")
+
+    promotes_outputs = ["OEW"]
+    return component, promotes_inputs, promotes_outputs
+
+
+_parametric_weight_provider.slot_name = "weight"
+_parametric_weight_provider.removes_fields = []
+_parametric_weight_provider.design_variables = {}
+_parametric_weight_provider.adds_fields = {}

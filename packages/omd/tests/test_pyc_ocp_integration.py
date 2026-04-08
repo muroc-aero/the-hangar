@@ -263,6 +263,158 @@ class TestDirectPyCycleHBTFSlot:
 
 
 # ---------------------------------------------------------------------------
+# Slot design variable exposure
+# ---------------------------------------------------------------------------
+
+
+class TestSlotDesignVariables:
+    """Verify slot providers expose design variables through var_paths."""
+
+    def test_turbojet_slot_exposes_dvs(self):
+        """pyc/turbojet provider declares comp_PR, comp_eff, turb_eff."""
+        from hangar.omd.slots import get_slot_provider
+
+        provider = get_slot_provider("pyc/turbojet")
+        dvs = getattr(provider, "design_variables", {})
+        assert "comp_PR" in dvs
+        assert "comp_eff" in dvs
+        assert "turb_eff" in dvs
+
+    def test_vlm_drag_slot_exposes_dvs(self):
+        """oas/vlm provider declares twist_cp."""
+        from hangar.omd.slots import get_slot_provider
+
+        provider = get_slot_provider("oas/vlm")
+        dvs = getattr(provider, "design_variables", {})
+        assert "twist_cp" in dvs
+
+    def test_surrogate_slot_has_no_dvs(self):
+        """pyc/surrogate exposes no DVs (baked into deck)."""
+        from hangar.omd.slots import get_slot_provider
+
+        provider = get_slot_provider("pyc/surrogate")
+        dvs = getattr(provider, "design_variables", {})
+        assert len(dvs) == 0
+
+    def test_ocp_factory_collects_slot_dvs(self):
+        """OCP factory includes slot DVs in metadata var_paths."""
+        from hangar.omd.factories.ocp import build_ocp_basic_mission
+
+        config = {
+            "aircraft_template": "caravan",
+            "architecture": "turboprop",
+            "num_nodes": 3,
+            "_defer_setup": True,
+            "slots": {
+                "propulsion": {
+                    "provider": "pyc/turbojet",
+                    "config": {
+                        "design_alt": 0,
+                        "design_MN": 0.000001,
+                        "design_Fn": 4000,
+                        "design_T4": 2370,
+                        "thermo_method": "TABULAR",
+                    },
+                },
+            },
+        }
+
+        prob, metadata = build_ocp_basic_mission(config, {})
+        var_paths = metadata["var_paths"]
+
+        # Slot DVs should be present with phase-prefixed paths
+        assert "comp_PR" in var_paths
+        assert "climb.propmodel." in var_paths["comp_PR"]
+        assert "comp_eff" in var_paths
+        assert "turb_eff" in var_paths
+
+
+# ---------------------------------------------------------------------------
+# Weight slot provider
+# ---------------------------------------------------------------------------
+
+
+class TestWeightSlot:
+    """Verify parametric weight slot provider."""
+
+    def test_parametric_weight_standalone(self):
+        """_ParametricWeightGroup sums component weights to OEW."""
+        from hangar.omd.slots import _ParametricWeightGroup
+
+        prob = om.Problem(reports=False)
+        prob.model.add_subsystem("wt", _ParametricWeightGroup(
+            W_struct_default=600.0,
+            W_engine_default=250.0,
+            W_systems_default=900.0,
+            W_payload_equip_default=350.0,
+        ), promotes=["*"])
+        prob.setup()
+        prob.run_model()
+
+        oew = float(prob.get_val("OEW", units="kg"))
+        np.testing.assert_allclose(oew, 600 + 250 + 900 + 350)
+        prob.cleanup()
+
+    def test_weight_slot_provider_interface(self):
+        """ocp/parametric-weight registers as a weight slot."""
+        from hangar.omd.slots import get_slot_provider
+
+        provider = get_slot_provider("ocp/parametric-weight")
+        assert provider.slot_name == "weight"
+        assert len(provider.removes_fields) == 0
+
+        comp, prom_in, prom_out = provider(
+            nn=3, flight_phase="cruise",
+            config={"W_struct": 700.0, "W_engine": 300.0},
+        )
+        assert "OEW" in prom_out
+
+    def test_weight_slot_in_ocp_factory(self):
+        """OCP factory with weight slot produces valid OEW."""
+        from hangar.omd.factories.ocp import build_ocp_basic_mission
+
+        config = {
+            "aircraft_template": "caravan",
+            "architecture": "turboprop",
+            "num_nodes": 3,
+            "mission_params": {
+                "cruise_altitude_ft": 18000,
+                "mission_range_NM": 250,
+                "climb_vs_ftmin": 850,
+                "climb_Ueas_kn": 104,
+                "cruise_Ueas_kn": 129,
+                "descent_vs_ftmin": 400,
+                "descent_Ueas_kn": 100,
+            },
+            "slots": {
+                "weight": {
+                    "provider": "ocp/parametric-weight",
+                    "config": {
+                        "W_struct": 600.0,
+                        "W_engine": 250.0,
+                        "W_systems": 900.0,
+                        "W_payload_equip": 350.0,
+                    },
+                },
+            },
+        }
+
+        prob, metadata = build_ocp_basic_mission(config, {})
+        prob.run_model()
+
+        oew = float(np.atleast_1d(prob.get_val("climb.OEW", units="kg"))[0])
+        np.testing.assert_allclose(oew, 600 + 250 + 900 + 350, rtol=1e-6)
+
+        # Mission should still produce positive fuel burn
+        fuel_burn = float(np.atleast_1d(
+            prob.get_val("descent.fuel_used_final", units="kg")
+        )[0])
+        assert fuel_burn > 0, f"Fuel burn should be positive: {fuel_burn}"
+
+        prob.cleanup()
+
+
+# ---------------------------------------------------------------------------
 # guess_nonlinear verification
 # ---------------------------------------------------------------------------
 
@@ -309,5 +461,276 @@ class TestGuessNonlinear:
 
         Fn = float(prob.get_val("perf.Fn", units="lbf"))
         np.testing.assert_allclose(Fn, 11800.0, rtol=1e-4)
+
+        prob.cleanup()
+
+
+# ---------------------------------------------------------------------------
+# Full OCP mission convergence tests
+# ---------------------------------------------------------------------------
+
+
+class TestFullMissionConvergence:
+    """Full OCP BasicMission with pyCycle propulsion slot.
+
+    These tests use pre-generated surrogate decks to avoid the ~20 min
+    deck generation time during the test itself.
+    """
+
+    def test_surrogate_mission_converges(self, tmp_path):
+        """BasicMission with pyc/surrogate produces positive fuel burn.
+
+        Uses a turbojet designed at moderate altitude (10000 ft, MN=0.3)
+        so the off-design envelope covers the mission profile. TABULAR
+        thermo for robustness.
+        """
+        from hangar.omd.pyc.surrogate import generate_deck, save_deck
+        from hangar.omd.factories.ocp import build_ocp_basic_mission
+
+        # Design the engine at conditions closer to the cruise point
+        design_conds = {
+            "alt": 10000.0,  # ft
+            "MN": 0.3,
+            "Fn_target": 4000.0,  # lbf
+            "T4_target": 2370.0,  # degR
+        }
+
+        # Grid covers the Caravan flight envelope
+        grid = {
+            "alt_ft": [0.0, 5000.0, 10000.0, 15000.0, 20000.0],
+            "MN": [0.05, 0.15, 0.25, 0.35, 0.45],
+            "throttle": [0.3, 0.65, 1.0],
+        }
+        deck = generate_deck(
+            archetype="turbojet",
+            design_conditions=design_conds,
+            engine_params={"thermo_method": "TABULAR"},
+            grid_spec=grid,
+        )
+        deck_path = tmp_path / "turbojet.npz"
+        save_deck(deck, deck_path)
+
+        # Verify enough converged points for Kriging
+        n_converged = deck["converged"].sum()
+        assert n_converged >= 20, (
+            f"Need at least 20 converged deck points, got {n_converged}"
+        )
+
+        config = {
+            "aircraft_template": "caravan",
+            "architecture": "turboprop",
+            "num_nodes": 3,
+            "mission_params": {
+                "cruise_altitude_ft": 15000,
+                "mission_range_NM": 200,
+                "climb_vs_ftmin": 850,
+                "climb_Ueas_kn": 104,
+                "cruise_Ueas_kn": 129,
+                "descent_vs_ftmin": 400,
+                "descent_Ueas_kn": 100,
+            },
+            "solver_settings": {"maxiter": 50},
+            "slots": {
+                "propulsion": {
+                    "provider": "pyc/surrogate",
+                    "config": {
+                        "deck_path": str(deck_path),
+                    },
+                },
+            },
+        }
+
+        prob, metadata = build_ocp_basic_mission(config, {})
+        # Factory already calls setup() and set_val() when defer_setup=False
+        prob.run_model()
+
+        fuel_burn = float(np.atleast_1d(
+            prob.get_val("descent.fuel_used_final", units="kg")
+        )[0])
+        assert fuel_burn > 0, f"Fuel burn should be positive: {fuel_burn}"
+
+        for phase in ["climb", "cruise", "descent"]:
+            thrust = np.atleast_1d(prob.get_val(f"{phase}.thrust", units="kN"))
+            assert (thrust > 0).all(), f"{phase} thrust not positive: {thrust}"
+
+        prob.cleanup()
+
+    def test_direct_turbojet_mission_convergence(self):
+        """BasicMission with pyc/turbojet (direct coupling).
+
+        Tests that the outer Newton can drive throttle while pyCycle's
+        inner Newton converges. Uses TABULAR thermo for speed.
+        """
+        from hangar.omd.factories.ocp import build_ocp_basic_mission
+
+        config = {
+            "aircraft_template": "caravan",
+            "architecture": "turboprop",
+            "num_nodes": 3,
+            "mission_params": {
+                "cruise_altitude_ft": 18000,
+                "mission_range_NM": 250,
+                "climb_vs_ftmin": 850,
+                "climb_Ueas_kn": 104,
+                "cruise_Ueas_kn": 129,
+                "descent_vs_ftmin": 400,
+                "descent_Ueas_kn": 100,
+            },
+            "solver_settings": {"maxiter": 25},
+            "slots": {
+                "propulsion": {
+                    "provider": "pyc/turbojet",
+                    "config": {
+                        "design_alt": 0,
+                        "design_MN": 0.000001,
+                        "design_Fn": 4000,
+                        "design_T4": 2370,
+                        "thermo_method": "TABULAR",
+                    },
+                },
+            },
+        }
+
+        prob, metadata = build_ocp_basic_mission(config, {})
+        # Factory already calls setup() and set_val() when defer_setup=False
+
+        # Apply initial guesses for pyCycle convergence
+        for phase in metadata.get("phases", []):
+            subsys = prob.model._get_subsystem(f"{phase}.propmodel")
+            if subsys is not None and hasattr(subsys, "apply_initial_guesses"):
+                subsys.apply_initial_guesses(prob)
+
+        prob.run_model()
+
+        fuel_burn = float(np.atleast_1d(
+            prob.get_val("descent.fuel_used_final", units="kg")
+        )[0])
+        assert fuel_burn > 0, f"Fuel burn should be positive: {fuel_burn}"
+
+        for phase in ["climb", "cruise", "descent"]:
+            thrust = np.atleast_1d(prob.get_val(f"{phase}.thrust", units="kN"))
+            assert (thrust > 0).all(), f"{phase} thrust not positive: {thrust}"
+
+        prob.cleanup()
+
+
+# ---------------------------------------------------------------------------
+# Three-tool composition (OCP + OAS + pyCycle)
+# ---------------------------------------------------------------------------
+
+
+class TestThreeToolMission:
+    """Test OCP mission with both drag and propulsion slots filled."""
+
+    def test_three_tool_factory_builds(self):
+        """OCP factory accepts both drag and propulsion slots without error."""
+        from hangar.omd.factories.ocp import build_ocp_basic_mission
+
+        config = {
+            "aircraft_template": "caravan",
+            "architecture": "turboprop",
+            "num_nodes": 3,
+            "_defer_setup": True,
+            "slots": {
+                "drag": {
+                    "provider": "oas/vlm",
+                    "config": {"num_x": 2, "num_y": 7, "num_twist": 4},
+                },
+                "propulsion": {
+                    "provider": "pyc/surrogate",
+                    "config": {
+                        "archetype": "turbojet",
+                        "design_alt": 0,
+                        "design_MN": 0.000001,
+                        "design_Fn": 4000,
+                        "design_T4": 2370,
+                    },
+                },
+            },
+        }
+
+        prob, metadata = build_ocp_basic_mission(config, {})
+
+        # Both slot DVs should be in var_paths
+        var_paths = metadata["var_paths"]
+        assert "twist_cp" in var_paths, (
+            f"twist_cp not in var_paths: {list(var_paths.keys())}"
+        )
+
+        # Declared slots should reflect defaults (not the active providers)
+        assert metadata["declared_slots"]["drag"]["default"] == "PolarDrag"
+        assert metadata["declared_slots"]["propulsion"]["default"] == "turboprop"
+
+    @pytest.mark.xfail(
+        reason=(
+            "Three-tool coupling (VLM surrogate drag + pyCycle surrogate "
+            "propulsion) produces a singular Jacobian in the DirectSolver. "
+            "Both surrogates provide FD-based partials that together make "
+            "the Newton system ill-conditioned. Needs solver research: "
+            "NLBGS, or direct-coupled drag instead of surrogate."
+        ),
+        strict=False,
+    )
+    def test_three_tool_surrogate_mission(self, tmp_path):
+        """Full three-tool mission: OAS VLM drag + pyCycle surrogate propulsion."""
+        from hangar.omd.pyc.surrogate import generate_deck, save_deck
+        from hangar.omd.factories.ocp import build_ocp_basic_mission
+
+        # Generate deck with design at moderate altitude
+        grid = {
+            "alt_ft": [0.0, 5000.0, 10000.0, 15000.0, 20000.0],
+            "MN": [0.05, 0.15, 0.25, 0.35, 0.45],
+            "throttle": [0.3, 0.65, 1.0],
+        }
+        deck = generate_deck(
+            archetype="turbojet",
+            design_conditions={
+                "alt": 10000.0, "MN": 0.3, "Fn_target": 4000.0, "T4_target": 2370.0,
+            },
+            engine_params={"thermo_method": "TABULAR"},
+            grid_spec=grid,
+        )
+        deck_path = tmp_path / "turbojet.npz"
+        save_deck(deck, deck_path)
+
+        config = {
+            "aircraft_template": "caravan",
+            "architecture": "turboprop",
+            "num_nodes": 3,
+            "mission_params": {
+                "cruise_altitude_ft": 15000,
+                "mission_range_NM": 200,
+                "climb_vs_ftmin": 850,
+                "climb_Ueas_kn": 104,
+                "cruise_Ueas_kn": 129,
+                "descent_vs_ftmin": 400,
+                "descent_Ueas_kn": 100,
+            },
+            "solver_settings": {"maxiter": 50},
+            "slots": {
+                "drag": {
+                    "provider": "oas/vlm",
+                    "config": {"num_x": 2, "num_y": 7, "num_twist": 4},
+                },
+                "propulsion": {
+                    "provider": "pyc/surrogate",
+                    "config": {"deck_path": str(deck_path)},
+                },
+            },
+        }
+
+        prob, metadata = build_ocp_basic_mission(config, {})
+        prob.run_model()
+
+        fuel_burn = float(np.atleast_1d(
+            prob.get_val("descent.fuel_used_final", units="kg")
+        )[0])
+        assert fuel_burn > 0, f"Fuel burn should be positive: {fuel_burn}"
+
+        for phase in ["climb", "cruise", "descent"]:
+            thrust = np.atleast_1d(prob.get_val(f"{phase}.thrust", units="kN"))
+            assert (thrust > 0).all(), f"{phase} thrust not positive: {thrust}"
+            drag = np.atleast_1d(prob.get_val(f"{phase}.drag", units="N"))
+            assert (drag > 0).all(), f"{phase} drag not positive: {drag}"
 
         prob.cleanup()

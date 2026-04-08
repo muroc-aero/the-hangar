@@ -120,6 +120,120 @@ Remaining:
 - T4, OPR, flow station details not surfaced through slot interface
 
 
+## P5: Three-Tool Composition (OCP + OAS + pyCycle)
+
+**Status: PARTIAL** (factory builds, convergence blocked)
+
+Goal: validate that both OCP slots (drag + propulsion) can be filled
+simultaneously in a single mission.
+
+Completed:
+- Factory builds without errors when both slots are provided
+- Field removal sets are disjoint (no conflicts)
+- Example in `examples/ocp_three_tool/` (lane_b plan, lane_c prompt)
+- `TestThreeToolMission::test_three_tool_factory_builds` passes
+
+Blocked:
+- **Dual-surrogate convergence**: VLM surrogate drag + pyCycle surrogate
+  propulsion together produce a singular Jacobian in the DirectSolver.
+  Both surrogates provide FD-based partials that make the Newton system
+  ill-conditioned. The test is marked xfail.
+- Potential fixes: (a) use NLBGS instead of Newton, (b) use direct-coupled
+  VLM drag (`oas/vlm-direct`) instead of surrogate (analytic partials),
+  (c) use direct-coupled pyCycle (`pyc/turbojet`) instead of surrogate.
+  Options b and c validated independently in two-tool tests.
+
+
+## P6: Full OCP Mission Convergence with Direct pyCycle
+
+**Status: DONE**
+
+Goal: prove that the outer OCP Newton can drive throttle while pyCycle's
+inner Newton converges inside a full BasicMission (climb/cruise/descent).
+
+Completed:
+- Surrogate mission convergence test passes (4 min, mostly deck generation).
+  Requires engine designed near cruise conditions and grid covering the
+  full flight envelope.
+- **Direct turbojet mission convergence test passes (24 sec)**. This proves
+  the outer Newton can drive throttle while pyCycle's inner Newton converges.
+  TABULAR thermo, 3 nodes, Caravan at 18000 ft.
+- Weight model fix: OEW passthrough when propulsion slot is active.
+- OEW values added to all aircraft templates (caravan, kingair, tbm850).
+
+
+## P7: Per-Phase Profile Extraction
+
+**Status: DONE**
+
+Goal: extract per-phase arrays (altitude, speed, Mach, thrust, drag,
+fuel flow, weight) from solved OCP missions, not just scalar summaries.
+
+Completed:
+- `_OCP_PROFILE_VARS` constant maps output keys to (variable, units) tuples
+- `_extract_ocp_profiles()` helper extracts arrays for all phases
+- Integrated into `_extract_ocp_summary()` and `_extract_composite_summary()`
+- `summary["profiles"][phase]` contains lists keyed by altitude_m, velocity_ms,
+  mach, thrust_kN, drag_N, fuel_flow_kgs, weight_kg
+- Test: `test_ocp_profile_extraction` verifies per-phase arrays
+
+
+## P8: Design Variable Exposure Through Slots
+
+**Status: DONE**
+
+Goal: slot providers declare their internal design variables so the
+optimizer can see them. The OCP factory collects slot DVs into var_paths.
+
+Completed:
+- `design_variables` attribute on all slot provider functions mapping
+  short names to relative paths (e.g., `comp_PR` -> `cycle.DESIGN.comp.PR`)
+- OCP factory collects slot DVs into var_paths, handling pipe-separated
+  (promoted to top level) vs dot-separated (nested inside phase.subsystem)
+- Turbojet: comp_PR, comp_eff, turb_eff. HBTF: fan_PR, fan_eff, hpc_PR, hpc_eff.
+  OAS: twist_cp, toverc_cp. Surrogates: empty (DVs baked into deck).
+- Tests: provider attribute checks + factory var_paths verification
+
+
+## P9: Weight Slot Provider
+
+**Status: DONE**
+
+Goal: make OCP's weight model pluggable via a third slot type. First
+concrete provider: parametric weight model that sums component weights.
+
+Completed:
+- `_ParametricWeightGroup` (ExplicitComponent): OEW = sum of W_struct,
+  W_engine, W_systems, W_payload_equip. Analytic partials (all 1.0).
+- `_parametric_weight_provider` with config-driven defaults and
+  `use_wing_weight` option for aerostruct coupling
+- Weight slot handling in ocp.py: weight_slot > propulsion passthrough >
+  WeightClass > CFM56 passthrough
+- `ocp/parametric-weight` registered in `_register_builtins()`
+- Prerequisite fix: OEW passthrough when propulsion slot is active,
+  OEW field registered, OEW values added to caravan/kingair/tbm850 data
+- Tests: standalone component, provider interface, factory integration
+
+
+## P10: Future Integration Items (Not Started)
+
+These items are identified but not yet planned for implementation:
+
+- **Aerostructural direct-coupled slot** (`oas/aerostruct-direct`): direct
+  aerostructural analysis at each mission node. Computationally expensive
+  but gives structural weight feedback per node.
+- **Multi-surface support**: omd assumes single OAS surface. Upstream OAS
+  supports wing + tail, wing + canard. Path resolution is wired for one
+  surface name.
+- **Per-phase profile plotting**: depends on P7 profile extraction. Plot
+  altitude/speed/thrust/drag vs mission distance or time.
+- **Result extraction unification**: each tool family has its own extraction
+  path in run.py. Factories could provide custom extractors via metadata.
+- **Sizing-mission iteration loop**: slot system is one-directional (OCP
+  drives flight conditions into slots). No outer loop where mission results
+  feed back into engine or wing sizing. Would require MDF or IDF wrapper.
+
+
 ## P4: Component Catalog System
 
 **Status: DONE**

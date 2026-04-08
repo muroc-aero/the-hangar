@@ -86,3 +86,62 @@ def test_run_invalid_plan(tmp_path):
     result = run_plan(bad_plan, db_path=db_path)
     assert result["status"] == "failed"
     assert len(result["errors"]) > 0
+
+
+def _write_ocp_plan(tmp_path: Path, num_nodes: int = 3) -> Path:
+    """Write a minimal OCP BasicMission plan."""
+    plan = {
+        "metadata": {"id": "test-ocp-profile", "name": "Profile Test", "version": 1},
+        "components": [
+            {
+                "id": "mission",
+                "type": "ocp/BasicMission",
+                "config": {
+                    "aircraft_template": "caravan",
+                    "architecture": "turboprop",
+                    "num_nodes": num_nodes,
+                    "mission_params": {
+                        "cruise_altitude_ft": 18000,
+                        "mission_range_NM": 250,
+                        "climb_vs_ftmin": 850,
+                        "climb_Ueas_kn": 104,
+                        "cruise_Ueas_kn": 129,
+                        "descent_vs_ftmin": 400,
+                        "descent_Ueas_kn": 100,
+                    },
+                },
+            }
+        ],
+        "solvers": {
+            "nonlinear": {"type": "NewtonSolver", "options": {"maxiter": 20}},
+            "linear": {"type": "DirectSolver"},
+        },
+    }
+    plan_path = tmp_path / "plan.yaml"
+    with open(plan_path, "w") as f:
+        yaml.dump(plan, f)
+    return plan_path
+
+
+@pytest.mark.slow
+def test_ocp_profile_extraction(tmp_path):
+    """Verify per-phase profiles are extracted from OCP missions."""
+    db_path = tmp_path / "analysis.db"
+    plan_path = _write_ocp_plan(tmp_path, num_nodes=3)
+
+    result = run_plan(plan_path, mode="analysis",
+                      recording_level="minimal", db_path=db_path)
+
+    assert result["status"] == "completed", result.get("errors", [])
+    summary = result["summary"]
+    assert "profiles" in summary, f"No profiles in summary: {list(summary.keys())}"
+
+    profiles = summary["profiles"]
+    for phase in ["climb", "cruise", "descent"]:
+        assert phase in profiles, f"Missing phase {phase} in profiles"
+        phase_data = profiles[phase]
+        assert "altitude_m" in phase_data
+        assert "thrust_kN" in phase_data
+        assert "drag_N" in phase_data
+        # Each array should have num_nodes elements
+        assert len(phase_data["altitude_m"]) == 3
