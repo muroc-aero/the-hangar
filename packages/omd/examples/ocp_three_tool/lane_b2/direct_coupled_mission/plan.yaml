@@ -15,6 +15,10 @@ components:
     aircraft_template: b738
     architecture: twin_turbofan
     num_nodes: 3
+    solver_settings:
+      maxiter: 50
+      atol: 1e-8
+      rtol: 1e-8
     mission_params:
       cruise_altitude_ft: 35000
       mission_range_NM: 1500

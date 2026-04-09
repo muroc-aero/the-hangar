@@ -93,10 +93,16 @@ Runs through the full omd pipeline with `oas/vlm` + `pyc/surrogate`
 uv run python -m hangar.omd.cli run packages/omd/examples/ocp_three_tool/lane_b/coupled_mission/plan.yaml --mode analysis
 ```
 
-### Lane B2: omd plan pipeline (direct-coupled)
+### Lane B2: omd plan pipeline (direct-coupled) -- WIP
 
 Direct-coupled providers with Newton solver. Coarser VLM mesh (num_y=5)
 to keep per-iteration cost manageable.
+
+**Status**: The direct-coupled HBTF does not yet converge in the OCP
+mission. The HBTF inner Newton fails at extreme off-design conditions
+(climb start at sea level, far from the 35kft/M0.8 design point). The
+nozzle static pressure solver produces large residuals. Needs
+condition-aware `guess_nonlinear` or a warmup strategy.
 
 ```bash
 uv run python -m hangar.omd.cli run packages/omd/examples/ocp_three_tool/lane_b2/direct_coupled_mission/plan.yaml --mode analysis
