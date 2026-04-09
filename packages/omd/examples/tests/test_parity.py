@@ -190,3 +190,37 @@ class TestOCPOASDirectCoupledParity:
         assert result["summary"]["fuel_burn_kg"] == pytest.approx(
             lane_a["fuel_burn_kg"], rel=1e-3,
         )
+
+
+class TestOCPThreeToolParity:
+
+    @pytest.mark.slow
+    def test_coupled_mission_parity(self, tmp_path):
+        # Clear cached shared module to avoid cross-contamination
+        for mod_name in list(sys.modules):
+            if mod_name == "shared" or mod_name.startswith("ocp_three_tool"):
+                del sys.modules[mod_name]
+
+        sys.path.insert(0, str(EXAMPLES_DIR / "ocp_three_tool"))
+        from ocp_three_tool.lane_a.coupled_mission import run as lane_a_run
+
+        lane_a = lane_a_run()
+
+        plan_path = (
+            EXAMPLES_DIR / "ocp_three_tool" / "lane_b"
+            / "coupled_mission" / "plan.yaml"
+        )
+        result = run_plan(plan_path, mode="analysis", recording_level="minimal",
+                          db_path=tmp_path / "analysis.db")
+
+        _print_comparison(
+            "OCP Three-Tool B738 Mission (VLM drag + pyCycle HBTF surrogate)",
+            lane_a,
+            result["summary"],
+            keys=["fuel_burn_kg", "OEW_kg", "MTOW_kg"],
+        )
+
+        assert result["status"] in ("completed", "converged")
+        assert result["summary"]["fuel_burn_kg"] == pytest.approx(
+            lane_a["fuel_burn_kg"], rel=1e-3,
+        )

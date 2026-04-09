@@ -298,10 +298,13 @@ DEFAULT_MISSION_PARAMS: dict = {
 }
 
 DEFAULT_SOLVER_SETTINGS: dict = {
+    "solver_type": "newton",  # "newton" or "nlbgs"
     "maxiter": 20,
     "atol": 1e-10,
     "rtol": 1e-10,
     "solve_subsystems": True,
+    # NLBGS-specific (ignored for Newton)
+    "use_aitken": True,
 }
 
 BASIC_MISSION_PHASES = ["climb", "cruise", "descent"]
@@ -1016,18 +1019,29 @@ def _build_mission_problem(
     prob.model = AnalysisGroup()
 
     settings = {**DEFAULT_SOLVER_SETTINGS, **solver_settings}
-    prob.model.nonlinear_solver = om.NewtonSolver(
-        iprint=0,
-        solve_subsystems=settings["solve_subsystems"],
-    )
-    prob.model.linear_solver = om.DirectSolver()
-    prob.model.nonlinear_solver.options["maxiter"] = settings["maxiter"]
-    prob.model.nonlinear_solver.options["atol"] = settings["atol"]
-    prob.model.nonlinear_solver.options["rtol"] = settings["rtol"]
-    prob.model.nonlinear_solver.linesearch = om.BoundsEnforceLS(
-        bound_enforcement="scalar",
-        print_bound_enforce=False,
-    )
+    solver_type = settings.get("solver_type", "newton")
+
+    if solver_type == "nlbgs":
+        prob.model.nonlinear_solver = om.NonlinearBlockGS(
+            iprint=0,
+            maxiter=settings["maxiter"],
+            atol=settings["atol"],
+            rtol=settings["rtol"],
+            use_aitken=settings.get("use_aitken", True),
+        )
+    else:
+        prob.model.nonlinear_solver = om.NewtonSolver(
+            iprint=0,
+            solve_subsystems=settings["solve_subsystems"],
+        )
+        prob.model.linear_solver = om.DirectSolver()
+        prob.model.nonlinear_solver.options["maxiter"] = settings["maxiter"]
+        prob.model.nonlinear_solver.options["atol"] = settings["atol"]
+        prob.model.nonlinear_solver.options["rtol"] = settings["rtol"]
+        prob.model.nonlinear_solver.linesearch = om.BoundsEnforceLS(
+            bound_enforcement="scalar",
+            print_bound_enforce=False,
+        )
 
     params = {**DEFAULT_MISSION_PARAMS, **mission_params}
 
