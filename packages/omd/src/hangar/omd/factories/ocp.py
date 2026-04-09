@@ -426,6 +426,13 @@ def _make_aircraft_model_class(
     is_cfm56 = prop_class_name == "CFM56"
     is_hybrid = has_battery and has_fuel
 
+    # When a propulsion slot replaces CFM56, the slot provides standard
+    # thrust/fuel_flow outputs.  Use om.Group (not IntegratorGroup) and
+    # add the normal fuel integrator so fuel_used_final is available.
+    propulsion_slot = (slots or {}).get("propulsion")
+    if is_cfm56 and propulsion_slot is not None:
+        is_cfm56 = False
+
     BaseClass = IntegratorGroup if is_cfm56 else om.Group
 
     class DynamicAircraftModel(BaseClass):
@@ -438,13 +445,14 @@ def _make_aircraft_model_class(
             flight_phase = self.options["flight_phase"]
 
             # Controls (only add IndepVarComp if there are outputs to declare)
-            has_controls = (not is_cfm56) or is_hybrid
+            _need_rpm = (not is_cfm56) and not (slots or {}).get("propulsion")
+            has_controls = _need_rpm or is_hybrid
             if has_controls:
                 controls = self.add_subsystem(
                     "controls", om.IndepVarComp(), promotes_outputs=["*"],
                 )
 
-                if not is_cfm56:
+                if _need_rpm:
                     if num_engines == 1:
                         controls.add_output("prop1rpm", val=np.ones((nn,)) * 2000, units="rpm")
                     else:
