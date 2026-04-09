@@ -369,7 +369,10 @@ def run_plan(
             else:
                 prob.run_model()
 
-        prob.record("final")
+        try:
+            prob.record("final")
+        except Exception as exc:
+            logger.warning("Failed to record final case: %s", exc)
 
         # Generate N2 diagram while problem is still live
         _generate_n2(prob, run_id)
