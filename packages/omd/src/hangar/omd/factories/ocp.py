@@ -1027,6 +1027,11 @@ def _build_mission_problem(
     prob.model = AnalysisGroup()
 
     settings = {**DEFAULT_SOLVER_SETTINGS, **solver_settings}
+    # Coerce numeric solver settings -- YAML safe_load parses 1e-8 as string
+    for key in ("atol", "rtol", "maxiter"):
+        if key in settings:
+            settings[key] = float(settings[key])
+    settings["maxiter"] = int(settings["maxiter"])
     solver_type = settings.get("solver_type", "newton")
 
     if solver_type == "nlbgs":

@@ -1,0 +1,21 @@
+id: mission
+type: ocp/BasicMission
+config:
+  aircraft_template: caravan
+  architecture: turboprop
+  num_nodes: 11
+  mission_params:
+    cruise_altitude_ft: 18000.0
+    mission_range_NM: 250.0
+    climb_vs_ftmin: 850.0
+    climb_Ueas_kn: 104.0
+    cruise_Ueas_kn: 129.0
+    descent_vs_ftmin: 400.0
+    descent_Ueas_kn: 100.0
+  slots:
+    drag:
+      provider: oas/vlm
+      config:
+        num_x: 2
+        num_y: 7
+        num_twist: 4
