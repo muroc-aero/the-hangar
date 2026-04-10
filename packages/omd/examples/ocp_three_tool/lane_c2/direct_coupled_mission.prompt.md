@@ -18,7 +18,8 @@ full solvers at every Newton iteration.
 - Drag: oas/vlm-direct with 2x5 mesh, 4 twist control points
   (full VLM solver at every Newton iteration, analytic partials)
 - Propulsion: pyc/hbtf with direct-coupled HBTF dual-spool turbofan
-  (design point: 35,000 ft, M=0.8, Fn=5900 lbf, T4=2857 degR, CEA thermo)
+  (design point: 35,000 ft, M=0.8, Fn=5900 lbf, T4=2857 degR, TABULAR thermo)
+  Note: CEA thermo may not converge in direct-coupled mode; use TABULAR.
 
 ## Expected outputs
 - Total fuel burn (kg)

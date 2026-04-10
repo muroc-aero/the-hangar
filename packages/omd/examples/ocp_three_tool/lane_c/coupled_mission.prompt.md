@@ -17,7 +17,7 @@ Run a Boeing 737-800 basic mission (climb/cruise/descent) with:
 ## Slots
 - Drag: oas/vlm with 2x7 mesh, 4 twist control points
 - Propulsion: pyc/surrogate with HBTF archetype, cruise design point
-  (35,000 ft, M=0.8, Fn=5900 lbf, T4=2857 degR)
+  (35,000 ft, M=0.8, Fn=5900 lbf, T4=2857 degR, TABULAR thermo)
 
 ## Solver
 - NLBGS with Aitken relaxation (dual-surrogate coupling requires

@@ -798,7 +798,7 @@ class _DirectPyCycleHBTFPropGroup(om.Group):
         self.options.declare("design_Fn", default=5900.0, desc="Design thrust (lbf)")
         self.options.declare("design_T4", default=2857.0, desc="Design T4 (degR)")
         self.options.declare("engine_params", types=dict, default={})
-        self.options.declare("thermo_method", default="CEA")
+        self.options.declare("thermo_method", default="TABULAR")
 
     def setup(self):
         nn = self.options["nn"]
@@ -955,7 +955,7 @@ def _pyc_hbtf_propulsion_provider(
         design_Fn=config.get("design_Fn", 5900.0),
         design_T4=config.get("design_T4", 2857.0),
         engine_params=config.get("engine_params", {}),
-        thermo_method=config.get("thermo_method", "CEA"),
+        thermo_method=config.get("thermo_method", "TABULAR"),
     )
 
     promotes_inputs = [

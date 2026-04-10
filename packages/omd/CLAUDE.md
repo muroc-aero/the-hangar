@@ -170,6 +170,9 @@ Key differences from OAS factories:
   Newton (e.g. OCP mission solver) where one-time `set_val` guesses get overwritten.
 - **CEA thermo sub-solvers print output**: these are internal to pyCycle elements and not
   controlled by the top-level solver iprint setting
+- **CEA thermo may not converge in direct-coupled mode**: when pyCycle HBTF is embedded
+  inside an OCP mission solver (direct-coupled via `pyc/hbtf`), CEA thermo can fail to
+  converge. Use `thermo_method: TABULAR` for direct-coupled HBTF configurations.
 
 Available archetypes: turbojet, hbtf, ab_turbojet, single_spool_turboshaft,
 multi_spool_turboshaft, mixedflow_turbofan. Each defines element topology,
