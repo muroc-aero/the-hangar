@@ -131,6 +131,180 @@ class TestOASAerostructParity:
         assert result["summary"]["CD"] == pytest.approx(lane_a["CD"], rel=1e-6)
 
 
+class TestOCPCaravanBasicParity:
+
+    @pytest.mark.slow
+    def test_basic_mission_parity(self, tmp_path):
+        sys.path.insert(0, str(EXAMPLES_DIR / "ocp_caravan_basic"))
+        from ocp_caravan_basic.lane_a.basic_mission import run as lane_a_run
+
+        lane_a = lane_a_run()
+
+        plan_path = EXAMPLES_DIR / "ocp_caravan_basic" / "lane_b" / "basic_mission" / "plan.yaml"
+        result = run_plan(plan_path, mode="analysis", recording_level="minimal",
+                          db_path=tmp_path / "analysis.db")
+
+        _print_comparison(
+            "OCP Caravan Basic Mission",
+            lane_a,
+            result["summary"],
+            keys=["fuel_burn_kg", "OEW_kg", "MTOW_kg"],
+        )
+
+        assert result["status"] in ("completed", "converged")
+        assert result["summary"]["fuel_burn_kg"] == pytest.approx(
+            lane_a["fuel_burn_kg"], rel=1e-3,
+        )
+
+
+class TestOCPCaravanFullParity:
+
+    @pytest.mark.slow
+    def test_full_mission_parity(self, tmp_path):
+        sys.path.insert(0, str(EXAMPLES_DIR / "ocp_caravan_full"))
+        from ocp_caravan_full.lane_a.full_mission import run as lane_a_run
+
+        lane_a = lane_a_run()
+
+        plan_path = EXAMPLES_DIR / "ocp_caravan_full" / "lane_b" / "full_mission" / "plan.yaml"
+        result = run_plan(plan_path, mode="analysis", recording_level="minimal",
+                          db_path=tmp_path / "analysis.db")
+
+        _print_comparison(
+            "OCP Caravan Full Mission",
+            lane_a,
+            result["summary"],
+            keys=["fuel_burn_kg", "OEW_kg", "MTOW_kg"],
+        )
+
+        assert result["status"] in ("completed", "converged")
+        assert result["summary"]["fuel_burn_kg"] == pytest.approx(
+            lane_a["fuel_burn_kg"], rel=1e-3,
+        )
+
+
+class TestOCPHybridTwinParity:
+
+    @pytest.mark.slow
+    def test_hybrid_mission_parity(self, tmp_path):
+        sys.path.insert(0, str(EXAMPLES_DIR / "ocp_hybrid_twin"))
+        from ocp_hybrid_twin.lane_a.hybrid_mission import run as lane_a_run
+
+        lane_a = lane_a_run()
+
+        plan_path = EXAMPLES_DIR / "ocp_hybrid_twin" / "lane_b" / "hybrid_mission" / "plan.yaml"
+        result = run_plan(plan_path, mode="analysis", recording_level="minimal",
+                          db_path=tmp_path / "analysis.db")
+
+        _print_comparison(
+            "OCP Hybrid Twin Mission",
+            lane_a,
+            result["summary"],
+            keys=["fuel_burn_kg", "OEW_kg", "MTOW_kg"],
+        )
+
+        assert result["status"] in ("completed", "converged")
+        assert result["summary"]["fuel_burn_kg"] == pytest.approx(
+            lane_a["fuel_burn_kg"], rel=1e-3,
+        )
+
+
+class TestOASOCPCombinedParity:
+
+    @pytest.mark.slow
+    def test_wing_mission_parity(self, tmp_path):
+        sys.path.insert(0, str(EXAMPLES_DIR / "oas_ocp_combined"))
+        from oas_ocp_combined.lane_a.wing_mission import run as lane_a_run
+
+        lane_a = lane_a_run()
+
+        plan_path = EXAMPLES_DIR / "oas_ocp_combined" / "lane_b" / "wing_mission" / "plan.yaml"
+        result = run_plan(plan_path, mode="analysis", recording_level="minimal",
+                          db_path=tmp_path / "analysis.db")
+
+        # Composite plans nest results under summary["components"][id]
+        wing_b = result["summary"]["components"]["wing"]
+        mission_b = result["summary"]["components"]["mission"]
+        lane_b_flat = {
+            "wing_CL": wing_b["CL"],
+            "wing_CD": wing_b["CD"],
+            "fuel_burn_kg": mission_b["fuel_burn_kg"],
+            "OEW_kg": mission_b["OEW_kg"],
+            "MTOW_kg": mission_b["MTOW_kg"],
+        }
+
+        _print_comparison(
+            "OAS+OCP Combined (uncoupled)",
+            lane_a,
+            lane_b_flat,
+            keys=["wing_CL", "wing_CD", "fuel_burn_kg", "OEW_kg", "MTOW_kg"],
+        )
+
+        assert result["status"] in ("completed", "converged")
+        assert lane_b_flat["fuel_burn_kg"] == pytest.approx(
+            lane_a["fuel_burn_kg"], rel=1e-3,
+        )
+        assert lane_b_flat["wing_CL"] == pytest.approx(
+            lane_a["wing_CL"], rel=1e-6,
+        )
+        assert lane_b_flat["wing_CD"] == pytest.approx(
+            lane_a["wing_CD"], rel=1e-6,
+        )
+
+
+class TestOCPPyCycleCoupledParity:
+
+    @pytest.mark.slow
+    def test_coupled_mission_parity(self, tmp_path):
+        sys.path.insert(0, str(EXAMPLES_DIR / "ocp_pyc_coupled"))
+        from ocp_pyc_coupled.lane_a.coupled_mission import run as lane_a_run
+
+        lane_a = lane_a_run()
+
+        plan_path = EXAMPLES_DIR / "ocp_pyc_coupled" / "lane_b" / "coupled_mission" / "plan.yaml"
+        result = run_plan(plan_path, mode="analysis", recording_level="minimal",
+                          db_path=tmp_path / "analysis.db")
+
+        _print_comparison(
+            "OCP+pyCycle Coupled Mission (turbojet surrogate)",
+            lane_a,
+            result["summary"],
+            keys=["fuel_burn_kg", "OEW_kg", "MTOW_kg"],
+        )
+
+        assert result["status"] in ("completed", "converged")
+        assert result["summary"]["fuel_burn_kg"] == pytest.approx(
+            lane_a["fuel_burn_kg"], rel=1e-3,
+        )
+
+
+class TestPyCycleTurbojetParity:
+
+    @pytest.mark.slow
+    def test_turbojet_design_parity(self, tmp_path):
+        sys.path.insert(0, str(EXAMPLES_DIR / "pyc_turbojet"))
+        from pyc_turbojet.lane_a.design_analysis import run as lane_a_run
+
+        lane_a = lane_a_run()
+
+        plan_dir = EXAMPLES_DIR / "pyc_turbojet" / "lane_b"
+        out = tmp_path / "plan.yaml"
+        assemble_plan(plan_dir, output=out)
+        result = run_plan(out, mode="analysis", recording_level="minimal",
+                          db_path=tmp_path / "analysis.db")
+
+        _print_comparison(
+            "pyCycle Turbojet Design Point",
+            lane_a,
+            result["summary"],
+            keys=["Fn", "TSFC", "OPR"],
+        )
+
+        assert result["summary"]["Fn"] == pytest.approx(lane_a["Fn"], rel=1e-6)
+        assert result["summary"]["TSFC"] == pytest.approx(lane_a["TSFC"], rel=1e-6)
+        assert result["summary"]["OPR"] == pytest.approx(lane_a["OPR"], rel=1e-6)
+
+
 class TestOCPOASCoupledParity:
 
     @pytest.mark.slow
