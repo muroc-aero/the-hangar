@@ -161,12 +161,6 @@ class TestOCPOASDirectCoupledParity:
 
     @pytest.mark.slow
     def test_direct_coupled_mission_parity(self, tmp_path):
-        # Clear cached 'shared' module from prior examples to avoid
-        # importing the wrong shared.py (e.g., ocp_oas_coupled's).
-        for mod_name in list(sys.modules):
-            if mod_name == "shared" or mod_name.startswith("ocp_oas_direct"):
-                del sys.modules[mod_name]
-
         sys.path.insert(0, str(EXAMPLES_DIR / "ocp_oas_direct"))
         from ocp_oas_direct.lane_a.direct_coupled_mission import run as lane_a_run
 
@@ -196,11 +190,6 @@ class TestOCPThreeToolParity:
 
     @pytest.mark.slow
     def test_coupled_mission_parity(self, tmp_path):
-        # Clear cached shared module to avoid cross-contamination
-        for mod_name in list(sys.modules):
-            if mod_name == "shared" or mod_name.startswith("ocp_three_tool"):
-                del sys.modules[mod_name]
-
         sys.path.insert(0, str(EXAMPLES_DIR / "ocp_three_tool"))
         from ocp_three_tool.lane_a.coupled_mission import run as lane_a_run
 
