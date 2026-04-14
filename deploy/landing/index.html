@@ -87,6 +87,10 @@ section .subtitle{color:var(--fg2);margin-bottom:40px;font-size:1.05rem}
 .study .tbd{font-size:.75rem;text-transform:uppercase;letter-spacing:.08em;color:var(--accent);font-weight:600;margin-bottom:8px}
 .study h3{font-size:1.05rem;font-weight:600;color:var(--fg2);margin-bottom:8px}
 .study p{font-size:.875rem;color:var(--fg3)}
+a.study-live{text-decoration:none;color:inherit;display:block;cursor:pointer;transition:border-color .2s,transform .15s}
+a.study-live:hover{border-color:var(--accent-dim);transform:translateY(-2px);text-decoration:none}
+a.study-live h3{color:var(--fg)}
+.badge-live{font-size:.75rem;text-transform:uppercase;letter-spacing:.08em;color:var(--green);font-weight:600;margin-bottom:8px}
 
 /* ---- CITATIONS ---- */
 .citations{max-width:760px;margin:0 auto}
@@ -293,11 +297,11 @@ codex mcp login pyc --scopes mcp:tools</code></pre>
     <p class="subtitle">Real engineering workflows powered by The Hangar.</p>
     <div class="studies">
 
-      <div class="study">
-        <div class="tbd">Coming Soon</div>
+      <a href="studies/reg28m-opt-refined/" class="study study-live">
+        <div class="badge-live">Live</div>
         <h3>Regional Aircraft Wing Optimization</h3>
-        <p>Aerostructural optimization of a 28m-span wing for minimum fuel burn with structural constraints.</p>
-      </div>
+        <p>Aerostructural optimization of a 28m-span wing for minimum drag with structural constraints.</p>
+      </a>
 
       <div class="study">
         <div class="tbd">Coming Soon</div>

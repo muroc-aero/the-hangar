@@ -233,3 +233,9 @@ hangar_studies/
 !.claude/commands/new-tool.md
 !.claude/commands/run-sortie.md
 .claude/settings.local.json
+
+# Case study artifacts (packaged by deploy/scripts/package-case-study.sh)
+deploy/landing/studies/*/plots/
+deploy/landing/studies/*/n2.html
+deploy/landing/studies/*/provenance-dag.html
+deploy/landing/studies/*.tar.gz
