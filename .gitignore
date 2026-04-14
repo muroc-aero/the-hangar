@@ -220,6 +220,9 @@ upstream/*/
 # Runtime data (analysis artifacts, provenance, omd state)
 **/hangar_data/
 
+# Study workspaces (local, not tracked)
+hangar_studies/
+
 # CLI state
 .hangar/
 

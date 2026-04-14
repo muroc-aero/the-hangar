@@ -1,3 +1,0 @@
-name: Fuel burn optimization -- num_y=21, SLSQP, 300 iter
-version: 1
-id: regional-wing-opt-fuelburn

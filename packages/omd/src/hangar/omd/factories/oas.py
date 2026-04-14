@@ -7,6 +7,7 @@ on hangar-oas.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import numpy as np
@@ -73,6 +74,10 @@ def _generate_mesh(
 
     Returns:
         Tuple of (mesh, twist_cp_or_None).
+
+    Note: When symmetry is True, OAS's generate_mesh halves both span
+    and num_y internally. So span=28 with symmetry gives a 14m half-span
+    mesh, and num_y=21 gives 11 half-span nodes.
     """
     mesh_dict = {
         "num_x": config.get("num_x", 2),
@@ -176,6 +181,17 @@ def _plan_config_to_surface_dict(surface_config: dict) -> dict:
     mesh = _apply_dihedral(mesh, dihedral)
     mesh = _apply_taper(mesh, taper)
 
+    # Warn if span looks like it might be a half-span value
+    span = surface_config.get("span", 10.0)
+    root_chord = surface_config.get("root_chord", 1.0)
+    if surface_config.get("symmetry", True) and span < 3 * root_chord:
+        logging.getLogger(__name__).warning(
+            "span=%.1f with symmetry=True and root_chord=%.1f -- "
+            "span should be the full wingspan (OAS halves it internally). "
+            "Did you mean span=%.1f?",
+            span, root_chord, span * 2,
+        )
+
     # Build the surface dict
     surface: dict[str, Any] = {"name": surface_config["name"], "mesh": mesh}
 
@@ -209,9 +225,11 @@ def _plan_config_to_surface_dict(surface_config: dict) -> dict:
     if "yield_stress" in surface and "yield" not in surface:
         surface["yield"] = surface.pop("yield_stress")
 
-    # Structural defaults
+    # Structural defaults -- use plan config values, falling back to defaults
     for key, default in _DEFAULT_STRUCT_PROPS.items():
-        if key not in surface:
+        if key in surface_config:
+            surface[key] = surface_config[key]
+        elif key not in surface:
             surface[key] = default
 
     # Control point arrays (root-to-tip, matching OAS convention)
@@ -276,6 +294,13 @@ def _plan_config_to_surface_dict(surface_config: dict) -> dict:
         elif "original_wingbox_airfoil_t_over_c" not in surface:
             surface["original_wingbox_airfoil_t_over_c"] = 0.12
         # Fuel parameters for wingbox volume constraints
+        surface.setdefault("Wf_reserve",
+                           float(surface_config.get("Wf_reserve", 0.0)))
+        surface.setdefault("fuel_density",
+                           float(surface_config.get("fuel_density", 803.0)))
+
+    # Fuel parameters for distributed_fuel_weight (any FEM type)
+    if surface.get("distributed_fuel_weight", False):
         surface.setdefault("Wf_reserve",
                            float(surface_config.get("Wf_reserve", 0.0)))
         surface.setdefault("fuel_density",
@@ -503,7 +528,7 @@ def build_oas_aerostruct(
         var_paths["chord_cp"] = f"{s_name}.chord_cp"
         var_paths["spar_thickness_cp"] = f"{s_name}.spar_thickness_cp"
         var_paths["skin_thickness_cp"] = f"{s_name}.skin_thickness_cp"
-        var_paths["t_over_c_cp"] = f"{s_name}.t_over_c_cp"
+        var_paths["t_over_c_cp"] = f"{s_name}.geometry.t_over_c_cp"
         var_paths["S_ref"] = f"{point_name}.{s_name}.S_ref"
         var_paths["structural_mass"] = f"{s_name}.structural_mass"
         # Aerostruct: perf outputs nested under {point}.{surf}_perf.{var}
@@ -748,7 +773,7 @@ def build_oas_aerostruct_multipoint(
         var_paths["chord_cp"] = f"{s_name}.chord_cp"
         var_paths["spar_thickness_cp"] = f"{s_name}.spar_thickness_cp"
         var_paths["skin_thickness_cp"] = f"{s_name}.skin_thickness_cp"
-        var_paths["t_over_c_cp"] = f"{s_name}.t_over_c_cp"
+        var_paths["t_over_c_cp"] = f"{s_name}.geometry.t_over_c_cp"
         var_paths["structural_mass"] = f"{s_name}.structural_mass"
         # Per-point perf outputs (use first point for default resolution)
         pt0 = point_names[0]

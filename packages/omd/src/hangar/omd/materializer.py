@@ -657,7 +657,7 @@ def _resolve_var_path(
             "chord_cp": f"{surf}.chord_cp",
             "spar_thickness_cp": f"{surf}.spar_thickness_cp",
             "skin_thickness_cp": f"{surf}.skin_thickness_cp",
-            "t_over_c_cp": f"{surf}.t_over_c_cp",
+            "t_over_c_cp": f"{surf}.geometry.t_over_c_cp",
         }
         if name in dv_map:
             return dv_map[name]

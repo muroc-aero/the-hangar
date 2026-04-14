@@ -1,9 +1,0 @@
-decisions:
-- id: DEC-001
-  decision: 28m span rectangular planform with sweep/taper/dihedral transforms
-  reason: Matches E190-class regional jet geometry
-  stage: Setup
-- id: DEC-002
-  decision: Al 7075-T6 tube FEM with 5 control points
-  reason: Reliable convergence, adequate fidelity for trade studies
-  stage: Setup
