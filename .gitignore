@@ -238,4 +238,6 @@ hangar_studies/
 deploy/landing/studies/*/plots/
 deploy/landing/studies/*/n2.html
 deploy/landing/studies/*/provenance-dag.html
+deploy/landing/studies/*/problem-dag.html
+deploy/landing/studies/*/plan-detail.html
 deploy/landing/studies/*.tar.gz

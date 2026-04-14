@@ -22,7 +22,7 @@ auth.lakesideai.dev {
 mcp.lakesideai.dev {
     header {
         X-Content-Type-Options "nosniff"
-        X-Frame-Options "DENY"
+        X-Frame-Options "SAMEORIGIN"
         Strict-Transport-Security "max-age=31536000; includeSubDomains"
         -Server
     }
