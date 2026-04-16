@@ -1251,6 +1251,36 @@ def viewer_cmd(port: int, db_path: str | None) -> None:
     stop.wait()
 
 
+@cli.group("plan")
+def plan_group() -> None:
+    """Plan authoring commands (review, ...)."""
+
+
+@plan_group.command("review")
+@click.argument("plan_path", type=click.Path(exists=True))
+@click.option("--format", "fmt", type=click.Choice(["text", "json"]),
+              default="text", help="Output format")
+def plan_review_cmd(plan_path: str, fmt: str) -> None:
+    """Review an assembled plan (or plan directory) for completeness.
+
+    Emits WARN / MISSING / ERROR findings covering requirements,
+    decisions, analysis_plan, rationale, and graph completeness. Exit
+    code is always 0 -- the checker is advisory. Use ``--format json``
+    for machine-readable output.
+    """
+    from hangar.omd.plan_review import (
+        format_findings_json,
+        format_findings_text,
+        review_plan_file,
+    )
+
+    plan, findings = review_plan_file(Path(plan_path))
+    if fmt == "json":
+        click.echo(format_findings_json(plan, findings))
+    else:
+        click.echo(format_findings_text(plan, findings))
+
+
 def main() -> None:
     """Entry point for omd-cli."""
     cli()

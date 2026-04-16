@@ -222,3 +222,156 @@ def test_load_and_validate_non_dict(tmp_path):
     plan, errors = load_and_validate(plan_path)
     assert len(errors) == 1
     assert "mapping" in errors[0]["message"]
+
+
+# ---------------------------------------------------------------------------
+# Enriched-schema tests (requirements, decisions, analysis_plan)
+# ---------------------------------------------------------------------------
+
+
+def test_enriched_requirement_accepted():
+    plan = {
+        **MINIMAL_PLAN,
+        "requirements": [{
+            "id": "R1",
+            "text": "Minimize mass",
+            "type": "objective",
+            "priority": "primary",
+            "source": "study",
+            "status": "open",
+            "acceptance_criteria": [{
+                "metric": "mass",
+                "comparator": "<",
+                "threshold": 200.0,
+                "units": "kg",
+            }],
+            "verification": {
+                "method": "automated",
+                "assertion": "mass < 200.0",
+            },
+        }],
+    }
+    assert validate_plan(plan) == []
+
+
+def test_requirement_invalid_priority_rejected():
+    plan = {
+        **MINIMAL_PLAN,
+        "requirements": [{
+            "id": "R1",
+            "text": "x",
+            "priority": "bogus",
+        }],
+    }
+    errors = validate_plan(plan)
+    assert any("priority" in e["path"] or "bogus" in e["message"]
+               for e in errors)
+
+
+def test_requirement_invalid_comparator_rejected():
+    plan = {
+        **MINIMAL_PLAN,
+        "requirements": [{
+            "id": "R1",
+            "text": "x",
+            "acceptance_criteria": [{
+                "metric": "mass", "comparator": "maybe<",
+            }],
+        }],
+    }
+    errors = validate_plan(plan)
+    assert any("comparator" in e["path"] for e in errors)
+
+
+def test_enriched_decision_accepted():
+    plan = {
+        **MINIMAL_PLAN,
+        "decisions": [{
+            "id": "dec-001",
+            "stage": "mesh_selection",
+            "decision": "num_y=5",
+            "rationale": "ok for exploration",
+            "element_path": "components[wing].config.surfaces[wing].num_y",
+            "alternatives_considered": [
+                {"option": "num_y=21", "rejected_because": "too slow"},
+            ],
+        }],
+    }
+    assert validate_plan(plan) == []
+
+
+def test_decision_stage_is_free_string():
+    # stage stays a free string so uncommon values don't fail schema.
+    plan = {
+        **MINIMAL_PLAN,
+        "decisions": [{"id": "d", "stage": "sensitivity_study", "decision": "x"}],
+    }
+    assert validate_plan(plan) == []
+
+
+def test_alternatives_considered_requires_option():
+    plan = {
+        **MINIMAL_PLAN,
+        "decisions": [{
+            "id": "d",
+            "alternatives_considered": [{"rejected_because": "no option"}],
+        }],
+    }
+    errors = validate_plan(plan)
+    assert any("option" in e["message"] for e in errors)
+
+
+def test_analysis_plan_accepted():
+    plan = {
+        **MINIMAL_PLAN,
+        "analysis_plan": {
+            "strategy": "verify then optimize",
+            "phases": [{
+                "id": "phase-1",
+                "name": "Baseline",
+                "mode": "analysis",
+                "depends_on": [],
+                "success_criteria": [{
+                    "metric": "CL",
+                    "comparator": "in",
+                    "range": [0.3, 0.7],
+                }],
+                "checks": [{
+                    "type": "plot",
+                    "plots": ["planform", "lift"],
+                    "look_for": "smooth",
+                }],
+            }],
+            "replan_triggers": ["divergence"],
+        },
+    }
+    assert validate_plan(plan) == []
+
+
+def test_analysis_plan_phase_requires_id():
+    plan = {
+        **MINIMAL_PLAN,
+        "analysis_plan": {"phases": [{"name": "no-id"}]},
+    }
+    errors = validate_plan(plan)
+    assert any("id" in e["message"] for e in errors)
+
+
+def test_analysis_plan_check_type_enum():
+    plan = {
+        **MINIMAL_PLAN,
+        "analysis_plan": {"phases": [{
+            "id": "p1",
+            "checks": [{"type": "not-a-type"}],
+        }]},
+    }
+    errors = validate_plan(plan)
+    assert any("type" in e["path"] for e in errors)
+
+
+def test_enriched_fixture_validates(fixtures_dir):
+    """The enriched fixture must pass assembly + schema validation."""
+    from hangar.omd.assemble import assemble_plan
+
+    result = assemble_plan(fixtures_dir / "oas_aerostruct_enriched")
+    assert result["errors"] == [], result["errors"]

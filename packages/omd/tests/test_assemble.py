@@ -170,3 +170,95 @@ def test_assemble_plan_validation_error(tmp_path):
     result = assemble_plan(plan_dir)
     assert len(result["errors"]) > 0
     assert result["version"] is None
+
+
+# ---------------------------------------------------------------------------
+# Enriched-plan provenance recording
+# ---------------------------------------------------------------------------
+
+
+def _fetch_entities(db_path: Path, entity_type: str):
+    import sqlite3
+    if not db_path.exists():
+        return []
+    conn = sqlite3.connect(str(db_path))
+    try:
+        try:
+            rows = conn.execute(
+                "SELECT entity_id, metadata FROM entities WHERE entity_type = ?",
+                (entity_type,),
+            ).fetchall()
+        except sqlite3.OperationalError:
+            return []
+    finally:
+        conn.close()
+    return rows
+
+
+def _fetch_edges(db_path: Path, relation: str):
+    import sqlite3
+    if not db_path.exists():
+        return []
+    conn = sqlite3.connect(str(db_path))
+    try:
+        try:
+            rows = conn.execute(
+                "SELECT subject_id, object_id FROM prov_edges WHERE relation = ?",
+                (relation,),
+            ).fetchall()
+        except sqlite3.OperationalError:
+            return []
+    finally:
+        conn.close()
+    return rows
+
+
+def test_assemble_enriched_fixture_records_graph(fixtures_dir, tmp_path, monkeypatch):
+    """End-to-end: enriched fixture -> provenance DB -> new entities / edges."""
+    db_path = tmp_path / "analysis.db"
+    monkeypatch.setenv("OMD_DB_PATH", str(db_path))
+
+    # Work on a copy to avoid touching the tracked fixture's history/.
+    import shutil
+    work_dir = tmp_path / "enriched"
+    shutil.copytree(fixtures_dir / "oas_aerostruct_enriched", work_dir)
+
+    result = assemble_plan(work_dir)
+    assert result["errors"] == []
+
+    # New entity types
+    phase_rows = _fetch_entities(db_path, "phase")
+    assert len(phase_rows) == 2
+    req_rows = _fetch_entities(db_path, "requirement")
+    assert len(req_rows) == 2
+    crit_rows = _fetch_entities(db_path, "acceptance_criterion")
+    assert len(crit_rows) == 2
+    elem_rows = _fetch_entities(db_path, "plan_element")
+    # Three decisions all have element_path -> at least three plan_element rows
+    assert len(elem_rows) >= 3
+
+    # New edges
+    justifies = _fetch_edges(db_path, "justifies")
+    assert len(justifies) >= 3
+    precedes = _fetch_edges(db_path, "precedes")
+    # phase-1 -> phase-2 depends_on -> one precedes edge
+    assert len(precedes) == 1
+    has_crit = _fetch_edges(db_path, "has_criterion")
+    assert len(has_crit) == 2
+
+
+def test_assemble_non_enriched_plan_records_no_new_entities(tmp_path, monkeypatch):
+    """Regression: plans without the new fields produce no new entities."""
+    db_path = tmp_path / "analysis.db"
+    monkeypatch.setenv("OMD_DB_PATH", str(db_path))
+
+    plan_dir = _make_plan_dir(tmp_path)
+    assemble_plan(plan_dir)
+
+    assert _fetch_entities(db_path, "phase") == []
+    assert _fetch_entities(db_path, "requirement") == []
+    assert _fetch_entities(db_path, "acceptance_criterion") == []
+    assert _fetch_entities(db_path, "plan_element") == []
+    assert _fetch_edges(db_path, "justifies") == []
+    assert _fetch_edges(db_path, "precedes") == []
+    assert _fetch_edges(db_path, "has_criterion") == []

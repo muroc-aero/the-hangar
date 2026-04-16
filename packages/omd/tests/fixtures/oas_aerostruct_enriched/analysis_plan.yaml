@@ -1,0 +1,45 @@
+strategy: >
+  Baseline-verify at cruise, then optimize, then assert on range-safety
+  criteria. Replan if solver diverges or optimizer hits maxiter.
+
+phases:
+  - id: phase-1
+    name: Baseline verification
+    mode: analysis
+    depends_on: []
+    success_criteria:
+      - metric: CL
+        comparator: in
+        range: [0.3, 0.7]
+      - metric: solver_iterations
+        comparator: "<"
+        threshold: 50
+    checks:
+      - type: plot
+        plots: [planform, lift, twist]
+        look_for: Smooth lift distribution; geometry matches intent.
+      - type: assertion
+        command: "range-safety validate {plan}"
+
+  - id: phase-2
+    name: Aerostructural optimization
+    mode: optimize
+    depends_on: [phase-1]
+    success_criteria:
+      - metric: failure
+        comparator: "<="
+        threshold: 0.0
+      - metric: structural_mass_reduction
+        comparator: ">"
+        threshold: 0.05
+    checks:
+      - type: plot
+        plots: [convergence, dv_evolution, struct, vonmises]
+        look_for: Smooth convergence; no DV pegged at bounds.
+      - type: range_safety
+        command: "range-safety assert {run_id} --plan {plan}"
+
+replan_triggers:
+  - Solver divergence or NaN in results.
+  - Optimizer hits maxiter without converging.
+  - Any DV pegged at its bound in the final solution.

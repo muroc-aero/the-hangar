@@ -1,0 +1,9 @@
+nonlinear:
+  type: NewtonSolver
+  options:
+    maxiter: 20
+    atol: 1.0e-8
+    rtol: 1.0e-8
+    solve_subsystems: true
+linear:
+  type: DirectSolver

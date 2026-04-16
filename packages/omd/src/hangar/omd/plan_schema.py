@@ -61,6 +61,67 @@ PLAN_SCHEMA: dict[str, Any] = {
                         "type": "array",
                         "items": {"type": "string"},
                     },
+                    "priority": {
+                        "type": "string",
+                        "enum": ["primary", "secondary", "goal"],
+                    },
+                    "source": {"type": "string"},
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "draft",
+                            "open",
+                            "verified",
+                            "violated",
+                            "waived",
+                        ],
+                    },
+                    "acceptance_criteria": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "required": ["metric"],
+                            "additionalProperties": False,
+                            "properties": {
+                                "metric": {"type": "string", "minLength": 1},
+                                "comparator": {
+                                    "type": "string",
+                                    "enum": [
+                                        "<",
+                                        "<=",
+                                        ">",
+                                        ">=",
+                                        "==",
+                                        "!=",
+                                        "in",
+                                    ],
+                                },
+                                "threshold": {"type": "number"},
+                                "range": {
+                                    "type": "array",
+                                    "items": {"type": "number"},
+                                    "minItems": 2,
+                                    "maxItems": 2,
+                                },
+                                "units": {"type": "string"},
+                            },
+                        },
+                    },
+                    "verification": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "properties": {
+                            "method": {
+                                "type": "string",
+                                "enum": [
+                                    "automated",
+                                    "visual",
+                                    "comparison",
+                                ],
+                            },
+                            "assertion": {"type": "string"},
+                        },
+                    },
                 },
             },
         },
@@ -320,6 +381,7 @@ PLAN_SCHEMA: dict[str, Any] = {
                     "rationale": {"type": "string"},
                     "timestamp": {"type": "string"},
                     "stage": {"type": "string"},
+                    "agent": {"type": "string"},
                     "references": {
                         "type": "array",
                         "items": {
@@ -329,11 +391,134 @@ PLAN_SCHEMA: dict[str, Any] = {
                             ],
                         },
                     },
+                    "element_path": {"type": "string"},
+                    "alternatives_considered": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "required": ["option"],
+                            "additionalProperties": False,
+                            "properties": {
+                                "option": {"type": "string"},
+                                "rejected_because": {"type": "string"},
+                            },
+                        },
+                    },
+                },
+            },
+        },
+        "analysis_plan": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "strategy": {"type": "string"},
+                "phases": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["id"],
+                        "additionalProperties": False,
+                        "properties": {
+                            "id": {"type": "string", "minLength": 1},
+                            "name": {"type": "string"},
+                            "mode": {"type": "string"},
+                            "depends_on": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                            },
+                            "success_criteria": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "required": ["metric"],
+                                    "additionalProperties": False,
+                                    "properties": {
+                                        "metric": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                        },
+                                        "comparator": {
+                                            "type": "string",
+                                            "enum": [
+                                                "<",
+                                                "<=",
+                                                ">",
+                                                ">=",
+                                                "==",
+                                                "!=",
+                                                "in",
+                                            ],
+                                        },
+                                        "threshold": {"type": "number"},
+                                        "range": {
+                                            "type": "array",
+                                            "items": {"type": "number"},
+                                            "minItems": 2,
+                                            "maxItems": 2,
+                                        },
+                                        "units": {"type": "string"},
+                                    },
+                                },
+                            },
+                            "checks": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "required": ["type"],
+                                    "additionalProperties": False,
+                                    "properties": {
+                                        "type": {
+                                            "type": "string",
+                                            "enum": [
+                                                "plot",
+                                                "assertion",
+                                                "range_safety",
+                                                "manual",
+                                            ],
+                                        },
+                                        "plots": {
+                                            "type": "array",
+                                            "items": {"type": "string"},
+                                        },
+                                        "look_for": {"type": "string"},
+                                        "command": {"type": "string"},
+                                        "note": {"type": "string"},
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+                "replan_triggers": {
+                    "type": "array",
+                    "items": {"type": "string"},
                 },
             },
         },
     },
 }
+
+
+# ---------------------------------------------------------------------------
+# Recommended enum values (soft: checker WARNs on values outside this set)
+# ---------------------------------------------------------------------------
+
+# Recommended values for decision.stage. Not enforced by the schema; the
+# completeness checker (plan_review) WARNs on values outside this set.
+RECOMMENDED_DECISION_STAGES: tuple[str, ...] = (
+    "problem_definition",
+    "component_selection",
+    "mesh_selection",
+    "solver_selection",
+    "dv_setup",
+    "constraint_setup",
+    "objective_selection",
+    "operating_point_selection",
+    "optimizer_selection",
+    "diagnosis",
+    "replan",
+    "formulation",
+)
 
 
 # ---------------------------------------------------------------------------

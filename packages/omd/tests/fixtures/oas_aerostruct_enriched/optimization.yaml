@@ -1,0 +1,28 @@
+design_variables:
+  - name: wing.twist_cp
+    lower: -10.0
+    upper: 15.0
+    traces_to: [R1]
+  - name: wing.thickness_cp
+    lower: 0.003
+    upper: 0.1
+    scaler: 10.0
+    traces_to: [R1]
+
+constraints:
+  - name: AS_point_0.wing_perf.failure
+    upper: 0.0
+    scaler: 1.0
+    traces_to: [R2]
+  - name: AS_point_0.L_equals_W
+    equals: 0.0
+
+objective:
+  name: wing.structural_mass
+  scaler: 0.0001
+  traces_to: [R1]
+
+optimizer:
+  type: SLSQP
+  options:
+    maxiter: 200

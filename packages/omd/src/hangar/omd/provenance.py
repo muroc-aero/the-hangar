@@ -221,6 +221,13 @@ def provenance_dag_html(
             "storage_ref": entity.get("storage_ref", ""),
             "metadata": meta_str,
         }
+        # Expose selected metadata fields as node-data attributes so
+        # Cytoscape style selectors can target them (e.g. requirement
+        # status driving border color).
+        if isinstance(meta, dict):
+            for attr in ("status", "priority", "mode", "stage"):
+                if attr in meta and isinstance(meta[attr], (str, int, float)):
+                    node_data[attr] = meta[attr]
         nodes.append({"data": node_data})
 
         # Add a containment edge (parent -> child) so dagre places
@@ -391,6 +398,10 @@ def provenance_dag_html(
   .badge-struct     {{ background: #0a2028; color: #40a0b0; }}
   .badge-conv       {{ background: #141a28; color: #6080a0; }}
   .badge-n2         {{ background: #141828; color: #5070a0; }}
+  .badge-phase      {{ background: #1a1030; color: #b090e0; }}
+  .badge-req        {{ background: #102038; color: #80a8e0; }}
+  .badge-crit       {{ background: #12182a; color: #7090c0; }}
+  .badge-elem       {{ background: #141820; color: #8898b0; }}
   .mono {{ font-family: monospace; font-size: 10px; color: #a0a8c0; }}
   #panel-body pre {{
     background: #12141e; padding: 8px; border-radius: 4px;
@@ -457,6 +468,9 @@ def provenance_dag_html(
     <span class="legend-item"><span class="legend-dot" style="background:#50c0f0"></span> Op</span>
     <span class="legend-item"><span class="legend-dot" style="background:#30c090"></span> Results</span>
     <span class="legend-item"><span class="legend-dot" style="background:#d0a030"></span> Decision</span>
+    <span class="legend-item"><span class="legend-dot" style="background:#b090e0"></span> Phase</span>
+    <span class="legend-item"><span class="legend-dot" style="background:#80a8e0"></span> Requirement</span>
+    <span class="legend-item"><span class="legend-dot" style="background:#7090c0"></span> Criterion</span>
     <span class="legend-item"><span class="legend-dot" style="background:#5a8abf"></span> Activity</span>
   </div>
   <button class="btn" id="btn-expand">Collapse</button>
@@ -588,6 +602,49 @@ var STYLES = [
          'color': '#7090b0', 'text-valign': 'center', 'text-halign': 'center',
          'text-max-width': '80px', 'cursor': 'pointer',
        }} }},
+    /* Analysis-plan phase: violet rectangles */
+    {{ selector: 'node[entity_type="phase"]',
+       style: {{
+         'shape': 'round-rectangle', 'width': 120, 'height': 40,
+         'background-color': '#140a2a', 'border-width': 2, 'border-color': '#a080e0',
+         'label': 'data(label)', 'text-wrap': 'wrap', 'font-size': 10,
+         'color': '#c8a8f0', 'text-valign': 'center', 'text-halign': 'center',
+         'text-max-width': '110px',
+       }} }},
+    /* Requirement: steel blue rounded square */
+    {{ selector: 'node[entity_type="requirement"]',
+       style: {{
+         'shape': 'round-rectangle', 'width': 120, 'height': 36,
+         'background-color': '#0a1a2e', 'border-width': 2, 'border-color': '#80a8e0',
+         'label': 'data(label)', 'text-wrap': 'wrap', 'font-size': 10,
+         'color': '#a0c0f0', 'text-valign': 'center', 'text-halign': 'center',
+         'text-max-width': '110px',
+       }} }},
+    /* Requirement status borders: overlayed on the requirement style */
+    {{ selector: 'node[entity_type="requirement"][status="verified"]',
+       style: {{ 'border-color': '#40d080', 'border-width': 3 }} }},
+    {{ selector: 'node[entity_type="requirement"][status="violated"]',
+       style: {{ 'border-color': '#e05050', 'border-width': 3 }} }},
+    {{ selector: 'node[entity_type="requirement"][status="waived"]',
+       style: {{ 'border-color': '#808080', 'border-width': 2, 'border-style': 'dashed' }} }},
+    /* Acceptance criterion: small pill */
+    {{ selector: 'node[entity_type="acceptance_criterion"]',
+       style: {{
+         'shape': 'round-rectangle', 'width': 100, 'height': 28,
+         'background-color': '#0a1220', 'border-width': 2, 'border-color': '#7090c0',
+         'label': 'data(label)', 'text-wrap': 'wrap', 'font-size': 9,
+         'color': '#90b0d8', 'text-valign': 'center', 'text-halign': 'center',
+         'text-max-width': '90px',
+       }} }},
+    /* Plan element (synthesized when element_path doesn't match a named node) */
+    {{ selector: 'node[entity_type="plan_element"]',
+       style: {{
+         'shape': 'round-rectangle', 'width': 100, 'height': 28,
+         'background-color': '#101420', 'border-width': 1, 'border-color': '#6878a0',
+         'label': 'data(label)', 'text-wrap': 'wrap', 'font-size': 9,
+         'color': '#8898b8', 'text-valign': 'center', 'text-halign': 'center',
+         'text-max-width': '90px',
+       }} }},
     /* Fallback entity */
     {{ selector: 'node[type="entity"]',
        style: {{
@@ -640,6 +697,32 @@ var STYLES = [
          'width': 1, 'line-style': 'dotted', 'line-dash-pattern': [2, 4],
          'line-color': '#1e2a40', 'target-arrow-color': '#1e2a40',
          'target-arrow-shape': 'none', 'label': '',
+       }} }},
+    /* justifies: amber, from decision to the element it justifies */
+    {{ selector: 'edge[relation="justifies"]',
+       style: {{ 'line-color': '#c08030', 'target-arrow-color': '#c08030', 'width': 2.5 }} }},
+    /* precedes: violet, between phases */
+    {{ selector: 'edge[relation="precedes"]',
+       style: {{ 'line-color': '#a080e0', 'target-arrow-color': '#a080e0', 'width': 2.5 }} }},
+    /* has_criterion: soft blue, from requirement to criterion */
+    {{ selector: 'edge[relation="has_criterion"]',
+       style: {{
+         'line-style': 'dashed', 'line-dash-pattern': [4, 3],
+         'line-color': '#607090', 'target-arrow-color': '#607090',
+       }} }},
+    /* satisfies / violates: drawn boldly so status is visible */
+    {{ selector: 'edge[relation="satisfies"]',
+       style: {{ 'line-color': '#40c080', 'target-arrow-color': '#40c080', 'width': 3 }} }},
+    {{ selector: 'edge[relation="violates"]',
+       style: {{ 'line-color': '#e05050', 'target-arrow-color': '#e05050', 'width': 3 }} }},
+    /* executes: phase -> run_record */
+    {{ selector: 'edge[relation="executes"]',
+       style: {{ 'line-color': '#8a70c0', 'target-arrow-color': '#8a70c0', 'width': 2.5 }} }},
+    /* verifies: criterion -> run_record */
+    {{ selector: 'edge[relation="verifies"]',
+       style: {{
+         'line-style': 'dashed', 'line-dash-pattern': [3, 3],
+         'line-color': '#609088', 'target-arrow-color': '#609088',
        }} }},
 ];
 
@@ -695,6 +778,8 @@ var BADGE_MAP = {{
   'decision': 'badge-decision', 'aero_results': 'badge-aero',
   'struct_results': 'badge-struct', 'convergence_info': 'badge-conv',
   'model_structure': 'badge-n2',
+  'phase': 'badge-phase', 'requirement': 'badge-req',
+  'acceptance_criterion': 'badge-crit', 'plan_element': 'badge-elem',
 }};
 
 /* Helper: extract run_id from a sub-entity id like "run-XXXX/aero" */

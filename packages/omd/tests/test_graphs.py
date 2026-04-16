@@ -540,3 +540,63 @@ class TestProblemDAGEnrichment:
         mission = _node_by_id(dgraph, "mission")
         assert mission is not None
         assert "fuel_burn_kg" in mission["properties"]["result_values"]
+
+
+# ---------------------------------------------------------------------------
+# Enriched plan_graph tests (phase, acceptance_criterion, justifies targeting)
+# ---------------------------------------------------------------------------
+
+
+def _build_enriched_graph(tmp_path):
+    """Assemble the enriched fixture into a working dir, then build its graph."""
+    import shutil
+    from hangar.omd.assemble import assemble_plan
+
+    work = tmp_path / "enriched"
+    shutil.copytree(FIXTURES / "oas_aerostruct_enriched", work)
+    result = assemble_plan(work)
+    assert result["errors"] == [], result["errors"]
+    return build_plan_graph(result["plan"], "plan-oas-aerostruct-enriched", 1)
+
+
+def test_enriched_graph_has_phase_nodes(tmp_path):
+    g = _build_enriched_graph(tmp_path)
+    types = _node_types(g)
+    assert "phase" in types
+    phase_ids = [n["id"] for n in g["nodes"] if n["type"] == "phase"]
+    assert "phase-phase-1" in phase_ids
+    assert "phase-phase-2" in phase_ids
+
+
+def test_enriched_graph_has_precedes_edge(tmp_path):
+    g = _build_enriched_graph(tmp_path)
+    edges = [(e["source"], e["target"]) for e in g["edges"]
+             if e["relation"] == "precedes"]
+    assert ("phase-phase-1", "phase-phase-2") in edges
+
+
+def test_enriched_graph_has_acceptance_criterion_nodes(tmp_path):
+    g = _build_enriched_graph(tmp_path)
+    crits = [n for n in g["nodes"] if n["type"] == "acceptance_criterion"]
+    assert len(crits) == 2
+    # has_criterion edges link requirements to their criteria
+    has_crit = [(e["source"], e["target"]) for e in g["edges"]
+                if e["relation"] == "has_criterion"]
+    assert len(has_crit) == 2
+    assert all(s.startswith("req-") and t.startswith("crit-")
+               for s, t in has_crit)
+
+
+def test_enriched_graph_justifies_targets_specific_elements(tmp_path):
+    g = _build_enriched_graph(tmp_path)
+    justifies = [(e["source"], e["target"]) for e in g["edges"]
+                 if e["relation"] == "justifies"]
+    assert justifies, "expected justifies edges for enriched decisions"
+    targets = {t for _, t in justifies}
+    # None should fall back to the generic "plan" node -- all three
+    # decisions in the fixture carry an element_path.
+    assert "plan" not in targets
+    # Expect at least one DV target, one objective target, one mesh target.
+    assert any(t.startswith("mesh-") for t in targets)
+    assert any(t.startswith("dv-") for t in targets)
+    assert "objective" in targets

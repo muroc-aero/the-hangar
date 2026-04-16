@@ -29,6 +29,54 @@ _db_path: Path | None = None
 _local = threading.local()
 
 # ---------------------------------------------------------------------------
+# Known entity types and prov_edge relations (soft catalog)
+# ---------------------------------------------------------------------------
+# The DB schema stores both fields as free-form TEXT, but we keep an
+# authoritative list here so:
+#   - Readers can map entity_type to badge styles in the Cytoscape view.
+#   - add_prov_edge() can log a warning when an unknown relation is used,
+#     surfacing typos without breaking existing callers.
+
+KNOWN_ENTITY_TYPES: frozenset[str] = frozenset({
+    "plan",
+    "run_record",
+    "assessment",
+    "surface_def",
+    "operating_point",
+    "solver_config",
+    "opt_setup",
+    "decision",
+    "aero_results",
+    "struct_results",
+    "convergence_info",
+    "model_structure",
+    # New in plan-authoring enhancements:
+    "phase",
+    "acceptance_criterion",
+    "requirement",
+    "plan_element",
+})
+
+KNOWN_PROV_RELATIONS: frozenset[str] = frozenset({
+    # PROV-Agent core relations (used throughout omd today).
+    "wasGeneratedBy",
+    "used",
+    "wasDerivedFrom",
+    "wasAssociatedWith",
+    "wasAttributedTo",
+    "wasInformedBy",
+    # New in plan-authoring enhancements:
+    "justifies",
+    "has_criterion",
+    "verifies",
+    "satisfies",
+    "violates",
+    "precedes",
+    "has_check",
+    "executes",
+})
+
+# ---------------------------------------------------------------------------
 # DDL
 # ---------------------------------------------------------------------------
 
@@ -343,10 +391,18 @@ def add_prov_edge(
 
     Args:
         relation: PROV relation type (wasGeneratedBy, used, wasDerivedFrom,
-            wasAssociatedWith, wasAttributedTo).
+            wasAssociatedWith, wasAttributedTo, wasInformedBy, justifies,
+            has_criterion, verifies, satisfies, violates, precedes,
+            has_check, executes).
         subject_id: Source entity or activity ID.
         object_id: Target entity or activity ID.
     """
+    if relation not in KNOWN_PROV_RELATIONS:
+        logger.warning(
+            "add_prov_edge: unknown relation %r (subject=%s, object=%s). "
+            "Add it to KNOWN_PROV_RELATIONS if intentional.",
+            relation, subject_id, object_id,
+        )
     conn = _get_conn()
     conn.execute(
         "INSERT OR IGNORE INTO prov_edges (relation, subject_id, object_id, timestamp) "

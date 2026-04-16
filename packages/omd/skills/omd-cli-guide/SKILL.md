@@ -29,6 +29,7 @@ uv run omd-cli --help
 | `omd-cli export <plan.yaml>` | Generate standalone Python script |
 | `omd-cli provenance <plan_id>` | View provenance timeline or DAG |
 | `omd-cli viewer` | Start interactive Cytoscape.js provenance viewer |
+| `omd-cli plan review <dir-or-yaml>` | Report completeness gaps (requirements, decisions, analysis_plan, graph) |
 
 ## Study Directory Convention
 
@@ -51,7 +52,10 @@ hangar_studies/my-plan/
   operating_points.yaml       # flight conditions
   solvers.yaml                # nonlinear + linear solver config (optional)
   optimization.yaml           # DVs, constraints, objective, optimizer (optional)
+  requirements.yaml           # requirements with acceptance_criteria (optional)
   decisions.yaml              # agent decision log (optional but recommended)
+  analysis_plan.yaml          # process: strategy, phases, checks (optional)
+  rationale.yaml              # short high-level rationale list (optional)
 ```
 
 ## Component Types
@@ -495,5 +499,141 @@ On any replan:
 
 The difference: a good entry lets someone (or a future agent) understand
 *why* the results were accepted without re-running the analysis.
+
+### Enriched Decision Format
+
+Each decision in `decisions.yaml` can (and should) carry two extra fields
+that let the plan knowledge graph and provenance DAG render decisions as
+concrete justifications instead of free-floating nodes:
+
+```yaml
+- id: dec-mesh
+  stage: mesh_selection                                  # see recommended stages below
+  decision: Set num_y=7
+  rationale: Moderate fidelity for exploration.
+  element_path: "components[wing].config.surfaces[wing].num_y"   # what this justifies
+  alternatives_considered:
+    - option: "num_y=21"
+      rejected_because: Iteration time too high for exploration.
+```
+
+**`element_path`** addresses the specific plan element the decision
+justifies. Supported syntax:
+
+- `components[wing]` or `design_variables[wing.twist_cp]` -- id/name
+  match.
+- `components[wing].config.surfaces[wing].num_y` -- dot-separated
+  nested access.
+- `objective`, `solvers.nonlinear`, `solvers.linear`,
+  `requirements[R1]`, `analysis_plan.phases[phase-1]`.
+- `connections[0].src` -- positional fallback when elements have no id.
+
+When `element_path` is present the plan knowledge graph emits a
+`justifies` edge from the decision node to the specific element node.
+When it's absent the checker warns and the edge falls back to the
+generic "plan" node.
+
+**Recommended `stage` values** (enforced softly by `plan review`):
+`problem_definition`, `component_selection`, `mesh_selection`,
+`solver_selection`, `dv_setup`, `constraint_setup`,
+`objective_selection`, `operating_point_selection`,
+`optimizer_selection`, `diagnosis`, `replan`, `formulation`.
+
+`stage` is a free string; custom values are allowed but trigger a
+WARN in `omd-cli plan review`. If a stage label is recurring, add it
+to `RECOMMENDED_DECISION_STAGES` in `plan_schema.py`.
+
+## Enriched Requirements
+
+Requirements can carry acceptance criteria and a verification method so
+runs can be checked automatically later:
+
+```yaml
+- id: R1
+  text: Minimize structural mass under cruise aerostructural loading.
+  type: objective
+  priority: primary                 # primary | secondary | goal
+  source: study instruction
+  status: open                      # draft | open | verified | violated | waived
+  traces_to: [structural_mass, twist_cp, thickness_cp]
+  acceptance_criteria:
+    - metric: structural_mass
+      comparator: "<"               # < | <= | > | >= | == | != | in
+      threshold: 200.0
+      units: kg
+  verification:
+    method: automated               # automated | visual | comparison
+    assertion: "structural_mass < 200.0"
+```
+
+The `status` field drives border color in the provenance DAG
+(verified=green, violated=red, waived=grey/dashed). Requirements are
+recorded as first-class provenance entities so downstream assessments
+can emit `satisfies` / `violates` edges against them.
+
+## analysis_plan: Capture Process, Not Just Product
+
+An optional top-level `analysis_plan` section documents *how* the
+analysis should proceed, alongside *what* to analyze:
+
+```yaml
+analysis_plan:
+  strategy: Verify baseline, optimize, then assert.
+  phases:
+    - id: phase-1
+      name: Baseline verification
+      mode: analysis
+      depends_on: []
+      success_criteria:
+        - metric: CL
+          comparator: in
+          range: [0.3, 0.7]
+      checks:
+        - type: plot
+          plots: [planform, lift, twist]
+          look_for: Smooth lift distribution
+        - type: assertion
+          command: "range-safety validate {plan}"
+    - id: phase-2
+      name: Optimization
+      mode: optimize
+      depends_on: [phase-1]
+      success_criteria: [...]
+      checks: [...]
+  replan_triggers:
+    - Solver divergence or NaN
+    - Optimizer hits maxiter
+```
+
+Phases are rendered in both the plan knowledge graph and the
+provenance DAG (violet nodes, `precedes` edges). Today phases are
+*documentation*; execution orchestration (`omd-cli run --phase`) is
+deferred -- see `packages/omd/docs/deferred-enhancements.md`.
+
+## omd-cli plan review
+
+Reports per-section completeness (OK / WARN / MISSING / ERROR). Always
+exits 0 (advisory). Use `--format json` for CI gating.
+
+```bash
+omd-cli plan review my-plan/
+omd-cli plan review my-plan/plan.yaml
+omd-cli plan review my-plan/ --format json > review.json
+```
+
+What it flags:
+
+- requirements without acceptance_criteria or verification method
+- decisions without `element_path` (cannot render as `justifies` edges)
+- decisions whose `element_path` fails to resolve against the plan
+- decisions with a `stage` value outside the recommended set
+- configurable sections (mesh, DVs, constraints, objective, solvers,
+  optimizer) with no decisions pointing at them
+- missing `analysis_plan` or phases without `success_criteria` / `checks`
+- `analysis_plan` phase `depends_on` referring to an unknown phase (ERROR)
+- missing top-level `rationale`
+
+The checker and the graph builder share the same element-path resolver,
+so a WARN here corresponds exactly to a missing edge in the viewer.
 
 See `commands.md` for full parameter reference and `examples/` for workflows.

@@ -1,0 +1,4 @@
+- Demonstrates the enriched plan schema end-to-end for tests and docs.
+- Exercises element_path-addressed decisions, acceptance_criteria,
+  and analysis_plan phases so the provenance DAG and knowledge graph
+  can be validated in tests.

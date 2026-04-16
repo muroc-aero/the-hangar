@@ -429,21 +429,12 @@ def build_plan_graph(plan: dict, plan_id: str = "", version: int = 0) -> dict:
             })
 
     # --- Decisions ---
-    # Build a lookup for stage -> node ID for decision linking
-    stage_targets = {}
-    for sid in surface_ids:
-        sname = sid.replace("surf-", "")
-        stage_targets[f"mesh-{sname}"] = f"mesh-{sname}"
-        stage_targets[f"mat-{sname}"] = f"mat-{sname}"
-        stage_targets[f"fem-{sname}"] = f"fem-{sname}"
-
     node_ids = {n["id"] for n in nodes}
 
     for dec in plan.get("decisions", []):
         did = dec.get("id", f"dec-{plan.get('decisions', []).index(dec)}")
         decid = f"dec-{did}"
         text = dec.get("decision", "")
-        reason = dec.get("reason", "")
         stage = dec.get("stage", "")
 
         nodes.append({
@@ -453,34 +444,21 @@ def build_plan_graph(plan: dict, plan_id: str = "", version: int = 0) -> dict:
             "properties": dec,
         })
 
-        # Link decision to the node it justifies based on stage
-        target = "plan"  # default
-        if "mesh" in stage:
-            # Link to first mesh node
-            for nid in node_ids:
-                if nid.startswith("mesh-"):
-                    target = nid
-                    break
-        elif "material" in stage:
-            for nid in node_ids:
-                if nid.startswith("mat-"):
-                    target = nid
-                    break
-        elif "fem" in stage or "structural" in stage:
-            for nid in node_ids:
-                if nid.startswith("fem-"):
-                    target = nid
-                    break
-        elif "solver" in stage:
-            if "nl-solver" in node_ids:
-                target = "nl-solver"
+        # Resolve element_path first (preferred); fall back to stage heuristic.
+        target = _resolve_decision_target(
+            dec, plan, node_ids, surface_ids, nodes, edges,
+        )
+        if target is None:
+            target = _stage_target(stage, node_ids)
+        if target is None:
+            target = "plan"
 
         edges.append({
             "source": decid, "target": target,
             "relation": "justifies", "properties": {},
         })
 
-    # --- Requirements ---
+    # --- Requirements + acceptance criteria ---
     for req in plan.get("requirements", []):
         if not isinstance(req, dict):
             continue
@@ -496,6 +474,62 @@ def build_plan_graph(plan: dict, plan_id: str = "", version: int = 0) -> dict:
             "source": "plan", "target": reqid,
             "relation": "contains", "properties": {},
         })
+        for idx, crit in enumerate(req.get("acceptance_criteria") or []):
+            if not isinstance(crit, dict):
+                continue
+            metric = crit.get("metric", f"c{idx}")
+            cid = f"crit-{rid}-{metric}"
+            label_parts = [metric]
+            if "comparator" in crit and "threshold" in crit:
+                label_parts.append(f"{crit['comparator']} {crit['threshold']}")
+            elif "comparator" in crit and "range" in crit:
+                label_parts.append(f"{crit['comparator']} {crit['range']}")
+            nodes.append({
+                "id": cid,
+                "type": "acceptance_criterion",
+                "label": "\n".join(label_parts),
+                "properties": crit,
+            })
+            edges.append({
+                "source": reqid, "target": cid,
+                "relation": "has_criterion", "properties": {},
+            })
+
+    # --- Analysis plan phases ---
+    ap = plan.get("analysis_plan")
+    if isinstance(ap, dict):
+        phases = ap.get("phases") or []
+        phase_ids = {
+            p.get("id") for p in phases
+            if isinstance(p, dict) and p.get("id")
+        }
+        for phase in phases:
+            if not isinstance(phase, dict):
+                continue
+            pid_ = phase.get("id")
+            if not pid_:
+                continue
+            phid = f"phase-{pid_}"
+            label = phase.get("name") or pid_
+            mode = phase.get("mode")
+            if mode:
+                label = f"{label}\n({mode})"
+            nodes.append({
+                "id": phid,
+                "type": "phase",
+                "label": label,
+                "properties": phase,
+            })
+            edges.append({
+                "source": "plan", "target": phid,
+                "relation": "contains", "properties": {},
+            })
+            for dep in phase.get("depends_on") or []:
+                if dep in phase_ids:
+                    edges.append({
+                        "source": f"phase-{dep}", "target": phid,
+                        "relation": "precedes", "properties": {},
+                    })
 
     return {
         "plan_id": pid,
@@ -503,6 +537,172 @@ def build_plan_graph(plan: dict, plan_id: str = "", version: int = 0) -> dict:
         "nodes": nodes,
         "edges": edges,
     }
+
+
+# ---------------------------------------------------------------------------
+# Decision target resolution
+# ---------------------------------------------------------------------------
+
+
+def _stage_target(stage: str, node_ids: set[str]) -> str | None:
+    """Legacy heuristic: map a decision stage string to a graph-node id.
+
+    Kept as a fallback when element_path is absent or fails to resolve.
+    """
+    if not stage:
+        return None
+    if "mesh" in stage:
+        for nid in node_ids:
+            if nid.startswith("mesh-"):
+                return nid
+    if "material" in stage:
+        for nid in node_ids:
+            if nid.startswith("mat-"):
+                return nid
+    if "fem" in stage or "structural" in stage:
+        for nid in node_ids:
+            if nid.startswith("fem-"):
+                return nid
+    if "solver" in stage and "nl-solver" in node_ids:
+        return "nl-solver"
+    if "optimizer" in stage and "nl-solver" in node_ids:
+        return "nl-solver"
+    return None
+
+
+def _resolve_decision_target(
+    decision: dict,
+    plan: dict,
+    node_ids: set[str],
+    surface_ids: list[str],
+    nodes: list[dict],
+    edges: list[dict],
+) -> str | None:
+    """Resolve a decision's element_path to an existing graph node id.
+
+    If the path resolves to an element that maps to an existing node in
+    the graph (mesh, material, FEM, DV, constraint, objective, solver,
+    surface, requirement, phase), return that node's id. If the path
+    resolves but points at an element without a dedicated node, create
+    a synthetic ``elem-`` node so the ``justifies`` edge has a concrete
+    target. Return None when element_path is absent or unresolvable so
+    the caller can fall back to the stage heuristic.
+    """
+    from hangar.omd.plan_paths import resolve_element_path
+
+    path = decision.get("element_path")
+    if not path:
+        return None
+    resolved = resolve_element_path(plan, path)
+    if resolved is None:
+        return None
+
+    target = _element_path_to_node_id(path, resolved, node_ids, surface_ids)
+    if target is not None:
+        return target
+
+    # Synthesize a node for this element so the graph still renders the
+    # justifies edge against a concrete target.
+    safe_key = resolved.entity_key.replace("[", "_").replace("]", "").replace(".", "_")
+    synth_id = f"elem-{safe_key}"
+    if synth_id not in node_ids:
+        nodes.append({
+            "id": synth_id,
+            "type": "plan_element",
+            "label": resolved.entity_key,
+            "properties": {
+                "element_path": path,
+                "entity_kind": resolved.entity_kind,
+            },
+        })
+        edges.append({
+            "source": "plan", "target": synth_id,
+            "relation": "contains", "properties": {},
+        })
+        node_ids.add(synth_id)
+    return synth_id
+
+
+def _element_path_to_node_id(
+    path: str,
+    resolved,
+    node_ids: set[str],
+    surface_ids: list[str],
+) -> str | None:
+    """Map a resolved element_path to an existing graph-node id, if any."""
+    # design_variables[name] / design_variables[name].<field>
+    if path.startswith("design_variables["):
+        name = _bracket_value(path, "design_variables")
+        if name:
+            short = name.split(".")[-1]
+            candidate = f"dv-{short}"
+            if candidate in node_ids:
+                return candidate
+    if path.startswith("constraints["):
+        name = _bracket_value(path, "constraints")
+        if name:
+            short = name.split(".")[-1]
+            candidate = f"con-{short}"
+            if candidate in node_ids:
+                return candidate
+    if path == "objective" or path.startswith("objective."):
+        if "objective" in node_ids:
+            return "objective"
+    if path.startswith("solvers.nonlinear") and "nl-solver" in node_ids:
+        return "nl-solver"
+    if path.startswith("solvers.linear") and "lin-solver" in node_ids:
+        return "lin-solver"
+    if path.startswith("requirements["):
+        name = _bracket_value(path, "requirements")
+        if name and f"req-{name}" in node_ids:
+            return f"req-{name}"
+    if path.startswith("analysis_plan.phases["):
+        name = _bracket_value(path, "phases")
+        if name and f"phase-{name}" in node_ids:
+            return f"phase-{name}"
+    # Surface-scoped paths: components[X].config.surfaces[Y].<field>
+    if path.startswith("components[") and ".surfaces[" in path:
+        surf_name = _bracket_value_after(path, ".surfaces")
+        if not surf_name:
+            return None
+        surf_id = f"surf-{surf_name}"
+        tail = path.split(".surfaces[", 1)[1].split("]", 1)[-1].lstrip(".")
+        if tail in {"num_x", "num_y"} and f"mesh-{surf_name}" in node_ids:
+            return f"mesh-{surf_name}"
+        if tail in {"E", "G", "yield_stress", "mrho"} and f"mat-{surf_name}" in node_ids:
+            return f"mat-{surf_name}"
+        if tail in {
+            "fem_model_type", "thickness_cp",
+            "spar_thickness_cp", "skin_thickness_cp",
+        } and f"fem-{surf_name}" in node_ids:
+            return f"fem-{surf_name}"
+        if surf_id in node_ids:
+            return surf_id
+    return None
+
+
+def _bracket_value(path: str, head: str) -> str | None:
+    """Extract 'wing' from 'components[wing].config.num_y' given head='components'."""
+    prefix = f"{head}["
+    if not path.startswith(prefix):
+        return None
+    end = path.find("]", len(prefix))
+    if end < 0:
+        return None
+    return path[len(prefix):end]
+
+
+def _bracket_value_after(path: str, marker: str) -> str | None:
+    """Extract the bracketed value immediately after a .marker segment."""
+    needle = f"{marker}["
+    idx = path.find(needle)
+    if idx < 0:
+        return None
+    start = idx + len(needle)
+    end = path.find("]", start)
+    if end < 0:
+        return None
+    return path[start:end]
 
 
 # ---------------------------------------------------------------------------

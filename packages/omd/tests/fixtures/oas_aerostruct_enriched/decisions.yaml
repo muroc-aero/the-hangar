@@ -1,0 +1,42 @@
+- id: dec-mesh
+  stage: mesh_selection
+  decision: Set num_y=7 for initial exploration
+  rationale: >
+    Moderate fidelity per aerostructural-formulation.md guidelines. Will
+    increase to 21+ for production runs after confirming convergence.
+  element_path: "components[wing].config.surfaces[wing].num_y"
+  alternatives_considered:
+    - option: "num_y=21"
+      rejected_because: Iteration time too high for exploration.
+
+- id: dec-dv-twist
+  stage: dv_setup
+  decision: twist_cp bounds [-10, 15] degrees
+  rationale: >
+    Bounds cover a conservative envelope that keeps the wing from stalling
+    while allowing wash-out optimization.
+  element_path: "design_variables[wing.twist_cp]"
+
+- id: dec-objective
+  stage: objective_selection
+  decision: Minimize wing structural mass
+  rationale: Primary study goal per R1.
+  element_path: "objective"
+
+- id: dec-constraint-failure
+  stage: constraint_setup
+  decision: failure <= 0 constraint from R2
+  rationale: Enforces structural integrity, traces directly to R2.
+  element_path: "constraints[AS_point_0.wing_perf.failure]"
+
+- id: dec-solver
+  stage: solver_selection
+  decision: Newton with DirectSolver linear
+  rationale: Standard choice for aerostructural coupling at this fidelity.
+  element_path: "solvers.nonlinear"
+
+- id: dec-optimizer
+  stage: optimizer_selection
+  decision: SLSQP with maxiter=200
+  rationale: Inequality constraints + continuous DVs; SLSQP is the default.
+  element_path: "optimizer"

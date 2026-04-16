@@ -1,0 +1,7 @@
+id: plan-oas-aerostruct-enriched
+name: OAS aerostructural enriched plan
+version: 1
+description: >
+  Minimal fixture exercising the enriched plan schema: requirements with
+  acceptance_criteria and verification, decisions with element_path and
+  alternatives_considered, and an analysis_plan with two phases.

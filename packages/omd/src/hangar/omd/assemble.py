@@ -31,6 +31,7 @@ _STEM_TO_KEY = {
     "solvers": "solvers",
     "decisions": "decisions",
     "rationale": "rationale",
+    "analysis_plan": "analysis_plan",
 }
 
 # The optimization file contains nested keys that get promoted
@@ -222,6 +223,8 @@ def assemble_plan(
     # Record decision entities in provenance DB
     plan_entity_id = f"{plan_id}/v{new_version}"
     _record_decisions(plan_id, new_version, plan_entity_id, plan)
+    _record_requirements(plan_id, new_version, plan_entity_id, plan)
+    _record_analysis_plan(plan_id, new_version, plan_entity_id, plan)
 
     return {
         "plan": plan,
@@ -242,7 +245,10 @@ def _record_decisions(
     """Record decision entries from the plan as provenance entities.
 
     Each entry in plan["decisions"] becomes a decision entity linked
-    to the plan entity via a wasAttributedTo edge.
+    to the plan entity via a wasAttributedTo edge. If the decision
+    carries an ``element_path``, a plan_element entity is recorded
+    (if it does not already exist) and a ``justifies`` edge is emitted
+    from the decision to that element.
     """
     decisions = plan.get("decisions")
     if not decisions or not isinstance(decisions, list):
@@ -253,11 +259,14 @@ def _record_decisions(
             init_analysis_db,
             record_entity,
             add_prov_edge,
+            record_activity,
+        )
+        from hangar.omd.plan_paths import (
+            resolve_element_path,
+            element_entity_id,
         )
 
         init_analysis_db()
-
-        from hangar.omd.db import record_activity
 
         for decision in decisions:
             if not isinstance(decision, dict):
@@ -282,8 +291,154 @@ def _record_decisions(
                 status="completed",
             )
             add_prov_edge("wasGeneratedBy", entity_id, decide_act_id)
+
+            # Link decision to the element it justifies, if any.
+            element_path = decision.get("element_path")
+            resolved = resolve_element_path(plan, element_path)
+            if resolved is not None:
+                elem_id = element_entity_id(plan_entity_id, resolved)
+                record_entity(
+                    entity_id=elem_id,
+                    entity_type="plan_element",
+                    created_by="omd",
+                    plan_id=plan_id,
+                    version=version,
+                    metadata=json.dumps({
+                        "element_path": element_path,
+                        "entity_kind": resolved.entity_kind,
+                    }),
+                    parent_id=plan_entity_id,
+                )
+                add_prov_edge("justifies", entity_id, elem_id)
     except Exception:
         # Don't fail assembly if provenance recording fails
+        pass
+
+
+def _record_requirements(
+    plan_id: str,
+    version: int,
+    plan_entity_id: str,
+    plan: dict,
+) -> None:
+    """Record requirements and their acceptance_criteria as entities.
+
+    Each requirement becomes a first-class provenance entity (so later
+    assessments can emit satisfies/violates edges against it). Each
+    acceptance_criterion becomes a sub-entity linked via a
+    has_criterion edge.
+    """
+    requirements = plan.get("requirements")
+    if not requirements or not isinstance(requirements, list):
+        return
+
+    try:
+        from hangar.omd.db import (
+            init_analysis_db,
+            record_entity,
+            add_prov_edge,
+        )
+
+        init_analysis_db()
+
+        for req in requirements:
+            if not isinstance(req, dict):
+                continue
+            req_id = req.get("id")
+            if not req_id:
+                continue
+            req_entity = f"{plan_entity_id}/req/{req_id}"
+            record_entity(
+                entity_id=req_entity,
+                entity_type="requirement",
+                created_by="omd",
+                plan_id=plan_id,
+                version=version,
+                metadata=json.dumps(req),
+                parent_id=plan_entity_id,
+            )
+            add_prov_edge("wasAttributedTo", req_entity, plan_entity_id)
+
+            criteria = req.get("acceptance_criteria")
+            if not isinstance(criteria, list):
+                continue
+            for idx, crit in enumerate(criteria):
+                if not isinstance(crit, dict):
+                    continue
+                metric = crit.get("metric", f"c{idx}")
+                crit_id = f"{req_entity}/crit/{metric}"
+                record_entity(
+                    entity_id=crit_id,
+                    entity_type="acceptance_criterion",
+                    created_by="omd",
+                    plan_id=plan_id,
+                    version=version,
+                    metadata=json.dumps(crit),
+                    parent_id=req_entity,
+                )
+                add_prov_edge("has_criterion", req_entity, crit_id)
+    except Exception:
+        pass
+
+
+def _record_analysis_plan(
+    plan_id: str,
+    version: int,
+    plan_entity_id: str,
+    plan: dict,
+) -> None:
+    """Record analysis_plan phases as provenance entities.
+
+    Each phase becomes a phase entity linked to the plan via
+    wasAttributedTo. Each depends_on reference becomes a precedes edge
+    from the predecessor phase to this one.
+    """
+    analysis_plan = plan.get("analysis_plan")
+    if not isinstance(analysis_plan, dict):
+        return
+    phases = analysis_plan.get("phases")
+    if not isinstance(phases, list):
+        return
+
+    try:
+        from hangar.omd.db import (
+            init_analysis_db,
+            record_entity,
+            add_prov_edge,
+        )
+
+        init_analysis_db()
+
+        phase_ids = {
+            p.get("id") for p in phases
+            if isinstance(p, dict) and p.get("id")
+        }
+
+        for phase in phases:
+            if not isinstance(phase, dict):
+                continue
+            pid = phase.get("id")
+            if not pid:
+                continue
+            phase_entity = f"{plan_entity_id}/phase/{pid}"
+            record_entity(
+                entity_id=phase_entity,
+                entity_type="phase",
+                created_by="omd",
+                plan_id=plan_id,
+                version=version,
+                metadata=json.dumps(phase),
+                parent_id=plan_entity_id,
+            )
+            add_prov_edge("wasAttributedTo", phase_entity, plan_entity_id)
+
+            depends_on = phase.get("depends_on") or []
+            for dep in depends_on:
+                if dep not in phase_ids:
+                    continue
+                dep_entity = f"{plan_entity_id}/phase/{dep}"
+                add_prov_edge("precedes", dep_entity, phase_entity)
+    except Exception:
         pass
 
 

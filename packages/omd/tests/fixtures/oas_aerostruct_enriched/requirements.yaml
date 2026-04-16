@@ -1,0 +1,31 @@
+- id: R1
+  text: Minimize structural mass under cruise aerostructural loading.
+  type: objective
+  priority: primary
+  source: study instruction
+  status: open
+  traces_to: [structural_mass, twist_cp, thickness_cp]
+  acceptance_criteria:
+    - metric: structural_mass
+      comparator: "<"
+      threshold: 200.0
+      units: kg
+  verification:
+    method: automated
+    assertion: "structural_mass < 200.0"
+
+- id: R2
+  text: No structural failure at cruise design point.
+  type: structural
+  priority: primary
+  source: engineering judgement
+  status: open
+  traces_to: [failure]
+  acceptance_criteria:
+    - metric: failure
+      comparator: "<="
+      threshold: 0.0
+      units: dimensionless
+  verification:
+    method: automated
+    assertion: "failure <= 0.0"
