@@ -111,6 +111,42 @@ def get_all_plot_providers() -> dict[str, Callable]:
     return merged
 
 
+# Maps slot provider names to the component type whose plot provider applies.
+_SLOT_PLOT_TYPES: dict[str, str] = {
+    "oas/vlm": "oas/AeroPoint",
+    "oas/vlm-direct": "oas/AeroPoint",
+    "oas/aerostruct": "oas/AerostructPoint",
+    "pyc/turbojet": "pyc/TurbojetDesign",
+    "pyc/hbtf": "pyc/HBTFDesign",
+    "pyc/surrogate": "pyc/TurbojetDesign",
+}
+
+
+def get_plot_provider_with_slots(
+    component_type: str | None = None,
+    slot_providers: dict[str, str] | None = None,
+) -> dict[str, Callable]:
+    """Get merged plot provider including slot-specific plots.
+
+    For OCP runs with active slots (e.g. oas/vlm drag, pyc/hbtf propulsion),
+    this merges the OCP plots with OAS and pyCycle plot providers so that
+    composite-aware plots are available.
+
+    Args:
+        component_type: Primary component type (e.g. "ocp/BasicMission").
+        slot_providers: Dict mapping slot names to provider names
+            (e.g. {"drag": "oas/vlm", "propulsion": "pyc/surrogate"}).
+    """
+    merged = get_plot_provider(component_type)
+    if slot_providers:
+        _ensure_builtins()
+        for provider_name in slot_providers.values():
+            plot_type = _SLOT_PLOT_TYPES.get(provider_name)
+            if plot_type and plot_type in _PLOT_PROVIDERS:
+                merged.update(_PLOT_PROVIDERS[plot_type])
+    return merged
+
+
 def list_plot_types(component_type: str | None = None) -> list[str]:
     """Return sorted list of available plot types.
 
@@ -192,12 +228,20 @@ def _register_builtins() -> None:
             build_pyc_multi_turboshaft_design,
             build_pyc_mixedflow_design,
         )
-        register_factory("pyc/TurbojetDesign", build_pyc_turbojet_design)
-        register_factory("pyc/TurbojetMultipoint", build_pyc_turbojet_multipoint)
-        register_factory("pyc/HBTFDesign", build_pyc_hbtf_design)
-        register_factory("pyc/ABTurbojetDesign", build_pyc_ab_turbojet_design)
-        register_factory("pyc/SingleTurboshaftDesign", build_pyc_single_turboshaft_design)
-        register_factory("pyc/MultiTurboshaftDesign", build_pyc_multi_turboshaft_design)
-        register_factory("pyc/MixedFlowDesign", build_pyc_mixedflow_design)
+        from hangar.omd.plotting.pyc import PYC_PLOTS
+        register_factory("pyc/TurbojetDesign", build_pyc_turbojet_design,
+                         plot_provider=PYC_PLOTS)
+        register_factory("pyc/TurbojetMultipoint", build_pyc_turbojet_multipoint,
+                         plot_provider=PYC_PLOTS)
+        register_factory("pyc/HBTFDesign", build_pyc_hbtf_design,
+                         plot_provider=PYC_PLOTS)
+        register_factory("pyc/ABTurbojetDesign", build_pyc_ab_turbojet_design,
+                         plot_provider=PYC_PLOTS)
+        register_factory("pyc/SingleTurboshaftDesign", build_pyc_single_turboshaft_design,
+                         plot_provider=PYC_PLOTS)
+        register_factory("pyc/MultiTurboshaftDesign", build_pyc_multi_turboshaft_design,
+                         plot_provider=PYC_PLOTS)
+        register_factory("pyc/MixedFlowDesign", build_pyc_mixedflow_design,
+                         plot_provider=PYC_PLOTS)
     except ImportError:
         logger.info("pyCycle not available, pyCycle factories not registered")

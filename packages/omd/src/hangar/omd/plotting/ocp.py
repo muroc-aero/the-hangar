@@ -117,6 +117,7 @@ def _extract_trajectory_from_case(case, phases: list[str]) -> dict:
             phase_data["airspeed_kn"] = phase_data["airspeed_ms"] * 1.94384
         elif "airspeed_true_ms" in phase_data:
             phase_data["airspeed_kn"] = phase_data["airspeed_true_ms"] * 1.94384
+            phase_data["_airspeed_is_tas"] = True
         if "vs_ms" in phase_data:
             phase_data["vertical_speed_ftmin"] = phase_data["vs_ms"] * 196.85
         if "range_m" in phase_data:
@@ -227,10 +228,16 @@ def plot_mission_profile(recorder_path: str | Path, **kwargs) -> plt.Figure:
         fontsize=9, y=0.99,
     )
 
+    # Check if airspeed is TAS (no EAS available)
+    _is_tas = any(
+        pd.get("_airspeed_is_tas") for pd in trajectory.values()
+    )
+    airspeed_label = "True Airspeed (kn)" if _is_tas else "EAS (kn)"
+
     panels = [
         ("altitude_ft", "Altitude (ft)"),
         ("vertical_speed_ftmin", "Vertical Speed (ft/min)"),
-        ("airspeed_kn", "Airspeed (kn)"),
+        ("airspeed_kn", airspeed_label),
         ("throttle", "Throttle"),
         ("fuel_used_kg", "Fuel Used (kg)"),
     ]

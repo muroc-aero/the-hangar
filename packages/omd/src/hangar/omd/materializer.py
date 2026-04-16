@@ -217,6 +217,11 @@ def _materialize_composite(
 
         component_metadata[comp_id] = inner_meta
 
+        # Store active slot config for result extraction
+        slots_cfg = comp.get("config", {}).get("slots", {})
+        if slots_cfg:
+            component_metadata[comp_id]["active_slots"] = slots_cfg
+
     # Wire explicit connections from the plan
     for conn in plan.get("connections", []):
         prob.model.connect(conn["src"], conn["tgt"])

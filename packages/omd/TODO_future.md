@@ -115,7 +115,6 @@ ab_turbojet, single_spool_turboshaft, multi_spool_turboshaft, mixedflow_turbofan
 Remaining:
 - Full OCP mission convergence test (outer Newton driving throttle/CL
   with pyCycle in the loop) not yet validated -- standalone slot tests pass
-- Design variables (comp_PR, eff, Nmech) not exposed through slot
 - No engine weight estimation
 - T4, OPR, flow station details not surfaced through slot interface
 
@@ -213,6 +212,132 @@ Completed:
 - Prerequisite fix: OEW passthrough when propulsion slot is active,
   OEW field registered, OEW values added to caravan/kingair/tbm850 data
 - Tests: standalone component, provider interface, factory integration
+
+
+## P10a: Direct-Coupled HBTF Off-Design Robustness
+
+**Status: NOT STARTED**
+
+The direct-coupled HBTF (`pyc/hbtf` slot provider) fails at extreme
+off-design conditions -- specifically climb start at sea level, far from
+the 35kft/M0.8 design point. The nozzle area-matching balances (W, BPR)
+become ill-conditioned when the nozzle is unchoked at high back-pressure.
+
+Root cause: the HBTF off-design has 5 coupled balance equations (W, FAR,
+BPR, lp_Nmech, hp_Nmech) vs the turbojet's 3 (W, FAR, Nmech). The two
+extra balances (bypass nozzle area, dual shaft power) are sensitive to
+back-pressure, which changes dramatically between 35kft (~3.5 psi) and
+SL (~14.7 psi). The current `guess_nonlinear` provides cruise-tuned
+guesses (5.2 psi Pt, 440 degR Tt) regardless of actual conditions.
+
+Upstream pyCycle handles this via explicit continuation -- solving one
+flight point at a time, warm-starting from the previous converged
+solution. Neither upstream nor hangar uses altitude-aware guesses.
+
+Fixes (priority order):
+
+1. **Condition-aware `guess_nonlinear`** in `pyc/hbtf.py` (2-3 hr)
+   Read `inputs["fc.Fl_O:stat:P"]` or altitude and set regime-appropriate
+   guesses for fc.balance.Pt, fc.balance.Tt, balance.W, balance.BPR.
+   Use coarse if/else regime detection (SL vs mid-alt vs cruise), not
+   smooth interpolation. Risk: if altitude inputs are poorly initialized
+   on the first OCP Newton iteration, condition-aware guesses could be
+   worse than fixed defaults.
+
+2. **Add compressor map R-line guesses** in `slots.py` (15 min)
+   Set fan/lpc/hpc.map.RlineMap = 2.0 in `apply_initial_guesses` for
+   all OD points. Upstream does this; hangar currently omits it. Very
+   low risk.
+
+3. **Switch linesearch to `BoundsEnforceLS`** in `pyc/hbtf.py` (30 min)
+   Clips Newton steps to bounds, preventing unphysical values (negative
+   pressures, BPR < 2). Risk: can cause solver to stall near bounds
+   rather than diverge -- trades divergence for silent wrong answers.
+
+4. **Increase Newton maxiter** from 50 to 100, add stall_limit=3 (5 min)
+   Prevents premature termination. Risk: doubles wall clock for genuinely
+   non-converging cases in Newton-in-Newton context.
+
+5. **Pre-solve warmup/continuation** in `slots.py` (1-2 days)
+   Before OCP Newton starts, run HBTF standalone through a short
+   continuation sequence (design -> mid-alt -> SL) to seed balance
+   variables. Closest to upstream's strategy. Risk: breaks stateless
+   subsystem contract; cached states invalidated when OCP Newton updates
+   flight conditions. Needs drift detection to re-trigger warmup.
+
+Fixes 1+2+3 should resolve convergence for typical OCP mission profiles.
+Fix 5 is the fallback if those are insufficient.
+
+
+## P10b: Composite Provenance DAG Population
+
+**Status: PARTIAL**
+
+Completed:
+- `_decompose_plan()` now creates `wasDerivedFrom` prov_edges from every
+  sub-entity (surface_def, operating_point, solver_config, opt_setup,
+  aircraft_config, mission_config, propulsion_config, slot_config) back
+  to the plan entity. DAG renderer shows the plan decomposition tree.
+- `_record_assessment()` creates per-slot `slot_results` entities for
+  composite runs with `parent_id=run_id`.
+
+Remaining:
+
+1. **Build composite discipline graph** (medium)
+   Extend `build_discipline_graph()` to walk inside OCP composite
+   problems and identify slot boundaries. Create nodes for each slot
+   provider (drag/oas, propulsion/pyc, weight/ocp) and edges for data
+   flow: fltcond -> drag_slot -> CD -> mission, fltcond -> prop_slot ->
+   thrust -> mission.
+
+
+## P10c: Per-Slot Result Extraction and Plotting
+
+**Status: PARTIAL**
+
+Completed:
+- Slot providers declare `result_paths` attribute (same pattern as
+  `design_variables`). Maps short variable names to internal OpenMDAO
+  paths relative to the slot subsystem root. All 7 providers updated:
+  oas/vlm, oas/vlm-direct, oas/aerostruct, pyc/turbojet, pyc/hbtf,
+  pyc/surrogate, ocp/parametric-weight.
+- `_extract_composite_summary()` now extracts per-slot results via
+  `result_paths`. Builds full paths using the OCP model structure
+  (`{comp_id}.{phase}.acmodel.{subsys}.{path}`) with fallback.
+  Results stored in `summary["slots"]`.
+- Materializer stores `active_slots` in component metadata so the
+  extractor can look up slot providers at extraction time.
+- `_record_assessment()` creates `slot_results` entities for each
+  active slot in composite runs.
+- pyCycle plot provider registered: `station_properties` (grouped bar
+  chart of Pt/Tt at flow stations) and `component_efficiency` (bar
+  chart of compressor/turbine efficiency and pressure ratio). Uses
+  pattern matching (`*Fl_O:tot:P`, `*DESIGN*.eff`) to discover pyCycle
+  variables in recorder output. Works for both standalone and composite.
+- OAS plot patterns audited: existing `fnmatch` wildcards (`*wing.def_mesh`,
+  `*wing_perf.CL`) already match composite paths. `detect_surface_name()`
+  correctly parses surface names from longer paths.
+
+Remaining:
+
+1. **Deep OAS slot extraction** -- currently extracts scalar metrics
+   via `result_paths`. Spanwise CL distribution, twist/chord profiles,
+   mesh coordinates not yet extracted from composite runs. The OAS plot
+   functions can already find these in recorder output via pattern
+   matching, but the summary dict does not include them.
+
+2. **pyCycle flow station extraction** -- `result_paths` gives TSFC/Fn
+   scalars. Full flow station data (per-station Pt, Tt, W, MN) and
+   component performance (per-component PR, eff, power) not yet in
+   summary. The pyCycle plot provider reads these directly from the
+   recorder, so they are available for plotting but not for
+   programmatic access via `summary["slots"]`.
+
+3. **T-s diagram** -- not yet implemented in pyc plot provider. Would
+   plot entropy vs temperature for the thermodynamic cycle.
+
+4. **Design-vs-offdesign comparison** -- plot provider only handles
+   single-point data. Multipoint comparison not yet supported.
 
 
 ## P10: Future Integration Items (Not Started)

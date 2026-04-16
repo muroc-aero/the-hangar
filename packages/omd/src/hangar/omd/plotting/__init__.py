@@ -64,6 +64,7 @@ def generate_plots(
     output_dir: Path | None = None,
     component_type: str | None = None,
     component_types: dict[str, str] | None = None,
+    slot_providers: dict[str, str] | None = None,
 ) -> dict[str, Path]:
     """Generate one or more plot types and save as PNG files.
 
@@ -81,11 +82,16 @@ def generate_plots(
         component_types: Dict mapping component_id to type string for
             composite problems. When provided with multiple types, plots
             from each component type are generated with prefixed filenames.
+        slot_providers: Dict mapping slot names to provider names
+            (e.g. {"drag": "oas/vlm"}). Used to merge slot-specific
+            plot providers into the available set.
 
     Returns:
         Dict mapping plot type to saved file path.
     """
-    from hangar.omd.registry import get_plot_provider, get_all_plot_providers
+    from hangar.omd.registry import (
+        get_plot_provider, get_plot_provider_with_slots, get_all_plot_providers,
+    )
 
     # Track which plots come from which component (for filename prefixing)
     _plot_source: dict[str, str] = {}  # plot_name -> component_id
@@ -103,7 +109,7 @@ def generate_plots(
                     if pname not in _GENERIC_PLOTS:
                         _plot_source[pname] = comp_id
     elif component_type:
-        available = get_plot_provider(component_type)
+        available = get_plot_provider_with_slots(component_type, slot_providers)
     else:
         available = get_all_plot_providers()
 

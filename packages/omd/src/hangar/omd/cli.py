@@ -252,11 +252,14 @@ def plot_cmd(run_id: str | None, plot_type: str, output: str | None,
     import json as _json
     from hangar.omd.db import recordings_dir, init_analysis_db, query_entity
     from hangar.omd.plotting import generate_plots
-    from hangar.omd.registry import get_plot_provider, get_all_plot_providers
+    from hangar.omd.registry import (
+        get_plot_provider, get_plot_provider_with_slots, get_all_plot_providers,
+    )
 
     # Look up component type from DB if we have a run_id
     component_type = None
     component_types = None
+    slot_providers = None
     if run_id:
         try:
             init_analysis_db()
@@ -265,6 +268,7 @@ def plot_cmd(run_id: str | None, plot_type: str, output: str | None,
                 meta = _json.loads(entity["metadata"])
                 component_type = meta.get("component_type")
                 component_types = meta.get("component_types")
+                slot_providers = meta.get("slot_providers")
         except Exception:
             pass
 
@@ -279,7 +283,7 @@ def plot_cmd(run_id: str | None, plot_type: str, output: str | None,
                     click.echo(f"    {name}")
             return
         if component_type:
-            provider = get_plot_provider(component_type)
+            provider = get_plot_provider_with_slots(component_type, slot_providers)
             click.echo(f"Plot types for {component_type}:")
         else:
             provider = get_all_plot_providers()
@@ -323,6 +327,7 @@ def plot_cmd(run_id: str | None, plot_type: str, output: str | None,
         output_dir=out_dir,
         component_type=component_type,
         component_types=component_types,
+        slot_providers=slot_providers,
     )
 
     if saved:
@@ -544,6 +549,80 @@ def _omd_problem_dag_handler(
         ctype = meta.get("component_type", "")
         dgraph = build_discipline_graph(ctype)
 
+    # Enrich discipline nodes with slot results and run summary
+    slot_results = meta.get("slot_results", {})
+    run_summary = meta.get("run_summary", {})
+    _SLOT_TO_NODE = {
+        "drag": "aero",
+        "propulsion": "propulsion",
+        "weight": "weight",
+    }
+    # Build available plots list by checking disk
+    from hangar.omd.db import omd_data_root
+    # pyCycle station/efficiency plots only valid for direct-coupled providers
+    _prop_provider = slot_results.get("propulsion", {}).get("provider", "")
+    _pyc_direct = _prop_provider in ("pyc/turbojet", "pyc/hbtf")
+    _DISCIPLINE_PLOTS: dict[str, list] = {
+        "aero": [("planform", "Planform"), ("lift", "Lift Distribution"),
+                 ("twist", "Twist")],
+        "struct": [("struct", "Deformation"), ("thickness", "Thickness"),
+                   ("vonmises", "Von Mises")],
+        "mission": [("mission_profile", "Mission Profile"),
+                    ("weight_breakdown", "Weight Breakdown"),
+                    ("performance_summary", "Performance Summary")],
+        "geometry": [("planform", "Planform"), ("mesh_3d", "3D Mesh")],
+        "perf": [("convergence", "Convergence")],
+    }
+    if _pyc_direct:
+        _DISCIPLINE_PLOTS["propulsion"] = [
+            ("station_properties", "Station Properties"),
+            ("component_efficiency", "Component Efficiency"),
+        ]
+    existing_plots = set()
+    pdir = omd_data_root() / "plots" / run_id
+    if pdir.exists():
+        existing_plots = {p.stem for p in pdir.glob("*.png")}
+
+    for node in dgraph.get("nodes", []):
+        props = node.get("properties", {})
+        nid = node["id"]
+
+        # Inject slot result values
+        result_values = {}
+        for slot_name, node_id in _SLOT_TO_NODE.items():
+            if nid == node_id and slot_name in slot_results:
+                sr = slot_results[slot_name]
+                for k, v in sr.items():
+                    if k == "provider":
+                        continue
+                    if isinstance(v, float):
+                        result_values[k] = f"{v:.4g}"
+                    else:
+                        result_values[k] = str(v)
+
+        # Mission node gets run summary values
+        if nid == "mission" and run_summary:
+            for k, v in run_summary.items():
+                if isinstance(v, float):
+                    result_values[k] = f"{v:.4g}"
+                else:
+                    result_values[k] = str(v)
+
+        if result_values:
+            props["result_values"] = result_values
+
+        # Inject available plot links
+        discipline_plots = _DISCIPLINE_PLOTS.get(nid, [])
+        available_plots = [
+            {"type": pt, "label": label}
+            for pt, label in discipline_plots
+            if pt in existing_plots
+        ]
+        if available_plots:
+            props["available_plots"] = available_plots
+
+        node["properties"] = props
+
     # Convert to Cytoscape elements
     cy_elements = []
     for node in dgraph.get("nodes", []):
@@ -603,6 +682,11 @@ def _omd_problem_dag_handler(
   .var-tag {{ display: inline-block; padding: 1px 6px; border-radius: 3px;
               font-size: 10px; background: #1a2030; color: #6090b0; margin: 1px;
               font-family: monospace; }}
+  .result {{ color: #50d8a0; font-family: monospace; font-weight: 600; }}
+  .plot-btn {{ display: inline-block; padding: 3px 10px; border-radius: 4px;
+               font-size: 11px; background: #0a2028; border: 1px solid #30a0b0;
+               color: #60d0e0; margin: 2px; cursor: pointer; text-decoration: none; }}
+  .plot-btn:hover {{ background: #0e2838; border-color: #50c0d0; }}
 </style>
 </head>
 <body>
@@ -672,6 +756,7 @@ cy.fit(40);
 document.getElementById('btn-fit').addEventListener('click', function() {{ cy.fit(40); }});
 
 function escHtml(s) {{ return s == null ? '' : String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }}
+var runId = '{run_id}';
 
 /* Node click: show discipline details */
 cy.on('tap', 'node', function(evt) {{
@@ -722,6 +807,23 @@ cy.on('tap', 'node', function(evt) {{
       /* Coupling exchanges */
       if (props.disciplines) {{
         html += '<div class="kv"><span class="key">coupled </span><span class="val">' + escHtml(props.disciplines.join(' + ')) + '</span></div>';
+      }}
+
+      /* Result values from slot extraction */
+      if (props.result_values) {{
+        html += '<h3>Results</h3>';
+        for (var rk in props.result_values) {{
+          html += '<div class="kv"><span class="key">' + escHtml(rk) + ' </span><span class="result">' + escHtml(props.result_values[rk]) + '</span></div>';
+        }}
+      }}
+
+      /* Plot links */
+      if (props.available_plots && props.available_plots.length) {{
+        html += '<h3>Plots</h3>';
+        for (var pi = 0; pi < props.available_plots.length; pi++) {{
+          var pt = props.available_plots[pi];
+          html += '<a class="plot-btn" href="/omd-plot-img?run_id=' + encodeURIComponent(runId) + '&name=' + encodeURIComponent(pt.type + '.png') + '" target="_blank">' + escHtml(pt.label) + '</a>';
+        }}
       }}
     }} catch(e) {{}}
   }}
@@ -977,6 +1079,48 @@ var cy = cytoscape({{
          'label': 'data(label)', 'text-wrap': 'wrap', 'font-size': 9,
          'color': '#c080e0', 'text-valign': 'center', 'text-halign': 'center',
     }} }},
+    {{ selector: 'node[node_type="aircraft_config"]', style: {{
+         'shape': 'round-rectangle', 'width': 140, 'height': 40,
+         'background-color': '#0a1a1a', 'border-width': 2, 'border-color': '#40b0a0',
+         'label': 'data(label)', 'text-wrap': 'wrap', 'font-size': 10,
+         'color': '#70d8c8', 'text-valign': 'center', 'text-halign': 'center',
+    }} }},
+    {{ selector: 'node[node_type="mission_profile"]', style: {{
+         'shape': 'round-rectangle', 'width': 130, 'height': 36,
+         'background-color': '#0a1820', 'border-width': 2, 'border-color': '#40b8d0',
+         'label': 'data(label)', 'text-wrap': 'wrap', 'font-size': 9,
+         'color': '#70d0e8', 'text-valign': 'center', 'text-halign': 'center',
+    }} }},
+    {{ selector: 'node[node_type="propulsion_architecture"]', style: {{
+         'shape': 'round-rectangle', 'width': 120, 'height': 32,
+         'background-color': '#1a1408', 'border-width': 2, 'border-color': '#c08830',
+         'label': 'data(label)', 'text-wrap': 'wrap', 'font-size': 10,
+         'color': '#e0a850', 'text-valign': 'center', 'text-halign': 'center',
+    }} }},
+    {{ selector: 'node[node_type="slot_provider"]', style: {{
+         'shape': 'round-rectangle', 'width': 130, 'height': 36,
+         'background-color': '#14081a', 'border-width': 2, 'border-color': '#9060c0',
+         'label': 'data(label)', 'text-wrap': 'wrap', 'font-size': 9,
+         'color': '#b080e0', 'text-valign': 'center', 'text-halign': 'center',
+    }} }},
+    {{ selector: 'node[node_type="engine_config"]', style: {{
+         'shape': 'round-rectangle', 'width': 150, 'height': 44,
+         'background-color': '#1a1008', 'border-width': 2, 'border-color': '#d09030',
+         'label': 'data(label)', 'text-wrap': 'wrap', 'font-size': 10,
+         'color': '#e8b050', 'text-valign': 'center', 'text-halign': 'center',
+    }} }},
+    {{ selector: 'node[node_type="engine_element"]', style: {{
+         'shape': 'round-rectangle', 'width': 110, 'height': 30,
+         'background-color': '#1a1408', 'border-width': 2, 'border-color': '#b8a040',
+         'label': 'data(label)', 'text-wrap': 'wrap', 'font-size': 9,
+         'color': '#d8c060', 'text-valign': 'center', 'text-halign': 'center',
+    }} }},
+    {{ selector: 'node[node_type="surrogate_deck"]', style: {{
+         'shape': 'round-rectangle', 'width': 130, 'height': 36,
+         'background-color': '#081a1a', 'border-width': 2, 'border-color': '#3090a0',
+         'label': 'data(label)', 'text-wrap': 'wrap', 'font-size': 9,
+         'color': '#60b8c8', 'text-valign': 'center', 'text-halign': 'center',
+    }} }},
     {{ selector: 'node:selected', style: {{ 'border-width': 3, 'border-color': '#9ab0ff' }} }},
     /* Edge styles by relation type */
     {{ selector: 'edge', style: {{
@@ -995,6 +1139,18 @@ var cy = cytoscape({{
        style: {{ 'line-style': 'dashed', 'line-color': '#d0a030', 'target-arrow-color': '#d0a030' }} }},
     {{ selector: 'edge[relation="traces_to"]',
        style: {{ 'line-style': 'dotted', 'line-color': '#a060c0', 'target-arrow-color': '#a060c0' }} }},
+    {{ selector: 'edge[relation="flow_to"]',
+       style: {{ 'width': 3, 'line-color': '#c09030', 'target-arrow-color': '#c09030' }} }},
+    {{ selector: 'edge[relation="has_architecture"]',
+       style: {{ 'line-color': '#c08830', 'target-arrow-color': '#c08830' }} }},
+    {{ selector: 'edge[relation="provides"]',
+       style: {{ 'line-color': '#9060c0', 'target-arrow-color': '#9060c0' }} }},
+    {{ selector: 'edge[relation="couples"]',
+       style: {{ 'line-style': 'dashed', 'line-color': '#b8a040', 'target-arrow-color': '#b8a040' }} }},
+    {{ selector: 'edge[relation="configures"]',
+       style: {{ 'line-style': 'dotted', 'line-color': '#40b0a0', 'target-arrow-color': '#40b0a0' }} }},
+    {{ selector: 'edge[relation="generates"]',
+       style: {{ 'line-color': '#3090a0', 'target-arrow-color': '#3090a0' }} }},
   ],
   layout: {{ name: 'dagre', rankDir: 'TB', nodeSep: 40, rankSep: 70, edgeSep: 10 }},
 }});

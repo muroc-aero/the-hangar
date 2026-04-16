@@ -43,8 +43,12 @@ def _decompose_plan(
     """Extract sub-entities from a plan and persist them in the provenance DB.
 
     Creates surface_def, operating_point, solver_config, opt_setup, and
-    decision entities as children of the plan entity.
+    decision entities as children of the plan entity.  Each sub-entity
+    gets a ``wasDerivedFrom`` edge back to the plan entity so the
+    provenance DAG renderer can display the decomposition.
     """
+    sub_entity_ids: list[str] = []
+
     # Surfaces
     for comp in plan.get("components", []):
         for surf in comp.get("config", {}).get("surfaces", []):
@@ -57,14 +61,16 @@ def _decompose_plan(
                        "sweep", "dihedral", "taper"):
                 if k in surf:
                     surf_meta[k] = surf[k]
+            eid = f"{plan_entity_id}/surf/{surf_name}"
             record_entity(
-                entity_id=f"{plan_entity_id}/surf/{surf_name}",
+                entity_id=eid,
                 entity_type="surface_def",
                 created_by="omd",
                 plan_id=plan_id,
                 metadata=json.dumps(surf_meta),
                 parent_id=plan_entity_id,
             )
+            sub_entity_ids.append(eid)
 
     # Operating points
     op = plan.get("operating_points")
@@ -73,34 +79,40 @@ def _decompose_plan(
             # Multipoint: record shared params + each flight point
             shared = op.get("shared", {})
             if shared:
+                eid = f"{plan_entity_id}/op/shared"
                 record_entity(
-                    entity_id=f"{plan_entity_id}/op/shared",
+                    entity_id=eid,
                     entity_type="operating_point",
                     created_by="omd",
                     plan_id=plan_id,
                     metadata=json.dumps({"type": "shared", **shared}),
                     parent_id=plan_entity_id,
                 )
+                sub_entity_ids.append(eid)
             for idx, fp in enumerate(op["flight_points"]):
                 label = fp.get("name", f"point_{idx}")
+                eid = f"{plan_entity_id}/op/{label}"
                 record_entity(
-                    entity_id=f"{plan_entity_id}/op/{label}",
+                    entity_id=eid,
                     entity_type="operating_point",
                     created_by="omd",
                     plan_id=plan_id,
                     metadata=json.dumps({"type": "flight_point", "index": idx, **fp}),
                     parent_id=plan_entity_id,
                 )
+                sub_entity_ids.append(eid)
         else:
             # Single-point
+            eid = f"{plan_entity_id}/op"
             record_entity(
-                entity_id=f"{plan_entity_id}/op",
+                entity_id=eid,
                 entity_type="operating_point",
                 created_by="omd",
                 plan_id=plan_id,
                 metadata=json.dumps(op),
                 parent_id=plan_entity_id,
             )
+            sub_entity_ids.append(eid)
 
     # Solvers
     solvers = plan.get("solvers")
@@ -113,14 +125,16 @@ def _decompose_plan(
         ln = solvers.get("linear", {})
         if ln:
             solver_meta["linear_type"] = ln.get("type")
+        eid = f"{plan_entity_id}/solvers"
         record_entity(
-            entity_id=f"{plan_entity_id}/solvers",
+            entity_id=eid,
             entity_type="solver_config",
             created_by="omd",
             plan_id=plan_id,
             metadata=json.dumps(solver_meta),
             parent_id=plan_entity_id,
         )
+        sub_entity_ids.append(eid)
 
     # Optimization setup
     if plan.get("design_variables") or plan.get("objective"):
@@ -131,14 +145,16 @@ def _decompose_plan(
             "design_variables": plan.get("design_variables", []),
             "constraints": plan.get("constraints", []),
         }
+        eid = f"{plan_entity_id}/opt"
         record_entity(
-            entity_id=f"{plan_entity_id}/opt",
+            entity_id=eid,
             entity_type="opt_setup",
             created_by="omd",
             plan_id=plan_id,
             metadata=json.dumps(opt_meta),
             parent_id=plan_entity_id,
         )
+        sub_entity_ids.append(eid)
 
     # OCP-specific sub-entities: aircraft config, mission config, propulsion
     for comp in plan.get("components", []):
@@ -150,14 +166,16 @@ def _decompose_plan(
             template = config.get("aircraft_template")
             aircraft_meta = {"aircraft_template": template} if template else {}
             if aircraft_meta:
+                eid = f"{plan_entity_id}/aircraft"
                 record_entity(
-                    entity_id=f"{plan_entity_id}/aircraft",
+                    entity_id=eid,
                     entity_type="aircraft_config",
                     created_by="omd",
                     plan_id=plan_id,
                     metadata=json.dumps(aircraft_meta),
                     parent_id=plan_entity_id,
                 )
+                sub_entity_ids.append(eid)
 
             # Mission configuration
             mission_params = config.get("mission_params", {})
@@ -167,26 +185,30 @@ def _decompose_plan(
                     "num_nodes": config.get("num_nodes"),
                     **mission_params,
                 }
+                eid = f"{plan_entity_id}/mission"
                 record_entity(
-                    entity_id=f"{plan_entity_id}/mission",
+                    entity_id=eid,
                     entity_type="mission_config",
                     created_by="omd",
                     plan_id=plan_id,
                     metadata=json.dumps(mission_meta),
                     parent_id=plan_entity_id,
                 )
+                sub_entity_ids.append(eid)
 
             # Propulsion configuration
             arch = config.get("architecture")
             if arch:
+                eid = f"{plan_entity_id}/propulsion"
                 record_entity(
-                    entity_id=f"{plan_entity_id}/propulsion",
+                    entity_id=eid,
                     entity_type="propulsion_config",
                     created_by="omd",
                     plan_id=plan_id,
                     metadata=json.dumps({"architecture": arch}),
                     parent_id=plan_entity_id,
                 )
+                sub_entity_ids.append(eid)
 
     # Slot configurations
     for comp in plan.get("components", []):
@@ -194,8 +216,9 @@ def _decompose_plan(
         slots = config.get("slots", {})
         comp_id = comp.get("id", "unknown")
         for slot_name, slot_cfg in slots.items():
+            eid = f"{plan_entity_id}/slot/{comp_id}/{slot_name}"
             record_entity(
-                entity_id=f"{plan_entity_id}/slot/{comp_id}/{slot_name}",
+                entity_id=eid,
                 entity_type="slot_config",
                 created_by="omd",
                 plan_id=plan_id,
@@ -207,6 +230,11 @@ def _decompose_plan(
                 }),
                 parent_id=plan_entity_id,
             )
+            sub_entity_ids.append(eid)
+
+    # Link all sub-entities to the plan entity
+    for sub_id in sub_entity_ids:
+        add_prov_edge("wasDerivedFrom", sub_id, plan_entity_id)
 
     # Decisions are recorded during assembly (assemble.py _record_decisions)
     # so we skip them here to avoid duplicates.
@@ -403,6 +431,47 @@ def run_plan(
             solver_info=solver_info,
         )
 
+        # Extract slot results and summary excerpt while prob is live
+        # (needed for the model_structure entity and problem DAG)
+        slots_summary: dict = {}
+        summary_excerpt: dict = {}
+        if metadata.get("component_family") == "ocp":
+            active_slots = metadata.get("active_slots", {})
+            if active_slots:
+                phases = metadata.get("phases", ["climb", "cruise", "descent"])
+                slots_summary = _extract_slot_results(
+                    prob, active_slots, phases, comp_prefix=""
+                )
+            # Key mission metrics for problem DAG display
+            try:
+                import numpy as np
+                phases = metadata.get("phases", ["climb", "cruise", "descent"])
+                for phase in reversed(phases):
+                    try:
+                        val = prob.get_val(f"{phase}.fuel_used_final")
+                        summary_excerpt["fuel_burn_kg"] = float(
+                            np.atleast_1d(val).flat[0]
+                        )
+                        break
+                    except Exception:
+                        continue
+                try:
+                    oew = prob.get_val("climb.OEW", units="kg")
+                    summary_excerpt["OEW_kg"] = float(
+                        np.atleast_1d(oew).flat[0]
+                    )
+                except Exception:
+                    pass
+                try:
+                    mtow = prob.get_val("ac|weights|MTOW", units="kg")
+                    summary_excerpt["MTOW_kg"] = float(
+                        np.atleast_1d(mtow).flat[0]
+                    )
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
         # Record model structure as a sub-entity of the run
         n2_path = n2_dir() / f"{run_id}.html"
         if n2_path.exists():
@@ -411,6 +480,8 @@ def run_plan(
                 "model_graph": model_graph,
                 "discipline_graph": discipline_graph,
                 "solver_info": solver_info,
+                "slot_results": slots_summary,
+                "run_summary": summary_excerpt,
             }
             record_entity(
                 entity_id=f"{run_id}/n2",
@@ -477,6 +548,14 @@ def run_plan(
     if len(components) > 1:
         run_meta_dict["component_types"] = {
             c["id"]: c["type"] for c in components
+        }
+    # Store slot provider types so the plot system can merge providers
+    slots_cfg = (components[0].get("config", {}).get("slots", {})
+                 if components else {})
+    if slots_cfg:
+        run_meta_dict["slot_providers"] = {
+            slot_name: cfg.get("provider", "")
+            for slot_name, cfg in slots_cfg.items()
         }
     run_metadata = json.dumps(run_meta_dict) if run_meta_dict else None
 
@@ -794,6 +873,59 @@ def _extract_ocp_profiles(prob, phases: list[str], prefix: str = "") -> dict:
     return profiles
 
 
+_SLOT_SUBSYS_MAP = {"propulsion": "propmodel", "drag": "drag", "weight": "weight"}
+
+
+def _extract_slot_results(
+    prob, active_slots: dict, phases: list[str], comp_prefix: str = ""
+) -> dict:
+    """Extract per-slot results from an OCP problem with slot providers.
+
+    Parameters
+    ----------
+    prob : om.Problem
+        Solved problem.
+    active_slots : dict
+        Slot config from the plan (e.g. {"drag": {"provider": "oas/vlm", ...}}).
+    phases : list[str]
+        OCP phase names.
+    comp_prefix : str
+        Path prefix for composite problems (e.g. "mission."). Empty for
+        single-component problems.
+    """
+    import numpy as np
+
+    first_phase = phases[0] if phases else "climb"
+    slots_summary: dict = {}
+    for slot_name, slot_cfg in active_slots.items():
+        provider_name = slot_cfg.get("provider", "")
+        slot_data: dict = {"provider": provider_name}
+        try:
+            from hangar.omd.slots import get_slot_provider
+            provider_fn = get_slot_provider(provider_name)
+            result_paths = getattr(provider_fn, "result_paths", {})
+        except Exception:
+            result_paths = {}
+        subsys = _SLOT_SUBSYS_MAP.get(slot_name, slot_name)
+        for var_name, internal_path in result_paths.items():
+            for path_template in (
+                f"{comp_prefix}{first_phase}.{internal_path}",
+                f"{comp_prefix}{first_phase}.acmodel.{subsys}.{internal_path}",
+                f"{comp_prefix}{first_phase}.{subsys}.{internal_path}",
+            ):
+                try:
+                    val = prob.get_val(path_template)
+                    slot_data[var_name] = float(
+                        np.atleast_1d(val).flat[0]
+                    )
+                    break
+                except Exception:
+                    continue
+        if len(slot_data) > 1:  # more than just "provider"
+            slots_summary[slot_name] = slot_data
+    return slots_summary
+
+
 def _extract_ocp_summary(prob, metadata: dict, mode: str) -> dict:
     """Extract key results from a solved OpenConcept mission problem."""
     import numpy as np
@@ -851,6 +983,15 @@ def _extract_ocp_summary(prob, metadata: dict, mode: str) -> dict:
     profiles = _extract_ocp_profiles(prob, phases)
     if profiles:
         summary["profiles"] = profiles
+
+    # Per-slot result extraction (single-component OCP with slots)
+    active_slots = metadata.get("active_slots", {})
+    if active_slots:
+        slots_summary = _extract_slot_results(
+            prob, active_slots, phases, comp_prefix=""
+        )
+        if slots_summary:
+            summary["slots"] = slots_summary
 
     return summary
 
@@ -942,6 +1083,19 @@ def _extract_composite_summary(prob, metadata: dict, mode: str) -> dict:
                     pass
 
         summary["components"][comp_id] = comp_summary
+
+    # Per-slot result extraction
+    for comp_id in metadata.get("component_ids", []):
+        comp_meta = metadata.get("component_metadata", {}).get(comp_id, {})
+        active_slots = comp_meta.get("active_slots", {})
+        if not active_slots:
+            continue
+        phases = comp_meta.get("phases", ["climb", "cruise", "descent"])
+        slots_summary = _extract_slot_results(
+            prob, active_slots, phases, comp_prefix=f"{comp_id}."
+        )
+        if slots_summary:
+            summary["slots"] = slots_summary
 
     return summary
 
@@ -1056,6 +1210,9 @@ def _record_assessment(
     for key in ("fuel_burn_kg", "OEW_kg", "MTOW_kg", "TOFL_m", "battery_SOC_final"):
         if key in summary:
             assess_meta[key] = summary[key]
+    # Slot results
+    if "slots" in summary:
+        assess_meta["slots"] = summary["slots"]
     # Composite: include per-component summaries
     if "components" in summary:
         assess_meta["components"] = summary["components"]
@@ -1129,6 +1286,18 @@ def _record_assessment(
         metadata=json.dumps(conv_meta),
         parent_id=run_id,
     )
+
+    # Per-slot result entities
+    if "slots" in summary:
+        for slot_name, slot_data in summary["slots"].items():
+            record_entity(
+                entity_id=f"{run_id}/slot/{slot_name}",
+                entity_type="slot_results",
+                created_by="omd",
+                plan_id=plan_id,
+                metadata=json.dumps(slot_data),
+                parent_id=run_id,
+            )
 
 
 def _record_failure(

@@ -223,6 +223,25 @@ def init_analysis_db(db_path: Path | None = None) -> None:
         conn.commit()
     except sqlite3.OperationalError:
         pass  # column already exists
+    # Migrate: add unique index on prov_edges to prevent duplicate edges.
+    # First deduplicate existing rows (keep the earliest edge_id per triple).
+    try:
+        conn.execute(
+            "CREATE UNIQUE INDEX idx_prov_edges_unique "
+            "ON prov_edges(relation, subject_id, object_id)"
+        )
+    except (sqlite3.OperationalError, sqlite3.IntegrityError):
+        # Index already exists, or duplicates prevent creation -- clean up.
+        conn.execute(
+            "DELETE FROM prov_edges WHERE edge_id NOT IN ("
+            "  SELECT MIN(edge_id) FROM prov_edges"
+            "  GROUP BY relation, subject_id, object_id"
+            ")"
+        )
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_prov_edges_unique "
+            "ON prov_edges(relation, subject_id, object_id)"
+        )
     conn.commit()
     logger.debug("Analysis DB initialized at %s", _db_path)
 
@@ -330,7 +349,7 @@ def add_prov_edge(
     """
     conn = _get_conn()
     conn.execute(
-        "INSERT INTO prov_edges (relation, subject_id, object_id, timestamp) "
+        "INSERT OR IGNORE INTO prov_edges (relation, subject_id, object_id, timestamp) "
         "VALUES (?, ?, ?, ?)",
         (relation, subject_id, object_id, _now()),
     )

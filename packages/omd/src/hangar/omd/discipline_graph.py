@@ -136,9 +136,1014 @@ _AERO_MAP = {
     ],
 }
 
+# ---------------------------------------------------------------------------
+# OCP mission map
+# ---------------------------------------------------------------------------
+
+_OCP_MISSION_MAP = {
+    "nodes": [
+        {
+            "id": "aircraft_config",
+            "type": "discipline",
+            "label": "Aircraft Config",
+            "properties": {
+                "description": "Aircraft geometry, weights, and aero coefficients",
+                "physics": "configuration",
+                "method": "DictIndepVarComp",
+                "inputs": [],
+                "outputs": ["S_ref", "AR", "MTOW", "OEW", "CD0", "e"],
+            },
+        },
+        {
+            "id": "aero",
+            "type": "discipline",
+            "label": "Aerodynamics",
+            "properties": {
+                "description": "Drag model from polar or slot provider",
+                "physics": "aerodynamics",
+                "method": "PolarDrag",
+                "inputs": ["fltcond|CL", "fltcond|q", "S_ref", "AR", "CD0", "e"],
+                "outputs": ["drag"],
+            },
+        },
+        {
+            "id": "propulsion",
+            "type": "discipline",
+            "label": "Propulsion",
+            "properties": {
+                "description": "Propulsion system model",
+                "physics": "thermodynamics",
+                "method": "architecture-specific",
+                "inputs": ["throttle", "fltcond|h", "fltcond|Utrue"],
+                "outputs": ["thrust", "fuel_flow"],
+            },
+        },
+        {
+            "id": "weight",
+            "type": "discipline",
+            "label": "Weight",
+            "properties": {
+                "description": "Empty weight estimation",
+                "physics": "structures",
+                "method": "EmptyWeight",
+                "inputs": ["ac|geom|*", "ac|propulsion|*"],
+                "outputs": ["OEW"],
+            },
+        },
+        {
+            "id": "mission",
+            "type": "discipline",
+            "label": "Mission Integration",
+            "properties": {
+                "description": "Trajectory integration across phases",
+                "physics": "flight_mechanics",
+                "method": "Simpson's rule integration",
+                "inputs": ["thrust", "drag", "OEW", "fltcond|*"],
+                "outputs": ["fuel_burn", "range", "fuel_used_final"],
+            },
+        },
+    ],
+    "coupling": {
+        "id": "coupling",
+        "disciplines": ["aero", "propulsion", "mission"],
+        "solver": "NewtonSolver",
+        "label": "Mission Coupling",
+        "exchanges": [
+            {"from": "mission", "to": "aero", "data": ["fltcond|CL", "fltcond|q"]},
+            {"from": "mission", "to": "propulsion", "data": ["throttle", "fltcond|*"]},
+            {"from": "aero", "to": "mission", "data": ["drag"]},
+            {"from": "propulsion", "to": "mission", "data": ["thrust", "fuel_flow"]},
+        ],
+    },
+    "flow": [
+        {"from": "aircraft_config", "to": "aero",
+         "variables": ["S_ref", "AR", "CD0", "e"]},
+        {"from": "aircraft_config", "to": "propulsion",
+         "variables": ["engine_rating"]},
+        {"from": "aircraft_config", "to": "weight",
+         "variables": ["ac|geom|*", "ac|propulsion|*"]},
+        {"from": "weight", "to": "mission",
+         "variables": ["OEW"]},
+        {"from": "aero", "to": "mission",
+         "variables": ["drag"]},
+        {"from": "propulsion", "to": "mission",
+         "variables": ["thrust", "fuel_flow"]},
+    ],
+}
+
+# ---------------------------------------------------------------------------
+# pyCycle discipline maps
+# ---------------------------------------------------------------------------
+
+_TURBOJET_MAP = {
+    "nodes": [
+        {
+            "id": "fc",
+            "type": "discipline",
+            "label": "Flight Conditions",
+            "properties": {
+                "description": "Ambient conditions from altitude and Mach",
+                "physics": "atmosphere",
+                "method": "Standard atmosphere",
+                "inputs": ["alt", "MN"],
+                "outputs": ["Pt", "Tt", "W"],
+            },
+        },
+        {
+            "id": "inlet",
+            "type": "discipline",
+            "label": "Inlet",
+            "properties": {
+                "description": "Ram compression inlet",
+                "physics": "gas_dynamics",
+                "method": "Adiabatic diffuser",
+                "inputs": ["Fl_I"],
+                "outputs": ["Fl_O", "F_ram"],
+            },
+        },
+        {
+            "id": "comp",
+            "type": "discipline",
+            "label": "Compressor",
+            "properties": {
+                "description": "Axial compressor with map-based PR and efficiency",
+                "physics": "turbomachinery",
+                "method": "AXI5 map",
+                "inputs": ["Fl_I", "PR", "eff", "Nmech"],
+                "outputs": ["Fl_O", "trq", "power"],
+            },
+        },
+        {
+            "id": "burner",
+            "type": "discipline",
+            "label": "Combustor",
+            "properties": {
+                "description": "Constant-pressure combustion",
+                "physics": "combustion",
+                "method": "CEA/Tabular thermodynamics",
+                "inputs": ["Fl_I", "FAR"],
+                "outputs": ["Fl_O", "Wfuel"],
+            },
+        },
+        {
+            "id": "turb",
+            "type": "discipline",
+            "label": "Turbine",
+            "properties": {
+                "description": "Axial turbine driving compressor via shaft",
+                "physics": "turbomachinery",
+                "method": "LPT2269 map",
+                "inputs": ["Fl_I", "PR", "eff", "Nmech"],
+                "outputs": ["Fl_O", "trq", "power"],
+            },
+        },
+        {
+            "id": "nozz",
+            "type": "discipline",
+            "label": "Nozzle",
+            "properties": {
+                "description": "Converging-diverging nozzle with thrust",
+                "physics": "gas_dynamics",
+                "method": "Isentropic expansion",
+                "inputs": ["Fl_I", "Ps_exhaust", "Cv"],
+                "outputs": ["Fg"],
+            },
+        },
+        {
+            "id": "perf",
+            "type": "discipline",
+            "label": "Performance",
+            "properties": {
+                "description": "Net thrust, TSFC, and OPR calculation",
+                "physics": "post_processing",
+                "method": "Algebraic",
+                "inputs": ["Fg", "F_ram", "Wfuel"],
+                "outputs": ["Fn", "TSFC", "OPR"],
+            },
+        },
+    ],
+    "coupling": {
+        "id": "balance",
+        "disciplines": ["comp", "burner", "turb"],
+        "solver": "NewtonSolver",
+        "label": "Balance (Newton)",
+        "exchanges": [
+            {"from": "perf", "to": "inlet", "data": ["W (mass flow)"]},
+            {"from": "perf", "to": "burner", "data": ["FAR"]},
+            {"from": "perf", "to": "turb", "data": ["turb_PR"]},
+        ],
+    },
+    "flow": [
+        {"from": "fc", "to": "inlet", "variables": ["Fl_O"]},
+        {"from": "inlet", "to": "comp", "variables": ["Fl_O"]},
+        {"from": "comp", "to": "burner", "variables": ["Fl_O"]},
+        {"from": "burner", "to": "turb", "variables": ["Fl_O"]},
+        {"from": "turb", "to": "nozz", "variables": ["Fl_O"]},
+        {"from": "nozz", "to": "perf", "variables": ["Fg"]},
+        {"from": "inlet", "to": "perf", "variables": ["F_ram"]},
+        {"from": "comp", "to": "perf", "variables": ["Pt3"]},
+    ],
+}
+
+_HBTF_MAP = {
+    "nodes": [
+        {
+            "id": "fc",
+            "type": "discipline",
+            "label": "Flight Conditions",
+            "properties": {
+                "description": "Ambient conditions from altitude and Mach",
+                "physics": "atmosphere",
+                "method": "Standard atmosphere",
+                "inputs": ["alt", "MN"],
+                "outputs": ["Pt", "Tt", "W"],
+            },
+        },
+        {
+            "id": "inlet",
+            "type": "discipline",
+            "label": "Inlet",
+            "properties": {
+                "description": "Ram compression inlet",
+                "physics": "gas_dynamics",
+                "method": "Adiabatic diffuser",
+                "inputs": ["Fl_I"],
+                "outputs": ["Fl_O", "F_ram"],
+            },
+        },
+        {
+            "id": "fan",
+            "type": "discipline",
+            "label": "Fan",
+            "properties": {
+                "description": "Low-pressure fan stage",
+                "physics": "turbomachinery",
+                "method": "FanMap",
+                "inputs": ["Fl_I", "PR", "eff"],
+                "outputs": ["Fl_O"],
+            },
+        },
+        {
+            "id": "splitter",
+            "type": "discipline",
+            "label": "Splitter",
+            "properties": {
+                "description": "Core/bypass flow split",
+                "physics": "gas_dynamics",
+                "method": "BPR-based split",
+                "inputs": ["Fl_I", "BPR"],
+                "outputs": ["Fl_O1 (core)", "Fl_O2 (bypass)"],
+            },
+        },
+        {
+            "id": "lpc",
+            "type": "discipline",
+            "label": "LPC",
+            "properties": {
+                "description": "Low-pressure compressor",
+                "physics": "turbomachinery",
+                "method": "LPCMap",
+                "inputs": ["Fl_I", "PR", "eff"],
+                "outputs": ["Fl_O"],
+            },
+        },
+        {
+            "id": "hpc",
+            "type": "discipline",
+            "label": "HPC",
+            "properties": {
+                "description": "High-pressure compressor",
+                "physics": "turbomachinery",
+                "method": "HPCMap",
+                "inputs": ["Fl_I", "PR", "eff"],
+                "outputs": ["Fl_O"],
+            },
+        },
+        {
+            "id": "burner",
+            "type": "discipline",
+            "label": "Combustor",
+            "properties": {
+                "description": "Constant-pressure combustion",
+                "physics": "combustion",
+                "method": "CEA/Tabular thermodynamics",
+                "inputs": ["Fl_I", "FAR"],
+                "outputs": ["Fl_O", "Wfuel"],
+            },
+        },
+        {
+            "id": "hpt",
+            "type": "discipline",
+            "label": "HP Turbine",
+            "properties": {
+                "description": "High-pressure turbine driving HPC",
+                "physics": "turbomachinery",
+                "method": "HPTMap",
+                "inputs": ["Fl_I", "PR", "eff"],
+                "outputs": ["Fl_O", "trq"],
+            },
+        },
+        {
+            "id": "lpt",
+            "type": "discipline",
+            "label": "LP Turbine",
+            "properties": {
+                "description": "Low-pressure turbine driving fan and LPC",
+                "physics": "turbomachinery",
+                "method": "LPTMap",
+                "inputs": ["Fl_I", "PR", "eff"],
+                "outputs": ["Fl_O", "trq"],
+            },
+        },
+        {
+            "id": "core_nozz",
+            "type": "discipline",
+            "label": "Core Nozzle",
+            "properties": {
+                "description": "Core stream exhaust nozzle",
+                "physics": "gas_dynamics",
+                "method": "Converging nozzle",
+                "inputs": ["Fl_I", "Cv"],
+                "outputs": ["Fg"],
+            },
+        },
+        {
+            "id": "byp_nozz",
+            "type": "discipline",
+            "label": "Bypass Nozzle",
+            "properties": {
+                "description": "Bypass stream exhaust nozzle",
+                "physics": "gas_dynamics",
+                "method": "Converging nozzle",
+                "inputs": ["Fl_I", "Cv"],
+                "outputs": ["Fg"],
+            },
+        },
+        {
+            "id": "perf",
+            "type": "discipline",
+            "label": "Performance",
+            "properties": {
+                "description": "Net thrust, TSFC, OPR, and BPR calculation",
+                "physics": "post_processing",
+                "method": "Algebraic",
+                "inputs": ["Fg_core", "Fg_bypass", "F_ram", "Wfuel"],
+                "outputs": ["Fn", "TSFC", "OPR", "BPR"],
+            },
+        },
+    ],
+    "coupling": {
+        "id": "balance",
+        "disciplines": ["fan", "lpc", "hpc", "burner", "hpt", "lpt"],
+        "solver": "NewtonSolver",
+        "label": "Balance (Newton)",
+        "exchanges": [
+            {"from": "perf", "to": "inlet", "data": ["W (mass flow)"]},
+            {"from": "perf", "to": "burner", "data": ["FAR"]},
+            {"from": "perf", "to": "hpt", "data": ["hpt_PR"]},
+            {"from": "perf", "to": "lpt", "data": ["lpt_PR"]},
+        ],
+    },
+    "flow": [
+        # Core path
+        {"from": "fc", "to": "inlet", "variables": ["Fl_O"]},
+        {"from": "inlet", "to": "fan", "variables": ["Fl_O"]},
+        {"from": "fan", "to": "splitter", "variables": ["Fl_O"]},
+        {"from": "splitter", "to": "lpc", "variables": ["Fl_O1 (core)"]},
+        {"from": "lpc", "to": "hpc", "variables": ["Fl_O"]},
+        {"from": "hpc", "to": "burner", "variables": ["Fl_O"]},
+        {"from": "burner", "to": "hpt", "variables": ["Fl_O"]},
+        {"from": "hpt", "to": "lpt", "variables": ["Fl_O"]},
+        {"from": "lpt", "to": "core_nozz", "variables": ["Fl_O"]},
+        {"from": "core_nozz", "to": "perf", "variables": ["Fg"]},
+        # Bypass path
+        {"from": "splitter", "to": "byp_nozz", "variables": ["Fl_O2 (bypass)"]},
+        {"from": "byp_nozz", "to": "perf", "variables": ["Fg"]},
+        # Performance inputs
+        {"from": "inlet", "to": "perf", "variables": ["F_ram"]},
+    ],
+}
+
+_AB_TURBOJET_MAP = {
+    "nodes": [
+        {
+            "id": "fc",
+            "type": "discipline",
+            "label": "Flight Conditions",
+            "properties": {
+                "description": "Ambient conditions from altitude and Mach",
+                "physics": "atmosphere",
+                "method": "Standard atmosphere",
+                "inputs": ["alt", "MN"],
+                "outputs": ["Pt", "Tt"],
+            },
+        },
+        {
+            "id": "inlet",
+            "type": "discipline",
+            "label": "Inlet",
+            "properties": {
+                "description": "Ram compression inlet",
+                "physics": "gas_dynamics",
+                "method": "Adiabatic diffuser",
+                "inputs": ["Fl_I"],
+                "outputs": ["Fl_O", "F_ram"],
+            },
+        },
+        {
+            "id": "comp",
+            "type": "discipline",
+            "label": "Compressor",
+            "properties": {
+                "description": "Axial compressor",
+                "physics": "turbomachinery",
+                "method": "AXI5 map",
+                "inputs": ["Fl_I", "PR", "eff"],
+                "outputs": ["Fl_O", "trq"],
+            },
+        },
+        {
+            "id": "burner",
+            "type": "discipline",
+            "label": "Combustor",
+            "properties": {
+                "description": "Main combustor",
+                "physics": "combustion",
+                "method": "CEA/Tabular",
+                "inputs": ["Fl_I", "FAR"],
+                "outputs": ["Fl_O", "Wfuel"],
+            },
+        },
+        {
+            "id": "turb",
+            "type": "discipline",
+            "label": "Turbine",
+            "properties": {
+                "description": "Axial turbine",
+                "physics": "turbomachinery",
+                "method": "LPT2269 map",
+                "inputs": ["Fl_I", "PR", "eff"],
+                "outputs": ["Fl_O", "trq"],
+            },
+        },
+        {
+            "id": "ab",
+            "type": "discipline",
+            "label": "Afterburner",
+            "properties": {
+                "description": "Reheat combustor for thrust augmentation",
+                "physics": "combustion",
+                "method": "CEA/Tabular",
+                "inputs": ["Fl_I", "FAR"],
+                "outputs": ["Fl_O", "Wfuel"],
+            },
+        },
+        {
+            "id": "nozz",
+            "type": "discipline",
+            "label": "Nozzle",
+            "properties": {
+                "description": "Variable-geometry C-D nozzle",
+                "physics": "gas_dynamics",
+                "method": "Isentropic expansion",
+                "inputs": ["Fl_I", "Cv"],
+                "outputs": ["Fg"],
+            },
+        },
+        {
+            "id": "perf",
+            "type": "discipline",
+            "label": "Performance",
+            "properties": {
+                "description": "Net thrust, TSFC, OPR",
+                "physics": "post_processing",
+                "method": "Algebraic (2 burners)",
+                "inputs": ["Fg", "F_ram", "Wfuel_main", "Wfuel_ab"],
+                "outputs": ["Fn", "TSFC", "OPR"],
+            },
+        },
+    ],
+    "coupling": {
+        "id": "balance",
+        "disciplines": ["comp", "burner", "turb", "ab"],
+        "solver": "NewtonSolver",
+        "label": "Balance (Newton)",
+        "exchanges": [
+            {"from": "perf", "to": "inlet", "data": ["W (mass flow)"]},
+            {"from": "perf", "to": "burner", "data": ["FAR"]},
+            {"from": "perf", "to": "turb", "data": ["turb_PR"]},
+        ],
+    },
+    "flow": [
+        {"from": "fc", "to": "inlet", "variables": ["Fl_O"]},
+        {"from": "inlet", "to": "comp", "variables": ["Fl_O"]},
+        {"from": "comp", "to": "burner", "variables": ["Fl_O"]},
+        {"from": "burner", "to": "turb", "variables": ["Fl_O"]},
+        {"from": "turb", "to": "ab", "variables": ["Fl_O"]},
+        {"from": "ab", "to": "nozz", "variables": ["Fl_O"]},
+        {"from": "nozz", "to": "perf", "variables": ["Fg"]},
+        {"from": "inlet", "to": "perf", "variables": ["F_ram"]},
+    ],
+}
+
+_SINGLE_TURBOSHAFT_MAP = {
+    "nodes": [
+        {
+            "id": "fc",
+            "type": "discipline",
+            "label": "Flight Conditions",
+            "properties": {
+                "description": "Ambient conditions from altitude and Mach",
+                "physics": "atmosphere",
+                "method": "Standard atmosphere",
+                "inputs": ["alt", "MN"],
+                "outputs": ["Pt", "Tt"],
+            },
+        },
+        {
+            "id": "inlet",
+            "type": "discipline",
+            "label": "Inlet",
+            "properties": {
+                "description": "Ram compression inlet",
+                "physics": "gas_dynamics",
+                "method": "Adiabatic diffuser",
+                "inputs": ["Fl_I"],
+                "outputs": ["Fl_O"],
+            },
+        },
+        {
+            "id": "comp",
+            "type": "discipline",
+            "label": "Compressor",
+            "properties": {
+                "description": "Gas generator compressor",
+                "physics": "turbomachinery",
+                "method": "AXI5 map",
+                "inputs": ["Fl_I", "PR", "eff"],
+                "outputs": ["Fl_O", "trq"],
+            },
+        },
+        {
+            "id": "burner",
+            "type": "discipline",
+            "label": "Combustor",
+            "properties": {
+                "description": "Main combustor",
+                "physics": "combustion",
+                "method": "CEA/Tabular",
+                "inputs": ["Fl_I", "FAR"],
+                "outputs": ["Fl_O", "Wfuel"],
+            },
+        },
+        {
+            "id": "turb",
+            "type": "discipline",
+            "label": "Gas Generator Turbine",
+            "properties": {
+                "description": "HP turbine driving compressor",
+                "physics": "turbomachinery",
+                "method": "LPT2269 map",
+                "inputs": ["Fl_I", "PR", "eff"],
+                "outputs": ["Fl_O", "trq"],
+            },
+        },
+        {
+            "id": "pt",
+            "type": "discipline",
+            "label": "Power Turbine",
+            "properties": {
+                "description": "Free power turbine driving output shaft",
+                "physics": "turbomachinery",
+                "method": "LPT2269 map",
+                "inputs": ["Fl_I", "PR", "eff"],
+                "outputs": ["Fl_O", "shaft_power"],
+            },
+        },
+        {
+            "id": "nozz",
+            "type": "discipline",
+            "label": "Exhaust",
+            "properties": {
+                "description": "Exhaust nozzle (low residual thrust)",
+                "physics": "gas_dynamics",
+                "method": "Converging nozzle",
+                "inputs": ["Fl_I"],
+                "outputs": ["Fg"],
+            },
+        },
+        {
+            "id": "perf",
+            "type": "discipline",
+            "label": "Performance",
+            "properties": {
+                "description": "Shaft power, SFC, OPR",
+                "physics": "post_processing",
+                "method": "Algebraic",
+                "inputs": ["shaft_power", "Wfuel"],
+                "outputs": ["SHP", "SFC", "OPR"],
+            },
+        },
+    ],
+    "coupling": {
+        "id": "balance",
+        "disciplines": ["comp", "burner", "turb", "pt"],
+        "solver": "NewtonSolver",
+        "label": "Balance (Newton)",
+        "exchanges": [
+            {"from": "perf", "to": "inlet", "data": ["W (mass flow)"]},
+            {"from": "perf", "to": "burner", "data": ["FAR"]},
+            {"from": "perf", "to": "turb", "data": ["turb_PR"]},
+            {"from": "perf", "to": "pt", "data": ["pt_PR"]},
+        ],
+    },
+    "flow": [
+        {"from": "fc", "to": "inlet", "variables": ["Fl_O"]},
+        {"from": "inlet", "to": "comp", "variables": ["Fl_O"]},
+        {"from": "comp", "to": "burner", "variables": ["Fl_O"]},
+        {"from": "burner", "to": "turb", "variables": ["Fl_O"]},
+        {"from": "turb", "to": "pt", "variables": ["Fl_O"]},
+        {"from": "pt", "to": "nozz", "variables": ["Fl_O"]},
+        {"from": "pt", "to": "perf", "variables": ["shaft_power"]},
+        {"from": "nozz", "to": "perf", "variables": ["Fg"]},
+    ],
+}
+
+_MULTI_TURBOSHAFT_MAP = {
+    "nodes": [
+        {
+            "id": "fc",
+            "type": "discipline",
+            "label": "Flight Conditions",
+            "properties": {
+                "description": "Ambient conditions",
+                "physics": "atmosphere",
+                "method": "Standard atmosphere",
+                "inputs": ["alt", "MN"],
+                "outputs": ["Pt", "Tt"],
+            },
+        },
+        {
+            "id": "inlet",
+            "type": "discipline",
+            "label": "Inlet",
+            "properties": {
+                "description": "Ram compression inlet",
+                "physics": "gas_dynamics",
+                "method": "Adiabatic diffuser",
+                "inputs": ["Fl_I"],
+                "outputs": ["Fl_O"],
+            },
+        },
+        {
+            "id": "lpc",
+            "type": "discipline",
+            "label": "LPC",
+            "properties": {
+                "description": "Low-pressure compressor",
+                "physics": "turbomachinery",
+                "method": "LPCMap",
+                "inputs": ["Fl_I"],
+                "outputs": ["Fl_O"],
+            },
+        },
+        {
+            "id": "hpc_axi",
+            "type": "discipline",
+            "label": "HPC (Axial)",
+            "properties": {
+                "description": "High-pressure axial compressor",
+                "physics": "turbomachinery",
+                "method": "HPCMap",
+                "inputs": ["Fl_I"],
+                "outputs": ["Fl_O"],
+            },
+        },
+        {
+            "id": "hpc_centri",
+            "type": "discipline",
+            "label": "HPC (Centrifugal)",
+            "properties": {
+                "description": "Centrifugal compressor stage",
+                "physics": "turbomachinery",
+                "method": "HPCMap",
+                "inputs": ["Fl_I"],
+                "outputs": ["Fl_O"],
+            },
+        },
+        {
+            "id": "burner",
+            "type": "discipline",
+            "label": "Combustor",
+            "properties": {
+                "description": "Main combustor",
+                "physics": "combustion",
+                "method": "CEA/Tabular",
+                "inputs": ["Fl_I", "FAR"],
+                "outputs": ["Fl_O", "Wfuel"],
+            },
+        },
+        {
+            "id": "hpt",
+            "type": "discipline",
+            "label": "HP Turbine",
+            "properties": {
+                "description": "HP turbine driving HPC stages",
+                "physics": "turbomachinery",
+                "method": "HPTMap",
+                "inputs": ["Fl_I"],
+                "outputs": ["Fl_O", "trq"],
+            },
+        },
+        {
+            "id": "lpt",
+            "type": "discipline",
+            "label": "LP Turbine",
+            "properties": {
+                "description": "LP turbine driving LPC",
+                "physics": "turbomachinery",
+                "method": "LPTMap",
+                "inputs": ["Fl_I"],
+                "outputs": ["Fl_O", "trq"],
+            },
+        },
+        {
+            "id": "pt",
+            "type": "discipline",
+            "label": "Power Turbine",
+            "properties": {
+                "description": "Free power turbine",
+                "physics": "turbomachinery",
+                "method": "LPTMap",
+                "inputs": ["Fl_I"],
+                "outputs": ["Fl_O", "shaft_power"],
+            },
+        },
+        {
+            "id": "nozz",
+            "type": "discipline",
+            "label": "Exhaust",
+            "properties": {
+                "description": "Exhaust nozzle",
+                "physics": "gas_dynamics",
+                "method": "Converging nozzle",
+                "inputs": ["Fl_I"],
+                "outputs": ["Fg"],
+            },
+        },
+        {
+            "id": "perf",
+            "type": "discipline",
+            "label": "Performance",
+            "properties": {
+                "description": "Shaft power, SFC, OPR",
+                "physics": "post_processing",
+                "method": "Algebraic",
+                "inputs": ["shaft_power", "Wfuel"],
+                "outputs": ["SHP", "SFC", "OPR"],
+            },
+        },
+    ],
+    "coupling": {
+        "id": "balance",
+        "disciplines": ["lpc", "hpc_axi", "hpc_centri", "burner", "hpt", "lpt", "pt"],
+        "solver": "NewtonSolver",
+        "label": "Balance (Newton)",
+        "exchanges": [
+            {"from": "perf", "to": "inlet", "data": ["W"]},
+            {"from": "perf", "to": "burner", "data": ["FAR"]},
+            {"from": "perf", "to": "hpt", "data": ["hpt_PR"]},
+            {"from": "perf", "to": "lpt", "data": ["lpt_PR"]},
+            {"from": "perf", "to": "pt", "data": ["pt_PR"]},
+        ],
+    },
+    "flow": [
+        {"from": "fc", "to": "inlet", "variables": ["Fl_O"]},
+        {"from": "inlet", "to": "lpc", "variables": ["Fl_O"]},
+        {"from": "lpc", "to": "hpc_axi", "variables": ["Fl_O"]},
+        {"from": "hpc_axi", "to": "hpc_centri", "variables": ["Fl_O"]},
+        {"from": "hpc_centri", "to": "burner", "variables": ["Fl_O"]},
+        {"from": "burner", "to": "hpt", "variables": ["Fl_O"]},
+        {"from": "hpt", "to": "lpt", "variables": ["Fl_O"]},
+        {"from": "lpt", "to": "pt", "variables": ["Fl_O"]},
+        {"from": "pt", "to": "nozz", "variables": ["Fl_O"]},
+        {"from": "pt", "to": "perf", "variables": ["shaft_power"]},
+    ],
+}
+
+_MIXEDFLOW_MAP = {
+    "nodes": [
+        {
+            "id": "fc",
+            "type": "discipline",
+            "label": "Flight Conditions",
+            "properties": {
+                "description": "Ambient conditions",
+                "physics": "atmosphere",
+                "method": "Standard atmosphere",
+                "inputs": ["alt", "MN"],
+                "outputs": ["Pt", "Tt"],
+            },
+        },
+        {
+            "id": "inlet",
+            "type": "discipline",
+            "label": "Inlet",
+            "properties": {
+                "description": "Ram compression inlet",
+                "physics": "gas_dynamics",
+                "method": "Adiabatic diffuser",
+                "inputs": ["Fl_I"],
+                "outputs": ["Fl_O", "F_ram"],
+            },
+        },
+        {
+            "id": "fan",
+            "type": "discipline",
+            "label": "Fan",
+            "properties": {
+                "description": "Low-pressure fan stage",
+                "physics": "turbomachinery",
+                "method": "AXI5 map",
+                "inputs": ["Fl_I", "PR", "eff"],
+                "outputs": ["Fl_O"],
+            },
+        },
+        {
+            "id": "splitter",
+            "type": "discipline",
+            "label": "Splitter",
+            "properties": {
+                "description": "Core/bypass flow split",
+                "physics": "gas_dynamics",
+                "method": "BPR-based split",
+                "inputs": ["Fl_I", "BPR"],
+                "outputs": ["Fl_O1 (core)", "Fl_O2 (bypass)"],
+            },
+        },
+        {
+            "id": "lpc",
+            "type": "discipline",
+            "label": "LPC",
+            "properties": {
+                "description": "Low-pressure compressor",
+                "physics": "turbomachinery",
+                "method": "LPCMap",
+                "inputs": ["Fl_I"],
+                "outputs": ["Fl_O"],
+            },
+        },
+        {
+            "id": "hpc",
+            "type": "discipline",
+            "label": "HPC",
+            "properties": {
+                "description": "High-pressure compressor",
+                "physics": "turbomachinery",
+                "method": "HPCMap",
+                "inputs": ["Fl_I"],
+                "outputs": ["Fl_O"],
+            },
+        },
+        {
+            "id": "burner",
+            "type": "discipline",
+            "label": "Combustor",
+            "properties": {
+                "description": "Main combustor",
+                "physics": "combustion",
+                "method": "CEA/Tabular",
+                "inputs": ["Fl_I", "FAR"],
+                "outputs": ["Fl_O", "Wfuel"],
+            },
+        },
+        {
+            "id": "hpt",
+            "type": "discipline",
+            "label": "HP Turbine",
+            "properties": {
+                "description": "High-pressure turbine",
+                "physics": "turbomachinery",
+                "method": "HPTMap",
+                "inputs": ["Fl_I"],
+                "outputs": ["Fl_O", "trq"],
+            },
+        },
+        {
+            "id": "lpt",
+            "type": "discipline",
+            "label": "LP Turbine",
+            "properties": {
+                "description": "Low-pressure turbine",
+                "physics": "turbomachinery",
+                "method": "LPTMap",
+                "inputs": ["Fl_I"],
+                "outputs": ["Fl_O", "trq"],
+            },
+        },
+        {
+            "id": "mixer",
+            "type": "discipline",
+            "label": "Mixer",
+            "properties": {
+                "description": "Core/bypass stream mixer",
+                "physics": "gas_dynamics",
+                "method": "Constant-area mixing",
+                "inputs": ["Fl_I1 (core)", "Fl_I2 (bypass)"],
+                "outputs": ["Fl_O"],
+            },
+        },
+        {
+            "id": "ab",
+            "type": "discipline",
+            "label": "Afterburner",
+            "properties": {
+                "description": "Reheat combustor",
+                "physics": "combustion",
+                "method": "CEA/Tabular",
+                "inputs": ["Fl_I", "FAR"],
+                "outputs": ["Fl_O", "Wfuel"],
+            },
+        },
+        {
+            "id": "nozz",
+            "type": "discipline",
+            "label": "Mixed Nozzle",
+            "properties": {
+                "description": "Mixed-flow exhaust nozzle",
+                "physics": "gas_dynamics",
+                "method": "C-D nozzle",
+                "inputs": ["Fl_I"],
+                "outputs": ["Fg"],
+            },
+        },
+        {
+            "id": "perf",
+            "type": "discipline",
+            "label": "Performance",
+            "properties": {
+                "description": "Net thrust, TSFC, OPR",
+                "physics": "post_processing",
+                "method": "Algebraic (2 burners)",
+                "inputs": ["Fg", "F_ram", "Wfuel"],
+                "outputs": ["Fn", "TSFC", "OPR"],
+            },
+        },
+    ],
+    "coupling": {
+        "id": "balance",
+        "disciplines": ["fan", "lpc", "hpc", "burner", "hpt", "lpt", "mixer", "ab"],
+        "solver": "NewtonSolver",
+        "label": "Balance (Newton)",
+        "exchanges": [
+            {"from": "perf", "to": "inlet", "data": ["W"]},
+            {"from": "perf", "to": "burner", "data": ["FAR"]},
+            {"from": "perf", "to": "hpt", "data": ["hpt_PR"]},
+            {"from": "perf", "to": "lpt", "data": ["lpt_PR"]},
+            {"from": "perf", "to": "splitter", "data": ["BPR"]},
+        ],
+    },
+    "flow": [
+        # Core path
+        {"from": "fc", "to": "inlet", "variables": ["Fl_O"]},
+        {"from": "inlet", "to": "fan", "variables": ["Fl_O"]},
+        {"from": "fan", "to": "splitter", "variables": ["Fl_O"]},
+        {"from": "splitter", "to": "lpc", "variables": ["Fl_O1 (core)"]},
+        {"from": "lpc", "to": "hpc", "variables": ["Fl_O"]},
+        {"from": "hpc", "to": "burner", "variables": ["Fl_O"]},
+        {"from": "burner", "to": "hpt", "variables": ["Fl_O"]},
+        {"from": "hpt", "to": "lpt", "variables": ["Fl_O"]},
+        {"from": "lpt", "to": "mixer", "variables": ["Fl_O (core)"]},
+        # Bypass path
+        {"from": "splitter", "to": "mixer", "variables": ["Fl_O2 (bypass)"]},
+        # Mixed path
+        {"from": "mixer", "to": "ab", "variables": ["Fl_O"]},
+        {"from": "ab", "to": "nozz", "variables": ["Fl_O"]},
+        {"from": "nozz", "to": "perf", "variables": ["Fg"]},
+        {"from": "inlet", "to": "perf", "variables": ["F_ram"]},
+    ],
+}
+
+# ---------------------------------------------------------------------------
+# Component type -> discipline map registry
+# ---------------------------------------------------------------------------
+
 _COMPONENT_MAPS = {
+    # OAS
     "oas/AerostructPoint": _AEROSTRUCT_MAP,
     "oas/AeroPoint": _AERO_MAP,
+    # OCP missions
+    "ocp/BasicMission": _OCP_MISSION_MAP,
+    "ocp/FullMission": _OCP_MISSION_MAP,
+    "ocp/MissionWithReserve": _OCP_MISSION_MAP,
+    # pyCycle engines
+    "pyc/TurbojetDesign": _TURBOJET_MAP,
+    "pyc/TurbojetMultipoint": _TURBOJET_MAP,
+    "pyc/HBTFDesign": _HBTF_MAP,
+    "pyc/ABTurbojetDesign": _AB_TURBOJET_MAP,
+    "pyc/SingleTurboshaftDesign": _SINGLE_TURBOSHAFT_MAP,
+    "pyc/MultiTurboshaftDesign": _MULTI_TURBOSHAFT_MAP,
+    "pyc/MixedFlowDesign": _MIXEDFLOW_MAP,
 }
 
 
@@ -270,6 +1275,7 @@ def _enrich_discipline(node: dict, metadata: dict) -> None:
     props = node["properties"]
     did = node["id"]
 
+    # --- OAS enrichment ---
     surface_names = metadata.get("surface_names", [])
     flight = metadata.get("flight_conditions", {})
 
@@ -283,7 +1289,6 @@ def _enrich_discipline(node: dict, metadata: dict) -> None:
         }
 
     if did == "struct":
-        # Get FEM type and material from surface metadata
         for surf in metadata.get("surfaces", []):
             if isinstance(surf, dict):
                 fem = surf.get("fem_model_type")
@@ -294,6 +1299,71 @@ def _enrich_discipline(node: dict, metadata: dict) -> None:
                     if mk in surf:
                         props[mk] = surf[mk]
                 break
+
+    # --- OCP enrichment ---
+    component_family = metadata.get("component_family", "")
+    if component_family == "ocp":
+        active_slots = metadata.get("active_slots", {})
+
+        if did == "aircraft_config":
+            arch = metadata.get("architecture", "")
+            if arch:
+                props["architecture"] = arch
+            num_nodes = metadata.get("num_nodes")
+            if num_nodes:
+                props["num_nodes"] = num_nodes
+
+        if did == "aero":
+            drag_slot = active_slots.get("drag", {})
+            if drag_slot:
+                provider = drag_slot.get("provider", "PolarDrag")
+                props["method"] = provider
+                node["label"] = f"Aerodynamics ({provider})"
+
+        if did == "propulsion":
+            prop_slot = active_slots.get("propulsion", {})
+            if prop_slot:
+                provider = prop_slot.get("provider", "")
+                props["method"] = provider
+                node["label"] = f"Propulsion ({provider})"
+            else:
+                arch = metadata.get("architecture", "")
+                if arch:
+                    props["method"] = arch
+                    node["label"] = f"Propulsion ({arch})"
+
+        if did == "weight":
+            wt_slot = active_slots.get("weight", {})
+            if wt_slot:
+                provider = wt_slot.get("provider", "")
+                props["method"] = provider
+                node["label"] = f"Weight ({provider})"
+
+        if did == "mission":
+            phases = metadata.get("phases", [])
+            if phases:
+                props["phases"] = phases
+                mission_type = metadata.get("mission_type", "basic")
+                node["label"] = f"Mission ({mission_type})\n{len(phases)} phases"
+
+    # --- pyCycle enrichment ---
+    archetype_meta = metadata.get("archetype_meta", {})
+    if archetype_meta:
+        if did == "burner":
+            desc = archetype_meta.get("description", "")
+            if desc:
+                props["engine_type"] = desc
+
+        if did == "perf":
+            output_names = metadata.get("output_names", [])
+            if output_names:
+                props["tracked_outputs"] = [n.split(".")[-1] for n in output_names]
+
+        if did == "fc" and metadata.get("multipoint"):
+            point_names = metadata.get("point_names", [])
+            if point_names:
+                props["operating_points"] = point_names
+                node["label"] = f"Flight Conditions\n{len(point_names)} points"
 
 
 def _fallback_graph(component_type: str) -> dict:

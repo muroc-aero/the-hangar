@@ -1103,6 +1103,10 @@ def _build_mission_problem(
         },
     }
 
+    # Store active slot config so result extraction can look up providers
+    if slots:
+        metadata["active_slots"] = slots
+
     if defer_setup:
         # Deferred setup path: collect mission values as metadata
         # instead of calling prob.set_val(). The materializer or

@@ -119,6 +119,11 @@ All aero plots plus:
 - `skin_spar` -- skin and spar thickness (wingbox only)
 - `t_over_c` -- thickness-to-chord ratio
 
+### pyCycle (all pyc/* types)
+All generic plots plus:
+- `station_properties` -- grouped bar chart of total pressure and temperature at flow stations
+- `component_efficiency` -- bar chart of compressor/turbine efficiency and pressure ratio
+
 ## How to add a new factory
 
 1. **Create the factory function** in `factories/<tool>.py` matching the signature:
@@ -223,6 +228,25 @@ materializer can resolve them for optimization.
 Pipe-separated paths (e.g., `ac|geom|wing|twist`) are promoted to top level.
 Dot-separated paths (e.g., `cycle.DESIGN.comp.PR`) are prefixed with
 `{first_phase}.{subsystem}.` (e.g., `climb.propmodel.cycle.DESIGN.comp.PR`).
+
+## Slot provider result paths
+
+Slot providers declare a `result_paths` attribute mapping short variable
+names to internal OpenMDAO paths. The composite result extractor uses
+these to pull per-slot metrics into `summary["slots"]`.
+
+| Provider | Result paths |
+|----------|-------------|
+| `pyc/turbojet` | thrust, fuel_flow, TSFC, Fn |
+| `pyc/hbtf` | thrust, fuel_flow, TSFC, Fn |
+| `pyc/surrogate` | thrust, fuel_flow |
+| `oas/vlm` | drag |
+| `oas/vlm-direct` | drag |
+| `oas/aerostruct` | drag |
+| `ocp/parametric-weight` | OEW |
+
+Full paths are constructed as `{comp_id}.{phase}.acmodel.{subsys}.{path}`
+where `subsys` maps from slot name (propulsion -> propmodel, drag -> drag).
 
 ## Weight slot
 

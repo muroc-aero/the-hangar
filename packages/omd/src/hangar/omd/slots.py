@@ -146,6 +146,9 @@ _oas_vlm_drag_provider.removes_fields = [
 _oas_vlm_drag_provider.design_variables = {
     "twist_cp": "ac|geom|wing|twist",
 }
+_oas_vlm_drag_provider.result_paths = {
+    "drag": "drag",
+}
 _oas_vlm_drag_provider.adds_fields = {
     "ac|aero|CD_nonwing": {"value": 0.0145},
 }
@@ -218,6 +221,9 @@ _oas_aerostruct_drag_provider.removes_fields = [
 _oas_aerostruct_drag_provider.design_variables = {
     "twist_cp": "ac|geom|wing|twist",
     "toverc_cp": "ac|geom|wing|toverc",
+}
+_oas_aerostruct_drag_provider.result_paths = {
+    "drag": "drag",
 }
 _oas_aerostruct_drag_provider.adds_fields = {
     "ac|aero|CD_nonwing": {"value": 0.0145},
@@ -514,6 +520,9 @@ _oas_vlm_direct_drag_provider.removes_fields = [
 _oas_vlm_direct_drag_provider.design_variables = {
     "twist_cp": "ac|geom|wing|twist",
 }
+_oas_vlm_direct_drag_provider.result_paths = {
+    "drag": "drag",
+}
 _oas_vlm_direct_drag_provider.adds_fields = {
     "ac|aero|CD_nonwing": {"value": 0.0145},
 }
@@ -772,6 +781,12 @@ _pyc_turbojet_propulsion_provider.design_variables = {
     "comp_eff": "cycle.DESIGN.comp.eff",
     "turb_eff": "cycle.DESIGN.turb.eff",
 }
+_pyc_turbojet_propulsion_provider.result_paths = {
+    "thrust": "thrust",
+    "fuel_flow": "fuel_flow",
+    "TSFC": "cycle.DESIGN.perf.TSFC",
+    "Fn": "cycle.DESIGN.perf.Fn",
+}
 _pyc_turbojet_propulsion_provider.adds_fields = {}
 
 
@@ -979,6 +994,12 @@ _pyc_hbtf_propulsion_provider.design_variables = {
     "hpc_PR": "cycle.DESIGN.hpc.PR",
     "hpc_eff": "cycle.DESIGN.hpc.eff",
 }
+_pyc_hbtf_propulsion_provider.result_paths = {
+    "thrust": "thrust",
+    "fuel_flow": "fuel_flow",
+    "TSFC": "cycle.DESIGN.perf.TSFC",
+    "Fn": "cycle.DESIGN.perf.Fn",
+}
 _pyc_hbtf_propulsion_provider.adds_fields = {}
 
 
@@ -1029,6 +1050,10 @@ _pyc_surrogate_propulsion_provider.removes_fields = [
     "ac|propulsion|propeller|diameter",
 ]
 _pyc_surrogate_propulsion_provider.design_variables = {}  # surrogates don't expose internal DVs
+_pyc_surrogate_propulsion_provider.result_paths = {
+    "thrust": "thrust",
+    "fuel_flow": "fuel_flow",
+}
 _pyc_surrogate_propulsion_provider.adds_fields = {}
 
 
@@ -1094,4 +1119,7 @@ def _parametric_weight_provider(
 _parametric_weight_provider.slot_name = "weight"
 _parametric_weight_provider.removes_fields = []
 _parametric_weight_provider.design_variables = {}
+_parametric_weight_provider.result_paths = {
+    "OEW": "OEW",
+}
 _parametric_weight_provider.adds_fields = {}

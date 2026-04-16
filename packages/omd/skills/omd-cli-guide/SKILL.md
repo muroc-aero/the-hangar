@@ -65,6 +65,13 @@ hangar_studies/my-plan/
 | `ocp/BasicMission` | OpenConcept 3-phase mission (climb/cruise/descent) |
 | `ocp/FullMission` | OpenConcept full mission with balanced-field takeoff |
 | `ocp/MissionWithReserve` | OpenConcept mission with reserve + loiter phases |
+| `pyc/TurbojetDesign` | Single-spool turbojet design point |
+| `pyc/TurbojetMultipoint` | Turbojet design + off-design points |
+| `pyc/HBTFDesign` | Dual-spool high-bypass turbofan design point |
+| `pyc/ABTurbojetDesign` | Afterburning turbojet design point |
+| `pyc/SingleTurboshaftDesign` | Single-spool turboshaft design point |
+| `pyc/MultiTurboshaftDesign` | Multi-spool turboshaft design point |
+| `pyc/MixedFlowDesign` | Mixed-flow turbofan design point |
 
 ## OAS Mesh Conventions
 
@@ -86,7 +93,12 @@ supported for OCP mission components (drag slot):
 | Provider | Slot | Description |
 |----------|------|-------------|
 | `oas/vlm` | drag | VLMDragPolar (surrogate-trained VLM drag) |
-| `oas/aerostruct` | drag | AerostructDragPolar (surrogate-trained aero+struct drag) |
+| `oas/vlm-direct` | drag | Direct-coupled VLM drag (accurate, expensive) |
+| `oas/aerostruct` | drag | AerostructDragPolar (surrogate aero+struct, outputs wing weight) |
+| `pyc/turbojet` | propulsion | Direct-coupled pyCycle turbojet |
+| `pyc/hbtf` | propulsion | Direct-coupled pyCycle HBTF turbofan |
+| `pyc/surrogate` | propulsion | Kriging surrogate from pyCycle off-design sweep (fast, no convergence risk) |
+| `ocp/parametric-weight` | weight | Parametric OEW = sum of component weights |
 
 Slots are specified in the component config:
 
@@ -176,6 +188,40 @@ design_variables:
   units: deg
 ```
 
+## pyCycle Operating Points
+
+pyCycle factories expect these operating point keys:
+- `alt` -- altitude in feet (default 35000)
+- `MN` -- Mach number (default 0.8)
+- `Fn_target` -- net thrust target in lbf (default varies by archetype)
+- `T4_target` -- turbine inlet temperature in degR (default varies by archetype)
+
+Example:
+```yaml
+operating_points:
+  alt: 35000
+  MN: 0.78
+  Fn_target: 5500
+  T4_target: 2850
+```
+
+For multipoint (`pyc/TurbojetMultipoint`), use:
+```yaml
+operating_points:
+  design:
+    alt: 35000
+    MN: 0.8
+    Fn_target: 5900
+    T4_target: 2857
+  off_design:
+    - alt: 0
+      MN: 0.01
+      T4_target: 2857
+    - alt: 25000
+      MN: 0.6
+      T4_target: 2857
+```
+
 ## Quick Start
 
 ```bash
@@ -218,6 +264,155 @@ points to the store copy.
 | `OMD_DB_PATH` | `{OMD_DATA_ROOT}/analysis.db` | Analysis database path |
 | `OMD_PLAN_STORE` | `{OMD_DATA_ROOT}/plans` | Plan archive directory |
 | `OMD_RECORDINGS_DIR` | `{OMD_DATA_ROOT}/recordings` | Recorder files |
+
+## Surrogate vs Direct-Coupled Slots
+
+Slot providers come in two flavors:
+
+**Surrogate-coupled** (`oas/vlm`, `oas/aerostruct`, `pyc/surrogate`): Build a
+response surface offline, then evaluate cheaply during mission analysis. Fast
+(~1ms per node), no convergence risk. Use NLBGS solver when combining two
+surrogate slots (dual-surrogate Jacobian is ill-conditioned for Newton).
+
+**Direct-coupled** (`oas/vlm-direct`, `pyc/turbojet`, `pyc/hbtf`): Native
+OpenMDAO Group runs inside the OCP mission solver. Analytic partials, higher
+fidelity, but slower (~2s per node for pyCycle) and requires Newton convergence.
+Use at least one direct-coupled provider when combining drag + propulsion slots
+to avoid singular Jacobians.
+
+## Surrogate Propulsion Config
+
+The `pyc/surrogate` provider generates an off-design deck before mission
+analysis. Config keys:
+
+```yaml
+slots:
+  propulsion:
+    provider: pyc/surrogate
+    config:
+      archetype: hbtf          # hbtf, turbojet
+      design_alt: 35000        # design altitude (ft)
+      design_MN: 0.78          # design Mach number
+      design_Fn: 5500          # design net thrust (lbf)
+      design_T4: 2850          # design T4 (degR)
+      engine_params:
+        thermo_method: TABULAR  # TABULAR recommended for surrogate stability
+```
+
+Deck generation runs a grid of off-design points across altitude, Mach, and
+throttle. This can take several minutes for HBTF (many Newton solves). The
+resulting Kriging surrogate is cached for the session.
+
+## Custom Aircraft Data
+
+Instead of using `aircraft_template`, define aircraft inline with `aircraft_data`.
+The nested dict uses pipe-separated keys matching OpenConcept conventions:
+
+```yaml
+components:
+- id: mission
+  type: ocp/BasicMission
+  config:
+    aircraft_data:
+      ac:
+        aero:
+          CLmax_TO:
+            value: 2.1
+          polar:
+            e:
+              value: 0.82
+            CD0_TO:
+              value: 0.032
+            CD0_cruise:
+              value: 0.019
+        geom:
+          wing:
+            S_ref:
+              value: 122.6
+              units: "m**2"
+            AR:
+              value: 9.5
+            c4sweep:
+              value: 25.0
+              units: deg
+            taper:
+              value: 0.24
+            toverc:
+              value: 0.12
+          hstab:
+            S_ref:
+              value: 31.0
+              units: "m**2"
+            c4_to_wing_c4:
+              value: 17.5
+              units: m
+          vstab:
+            S_ref:
+              value: 21.5
+              units: "m**2"
+          nosegear:
+            length:
+              value: 3
+              units: ft
+          maingear:
+            length:
+              value: 4
+              units: ft
+        weights:
+          MTOW:
+            value: 78000
+            units: kg
+          OEW:
+            value: 42600
+            units: kg
+          W_fuel_max:
+            value: 19000
+            units: kg
+          MLW:
+            value: 64500
+            units: kg
+        propulsion:
+          engine:
+            rating:
+              value: 27000
+              units: lbf
+        num_passengers_max:
+          value: 180
+        q_cruise:
+          value: 210.0
+          units: "lb*ft**-2"
+    architecture: twin_turbofan
+```
+
+## OCP Solver Settings
+
+OCP missions accept `solver_settings` in the component config:
+
+```yaml
+solver_settings:
+  solver_type: newton    # "newton" (default) or "nlbgs"
+  maxiter: 20            # max iterations (default 20)
+  atol: 1.0e-10          # absolute tolerance
+  rtol: 1.0e-10          # relative tolerance
+  solve_subsystems: true  # Newton solve_subsystems (default true)
+  use_aitken: true        # NLBGS Aitken relaxation (default true)
+```
+
+Use `nlbgs` when combining two surrogate slots (drag + propulsion) to avoid
+ill-conditioned Newton Jacobian. Use `newton` for single-slot or direct-coupled
+configurations.
+
+## pyCycle Plot Types
+
+pyCycle runs produce these additional plot types (via `omd-cli plot`):
+
+| Plot | Description |
+|------|-------------|
+| `station_properties` | Grouped bar chart of total pressure and temperature at each flow station |
+| `component_efficiency` | Bar chart of compressor/turbine efficiency and pressure ratio |
+
+These are in addition to the generic plots (convergence, dv_evolution, n2)
+available for all component types.
 
 ## Decision Logging (Required)
 

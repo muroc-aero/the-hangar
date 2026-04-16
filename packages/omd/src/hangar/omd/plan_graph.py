@@ -7,13 +7,156 @@ to be replaceable by a TypeDB query returning the same structure.
 Graph schema:
     Node types: plan, surface, material, fem_model, mesh, flight_condition,
                 solver, linear_solver, objective, design_variable, constraint,
-                decision, requirement
+                decision, requirement, aircraft_config, mission_profile,
+                propulsion_architecture, slot_provider, engine_config,
+                engine_element
     Edge types: contains, has_geometry, has_material, has_fem, uses_solver,
                 uses_linear, at_conditions, acts_on, bounds, justifies,
-                traces_to
+                traces_to, has_architecture, flow_to, couples, provides
 """
 
 from __future__ import annotations
+
+
+# ---------------------------------------------------------------------------
+# OCP reference data (no external dependencies)
+# ---------------------------------------------------------------------------
+
+_OCP_TEMPLATE_SUMMARY: dict[str, dict] = {
+    "caravan": {
+        "label": "Cessna 208 Caravan",
+        "S_ref_m2": 26.0, "AR": 9.69, "MTOW_kg": 3970, "OEW_kg": 2145,
+    },
+    "b738": {
+        "label": "Boeing 737-800",
+        "S_ref_m2": 124.6, "AR": 9.45, "MTOW_kg": 79002, "OEW_kg": 41871,
+    },
+    "kingair": {
+        "label": "King Air C90GT",
+        "S_ref_m2": 27.3, "AR": 8.58, "MTOW_kg": 4581, "OEW_kg": 2585,
+    },
+    "tbm850": {
+        "label": "TBM 850",
+        "S_ref_m2": 18.0, "AR": 8.95, "MTOW_kg": 3353, "OEW_kg": 2073,
+    },
+}
+
+_OCP_MISSION_PHASES: dict[str, list[str]] = {
+    "ocp/BasicMission": ["climb", "cruise", "descent"],
+    "ocp/FullMission": ["v0v1", "v1vr", "v1v0", "rotate",
+                        "climb", "cruise", "descent"],
+    "ocp/MissionWithReserve": ["climb", "cruise", "descent",
+                               "reserve_climb", "reserve_cruise",
+                               "reserve_descent", "loiter"],
+}
+
+# ---------------------------------------------------------------------------
+# pyCycle reference data
+# ---------------------------------------------------------------------------
+
+_PYC_ARCHETYPE_LABEL: dict[str, str] = {
+    "TurbojetDesign": "Turbojet",
+    "TurbojetMultipoint": "Turbojet (MP)",
+    "HBTFDesign": "High-Bypass Turbofan",
+    "ABTurbojetDesign": "AB Turbojet",
+    "SingleTurboshaftDesign": "Turboshaft",
+    "MultiTurboshaftDesign": "Multi-Spool Turboshaft",
+    "MixedFlowDesign": "Mixed-Flow Turbofan",
+}
+
+_PYC_DISPLAY_KEYS: dict[str, list[str]] = {
+    "TurbojetDesign": ["comp_PR", "comp_eff", "turb_eff", "thermo_method"],
+    "TurbojetMultipoint": ["comp_PR", "comp_eff", "turb_eff", "thermo_method"],
+    "HBTFDesign": ["fan_PR", "hpc_PR", "BPR", "fan_eff", "hpc_eff",
+                    "thermo_method"],
+    "ABTurbojetDesign": ["comp_PR", "comp_eff", "turb_eff", "thermo_method"],
+    "SingleTurboshaftDesign": ["comp_PR", "comp_eff", "turb_eff",
+                               "thermo_method"],
+    "MultiTurboshaftDesign": ["lpc_PR", "hpc_axi_PR", "hpc_centri_PR",
+                              "thermo_method"],
+    "MixedFlowDesign": ["fan_PR", "lpc_PR", "hpc_PR", "thermo_method"],
+}
+
+# Major flow-path elements per archetype (id, human label).
+# Ducts and bleeds omitted for readability.
+_PYC_ELEMENTS: dict[str, list[tuple[str, str]]] = {
+    "TurbojetDesign": [
+        ("inlet", "Inlet"), ("comp", "Compressor"), ("burner", "Combustor"),
+        ("turb", "Turbine"), ("nozz", "Nozzle"),
+    ],
+    "TurbojetMultipoint": [
+        ("inlet", "Inlet"), ("comp", "Compressor"), ("burner", "Combustor"),
+        ("turb", "Turbine"), ("nozz", "Nozzle"),
+    ],
+    "HBTFDesign": [
+        ("inlet", "Inlet"), ("fan", "Fan"), ("splitter", "Splitter"),
+        ("lpc", "LPC"), ("hpc", "HPC"), ("burner", "Combustor"),
+        ("hpt", "HP Turbine"), ("lpt", "LP Turbine"),
+        ("core_nozz", "Core Nozzle"), ("byp_nozz", "Bypass Nozzle"),
+    ],
+    "ABTurbojetDesign": [
+        ("inlet", "Inlet"), ("comp", "Compressor"), ("burner", "Combustor"),
+        ("turb", "Turbine"), ("ab", "Afterburner"), ("nozz", "Nozzle"),
+    ],
+    "SingleTurboshaftDesign": [
+        ("inlet", "Inlet"), ("comp", "Compressor"), ("burner", "Combustor"),
+        ("turb", "GG Turbine"), ("pt", "Power Turbine"), ("nozz", "Exhaust"),
+    ],
+    "MultiTurboshaftDesign": [
+        ("inlet", "Inlet"), ("lpc", "LPC"), ("hpc_axi", "HPC (Axial)"),
+        ("hpc_centri", "HPC (Centrifugal)"), ("burner", "Combustor"),
+        ("hpt", "HP Turbine"), ("lpt", "LP Turbine"),
+        ("pt", "Power Turbine"), ("nozz", "Exhaust"),
+    ],
+    "MixedFlowDesign": [
+        ("inlet", "Inlet"), ("fan", "Fan"), ("splitter", "Splitter"),
+        ("lpc", "LPC"), ("hpc", "HPC"), ("burner", "Combustor"),
+        ("hpt", "HP Turbine"), ("lpt", "LP Turbine"),
+        ("mixer", "Mixer"), ("ab", "Afterburner"), ("nozz", "Mixed Nozzle"),
+    ],
+}
+
+# Streamwise flow order (element ids) -- main gas path only.
+_PYC_FLOW_ORDER: dict[str, list[str]] = {
+    "TurbojetDesign": ["inlet", "comp", "burner", "turb", "nozz"],
+    "TurbojetMultipoint": ["inlet", "comp", "burner", "turb", "nozz"],
+    "HBTFDesign": ["inlet", "fan", "splitter", "lpc", "hpc", "burner",
+                    "hpt", "lpt", "core_nozz"],
+    "ABTurbojetDesign": ["inlet", "comp", "burner", "turb", "ab", "nozz"],
+    "SingleTurboshaftDesign": ["inlet", "comp", "burner", "turb", "pt",
+                               "nozz"],
+    "MultiTurboshaftDesign": ["inlet", "lpc", "hpc_axi", "hpc_centri",
+                              "burner", "hpt", "lpt", "pt", "nozz"],
+    "MixedFlowDesign": ["inlet", "fan", "splitter", "lpc", "hpc", "burner",
+                         "hpt", "lpt", "mixer", "ab", "nozz"],
+}
+
+# Bypass flow connections (source_elem -> target_elem).
+_PYC_BYPASS_EDGES: dict[str, list[tuple[str, str]]] = {
+    "HBTFDesign": [("splitter", "byp_nozz")],
+    "MixedFlowDesign": [("splitter", "mixer")],
+}
+
+# Shaft connections: (shaft_label, [driven elements]).
+_PYC_SHAFT_CONNECTIONS: dict[str, list[tuple[str, list[str]]]] = {
+    "TurbojetDesign": [("Shaft", ["comp", "turb"])],
+    "TurbojetMultipoint": [("Shaft", ["comp", "turb"])],
+    "HBTFDesign": [("HP Shaft", ["hpc", "hpt"]),
+                    ("LP Shaft", ["fan", "lpc", "lpt"])],
+    "ABTurbojetDesign": [("Shaft", ["comp", "turb"])],
+    "SingleTurboshaftDesign": [("HP Shaft", ["comp", "turb"]),
+                               ("LP Shaft", ["pt"])],
+    "MultiTurboshaftDesign": [("HP Shaft", ["hpc_axi", "hpc_centri", "hpt"]),
+                              ("IP Shaft", ["lpc", "lpt"]),
+                              ("LP Shaft", ["pt"])],
+    "MixedFlowDesign": [("HP Shaft", ["hpc", "hpt"]),
+                         ("LP Shaft", ["fan", "lpc", "lpt"])],
+}
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
 
 
 def build_plan_graph(plan: dict, plan_id: str = "", version: int = 0) -> dict:
@@ -49,26 +192,47 @@ def build_plan_graph(plan: dict, plan_id: str = "", version: int = 0) -> dict:
         },
     })
 
+    # Detect component family for conditional extraction
+    comp_type = ""
+    comp_config: dict = {}
+    if plan.get("components"):
+        comp_type = plan["components"][0].get("type", "")
+        comp_config = plan["components"][0].get("config", {})
+
     # --- Flight conditions ---
     op = plan.get("operating_points", {})
     if op:
         parts = []
         if "Mach_number" in op:
             parts.append(f"M={op['Mach_number']}")
+        if "MN" in op:
+            parts.append(f"M={op['MN']}")
         if "alpha" in op:
             parts.append(f"a={op['alpha']}")
         if "velocity" in op:
             parts.append(f"V={op['velocity']} m/s")
+        if "alt" in op:
+            parts.append(f"alt={op['alt']} ft")
+        if "Fn_target" in op:
+            parts.append(f"Fn={op['Fn_target']} lbf")
+        if "T4_target" in op:
+            parts.append(f"T4={op['T4_target']} R")
         nodes.append({
             "id": "flight",
             "type": "flight_condition",
-            "label": "\n".join(parts[:2]) if parts else "flight",
+            "label": "\n".join(parts[:3]) if parts else "flight",
             "properties": op,
         })
         edges.append({
             "source": "plan", "target": "flight",
             "relation": "at_conditions", "properties": {},
         })
+
+    # --- Component-family-specific extraction ---
+    if comp_type.startswith("ocp/"):
+        _extract_ocp_nodes(comp_config, comp_type, nodes, edges)
+    elif comp_type.startswith("pyc/"):
+        _extract_pyc_nodes(comp_config, comp_type, nodes, edges)
 
     # --- Surfaces (decomposed into geometry, material, FEM) ---
     surface_ids = []
@@ -339,3 +503,499 @@ def build_plan_graph(plan: dict, plan_id: str = "", version: int = 0) -> dict:
         "nodes": nodes,
         "edges": edges,
     }
+
+
+# ---------------------------------------------------------------------------
+# OCP plan extraction
+# ---------------------------------------------------------------------------
+
+
+def _extract_ocp_nodes(
+    config: dict, comp_type: str, nodes: list[dict], edges: list[dict],
+) -> None:
+    """Extract OCP aircraft/mission/slot/solver nodes from plan config."""
+
+    # --- Aircraft config ---
+    template = config.get("aircraft_template", "")
+    aircraft_data = config.get("aircraft_data", {})
+
+    ac_props: dict = {}
+    ac_label = "Aircraft"
+
+    if template and template in _OCP_TEMPLATE_SUMMARY:
+        summary = _OCP_TEMPLATE_SUMMARY[template]
+        ac_label = summary["label"]
+        ac_props = dict(summary)
+    elif aircraft_data:
+        # Extract key values from inline nested dict
+        ac = aircraft_data.get("ac", {})
+        geom = ac.get("geom", {})
+        weights = ac.get("weights", {})
+        wing = geom.get("wing", {})
+
+        s_ref = wing.get("S_ref", {})
+        if isinstance(s_ref, dict):
+            ac_props["S_ref"] = s_ref.get("value")
+            ac_props["S_ref_units"] = s_ref.get("units", "m**2")
+        ar = wing.get("AR", {})
+        if isinstance(ar, dict):
+            ac_props["AR"] = ar.get("value")
+
+        mtow = weights.get("MTOW", {})
+        if isinstance(mtow, dict):
+            ac_props["MTOW_kg"] = mtow.get("value")
+        oew = weights.get("OEW", {})
+        if isinstance(oew, dict):
+            ac_props["OEW_kg"] = oew.get("value")
+
+        # Build label from available data
+        parts = []
+        if ac_props.get("S_ref"):
+            parts.append(f"S={ac_props['S_ref']} m2")
+        if ac_props.get("MTOW_kg"):
+            parts.append(f"MTOW={ac_props['MTOW_kg']} kg")
+        ac_label = "\n".join(parts) if parts else "Aircraft (inline)"
+    elif template:
+        ac_label = template
+
+    nodes.append({
+        "id": "aircraft_config",
+        "type": "aircraft_config",
+        "label": ac_label,
+        "properties": ac_props,
+    })
+    edges.append({
+        "source": "plan", "target": "aircraft_config",
+        "relation": "contains", "properties": {},
+    })
+
+    # --- Architecture ---
+    architecture = config.get("architecture", "")
+    if architecture:
+        nodes.append({
+            "id": "architecture",
+            "type": "propulsion_architecture",
+            "label": architecture,
+            "properties": {"architecture": architecture},
+        })
+        edges.append({
+            "source": "aircraft_config", "target": "architecture",
+            "relation": "has_architecture", "properties": {},
+        })
+
+    # --- Mission profile ---
+    mp = config.get("mission_params", {})
+    num_nodes = config.get("num_nodes")
+    phases = _OCP_MISSION_PHASES.get(comp_type, ["climb", "cruise", "descent"])
+
+    alt = mp.get("cruise_altitude_ft", "")
+    rng = mp.get("mission_range_NM", "")
+    label_parts = []
+    if alt:
+        label_parts.append(f"{alt} ft")
+    if rng:
+        label_parts.append(f"{rng} NM")
+    if num_nodes:
+        label_parts.append(f"{num_nodes} nodes")
+
+    nodes.append({
+        "id": "mission_profile",
+        "type": "mission_profile",
+        "label": "\n".join(label_parts) if label_parts else comp_type,
+        "properties": {**mp, "num_nodes": num_nodes, "phases": phases},
+    })
+    edges.append({
+        "source": "plan", "target": "mission_profile",
+        "relation": "contains", "properties": {},
+    })
+
+    # --- Slot providers ---
+    slots = config.get("slots", {})
+    for slot_name, slot_cfg in slots.items():
+        provider = slot_cfg.get("provider", "")
+        slot_config = slot_cfg.get("config", {})
+        sid = f"slot-{slot_name}"
+
+        # Build label with key config values
+        label = f"{slot_name}: {provider}" if provider else slot_name
+
+        nodes.append({
+            "id": sid,
+            "type": "slot_provider",
+            "label": label,
+            "properties": {"provider": provider, "slot": slot_name, **slot_config},
+        })
+        edges.append({
+            "source": "plan", "target": sid,
+            "relation": "contains", "properties": {},
+        })
+        edges.append({
+            "source": sid, "target": "mission_profile",
+            "relation": "provides", "properties": {},
+        })
+
+        # Decompose slot internals into sub-nodes
+        _decompose_slot(slot_name, slot_cfg, ac_props, nodes, edges)
+
+    # --- Solver settings ---
+    solver_settings = config.get("solver_settings", {})
+    if solver_settings:
+        solver_type = solver_settings.get("solver_type", "newton")
+        maxiter = solver_settings.get("maxiter", "")
+        atol = solver_settings.get("atol", "")
+
+        opt_parts = []
+        if maxiter:
+            opt_parts.append(f"maxiter={maxiter}")
+        if atol:
+            opt_parts.append(f"atol={atol}")
+
+        nodes.append({
+            "id": "nl-solver",
+            "type": "solver",
+            "label": f"{solver_type}\n{', '.join(opt_parts)}" if opt_parts else solver_type,
+            "properties": solver_settings,
+        })
+        edges.append({
+            "source": "plan", "target": "nl-solver",
+            "relation": "uses_solver", "properties": {},
+        })
+
+
+# ---------------------------------------------------------------------------
+# pyCycle plan extraction
+# ---------------------------------------------------------------------------
+
+
+def _extract_pyc_nodes(
+    config: dict, comp_type: str, nodes: list[dict], edges: list[dict],
+) -> None:
+    """Extract pyCycle engine config and element nodes from plan config."""
+
+    # Derive archetype from component type (e.g. "pyc/TurbojetDesign" -> "TurbojetDesign")
+    archetype = comp_type.split("/", 1)[-1] if "/" in comp_type else comp_type
+
+    # --- Engine config node ---
+    label = _PYC_ARCHETYPE_LABEL.get(archetype, archetype)
+    display_keys = _PYC_DISPLAY_KEYS.get(archetype, [])
+
+    # Build label with key parameter values
+    param_parts = []
+    for key in display_keys:
+        val = config.get(key)
+        if val is not None:
+            if isinstance(val, float):
+                param_parts.append(f"{key}={val:.3g}")
+            else:
+                param_parts.append(f"{key}={val}")
+    if param_parts:
+        label += "\n" + ", ".join(param_parts[:3])
+        if len(param_parts) > 3:
+            label += f" +{len(param_parts) - 3}"
+
+    engine_props = {k: config[k] for k in display_keys if k in config}
+    engine_props["archetype"] = archetype
+
+    nodes.append({
+        "id": "engine_config",
+        "type": "engine_config",
+        "label": label,
+        "properties": engine_props,
+    })
+    edges.append({
+        "source": "plan", "target": "engine_config",
+        "relation": "contains", "properties": {},
+    })
+
+    # --- Engine element nodes ---
+    elements = _PYC_ELEMENTS.get(archetype, [])
+    element_ids = set()
+    for elem_id, elem_label in elements:
+        nid = f"elem-{elem_id}"
+        element_ids.add(nid)
+        nodes.append({
+            "id": nid,
+            "type": "engine_element",
+            "label": elem_label,
+            "properties": {"element_id": elem_id},
+        })
+        edges.append({
+            "source": "engine_config", "target": nid,
+            "relation": "contains", "properties": {},
+        })
+
+    # --- Streamwise flow edges ---
+    flow_order = _PYC_FLOW_ORDER.get(archetype, [])
+    for i in range(len(flow_order) - 1):
+        src = f"elem-{flow_order[i]}"
+        tgt = f"elem-{flow_order[i + 1]}"
+        if src in element_ids and tgt in element_ids:
+            edges.append({
+                "source": src, "target": tgt,
+                "relation": "flow_to", "properties": {},
+            })
+
+    # --- Bypass flow edges ---
+    for src_id, tgt_id in _PYC_BYPASS_EDGES.get(archetype, []):
+        src = f"elem-{src_id}"
+        tgt = f"elem-{tgt_id}"
+        if src in element_ids and tgt in element_ids:
+            edges.append({
+                "source": src, "target": tgt,
+                "relation": "flow_to", "properties": {"path": "bypass"},
+            })
+
+    # --- Shaft coupling edges ---
+    for shaft_label, driven_elems in _PYC_SHAFT_CONNECTIONS.get(archetype, []):
+        for elem_id in driven_elems:
+            nid = f"elem-{elem_id}"
+            if nid in element_ids:
+                edges.append({
+                    "source": nid, "target": nid,
+                    "relation": "couples",
+                    "properties": {"shaft": shaft_label},
+                })
+
+
+# ---------------------------------------------------------------------------
+# Slot internal decomposition
+# ---------------------------------------------------------------------------
+
+
+def _decompose_slot(
+    slot_name: str,
+    slot_cfg: dict,
+    aircraft_props: dict,
+    nodes: list[dict],
+    edges: list[dict],
+) -> None:
+    """Decompose a slot provider into sub-nodes showing its internal structure.
+
+    For OAS drag slots: surface geometry + mesh sub-nodes.
+    For pyCycle direct slots: engine element sub-nodes with flow edges.
+    For pyCycle surrogate slots: archetype + deck description sub-nodes.
+    """
+    provider = slot_cfg.get("provider", "")
+    config = slot_cfg.get("config", {})
+    sid = f"slot-{slot_name}"
+
+    if provider.startswith("oas/"):
+        _decompose_oas_slot(sid, config, aircraft_props, nodes, edges)
+    elif provider in ("pyc/turbojet", "pyc/hbtf"):
+        _decompose_pyc_direct_slot(sid, provider, config, nodes, edges)
+    elif provider == "pyc/surrogate":
+        _decompose_pyc_surrogate_slot(sid, config, nodes, edges)
+
+
+def _decompose_oas_slot(
+    sid: str,
+    config: dict,
+    aircraft_props: dict,
+    nodes: list[dict],
+    edges: list[dict],
+) -> None:
+    """Add OAS surface/mesh sub-nodes under a drag slot."""
+    surf_id = f"{sid}-surf"
+    mesh_id = f"{sid}-mesh"
+
+    # Build surface properties from aircraft config
+    surf_props: dict = {}
+    for key in ("S_ref", "AR", "span", "root_chord", "sweep", "taper",
+                "symmetry", "dihedral"):
+        if key in aircraft_props:
+            surf_props[key] = aircraft_props[key]
+
+    # Surface label
+    parts = []
+    if surf_props.get("S_ref"):
+        parts.append(f"S={surf_props['S_ref']} m2")
+    if surf_props.get("AR"):
+        parts.append(f"AR={surf_props['AR']}")
+    surf_label = "\n".join(parts) if parts else "wing"
+
+    nodes.append({
+        "id": surf_id,
+        "type": "surface",
+        "label": surf_label,
+        "properties": surf_props,
+    })
+    edges.append({
+        "source": sid, "target": surf_id,
+        "relation": "contains", "properties": {},
+    })
+
+    # Reference edge from aircraft config
+    edges.append({
+        "source": "aircraft_config", "target": surf_id,
+        "relation": "configures", "properties": {},
+    })
+
+    # Mesh sub-node
+    num_x = config.get("num_x")
+    num_y = config.get("num_y")
+    if num_x or num_y:
+        mesh_props: dict = {"num_x": num_x, "num_y": num_y}
+        if config.get("num_twist"):
+            mesh_props["num_twist"] = config["num_twist"]
+
+        nodes.append({
+            "id": mesh_id,
+            "type": "mesh",
+            "label": f"{num_x}x{num_y} panels",
+            "properties": mesh_props,
+        })
+        edges.append({
+            "source": surf_id, "target": mesh_id,
+            "relation": "has_geometry", "properties": {},
+        })
+
+    # Material/FEM sub-nodes for aerostruct slots
+    mat_keys = {"E", "G", "yield_stress", "mrho"}
+    mat_props = {k: config[k] for k in mat_keys if k in config}
+    if mat_props:
+        mat_id = f"{sid}-mat"
+        mat_label_parts = []
+        if "E" in mat_props:
+            mat_label_parts.append(f"E={mat_props['E']:.0e}")
+        if "yield_stress" in mat_props:
+            mat_label_parts.append(f"yield={mat_props['yield_stress']:.0e}")
+        nodes.append({
+            "id": mat_id,
+            "type": "material",
+            "label": "\n".join(mat_label_parts[:2]) if mat_label_parts else "material",
+            "properties": mat_props,
+        })
+        edges.append({
+            "source": surf_id, "target": mat_id,
+            "relation": "has_material", "properties": {},
+        })
+
+    fem_type = config.get("fem_model_type")
+    if fem_type:
+        fem_id = f"{sid}-fem"
+        nodes.append({
+            "id": fem_id,
+            "type": "fem_model",
+            "label": fem_type,
+            "properties": {"fem_model_type": fem_type},
+        })
+        edges.append({
+            "source": surf_id, "target": fem_id,
+            "relation": "has_fem", "properties": {},
+        })
+
+
+def _decompose_pyc_direct_slot(
+    sid: str,
+    provider: str,
+    config: dict,
+    nodes: list[dict],
+    edges: list[dict],
+) -> None:
+    """Add pyCycle engine element sub-nodes under a direct-coupled slot."""
+    # Map provider to archetype
+    archetype_map = {
+        "pyc/turbojet": "TurbojetDesign",
+        "pyc/hbtf": "HBTFDesign",
+    }
+    archetype = archetype_map.get(provider)
+    if not archetype:
+        return
+
+    elements = _PYC_ELEMENTS.get(archetype, [])
+    element_ids = set()
+    for elem_id, elem_label in elements:
+        nid = f"{sid}-elem-{elem_id}"
+        element_ids.add(nid)
+        nodes.append({
+            "id": nid,
+            "type": "engine_element",
+            "label": elem_label,
+            "properties": {"element_id": elem_id},
+        })
+        edges.append({
+            "source": sid, "target": nid,
+            "relation": "contains", "properties": {},
+        })
+
+    # Flow edges
+    flow_order = _PYC_FLOW_ORDER.get(archetype, [])
+    for i in range(len(flow_order) - 1):
+        src = f"{sid}-elem-{flow_order[i]}"
+        tgt = f"{sid}-elem-{flow_order[i + 1]}"
+        if src in element_ids and tgt in element_ids:
+            edges.append({
+                "source": src, "target": tgt,
+                "relation": "flow_to", "properties": {},
+            })
+
+    # Bypass edges
+    for src_id, tgt_id in _PYC_BYPASS_EDGES.get(archetype, []):
+        src = f"{sid}-elem-{src_id}"
+        tgt = f"{sid}-elem-{tgt_id}"
+        if src in element_ids and tgt in element_ids:
+            edges.append({
+                "source": src, "target": tgt,
+                "relation": "flow_to", "properties": {"path": "bypass"},
+            })
+
+
+def _decompose_pyc_surrogate_slot(
+    sid: str,
+    config: dict,
+    nodes: list[dict],
+    edges: list[dict],
+) -> None:
+    """Add archetype + deck sub-nodes under a pyCycle surrogate slot."""
+    arch_id = f"{sid}-archetype"
+    deck_id = f"{sid}-deck"
+
+    archetype = config.get("archetype", "turbojet")
+    design_alt = config.get("design_alt", "")
+    design_MN = config.get("design_MN", "")
+    design_Fn = config.get("design_Fn", "")
+    design_T4 = config.get("design_T4", "")
+
+    # Archetype node with design point conditions
+    arch_parts = [archetype]
+    if design_alt:
+        arch_parts.append(f"alt={design_alt} ft")
+    if design_MN:
+        arch_parts.append(f"MN={design_MN}")
+
+    arch_props = {"archetype": archetype}
+    for key in ("design_alt", "design_MN", "design_Fn", "design_T4",
+                "thermo_method"):
+        if key in config:
+            arch_props[key] = config[key]
+
+    nodes.append({
+        "id": arch_id,
+        "type": "engine_config",
+        "label": "\n".join(arch_parts[:2]),
+        "properties": arch_props,
+    })
+    edges.append({
+        "source": sid, "target": arch_id,
+        "relation": "contains", "properties": {},
+    })
+
+    # Deck grid description
+    grid_spec = config.get("grid_spec", {})
+    if grid_spec:
+        grid_parts = []
+        for key, vals in grid_spec.items():
+            if isinstance(vals, list):
+                grid_parts.append(f"{key}: {len(vals)} pts")
+        deck_label = "Surrogate Deck\n" + ", ".join(grid_parts) if grid_parts else "Surrogate Deck"
+
+        nodes.append({
+            "id": deck_id,
+            "type": "surrogate_deck",
+            "label": deck_label,
+            "properties": grid_spec,
+        })
+        edges.append({
+            "source": arch_id, "target": deck_id,
+            "relation": "generates", "properties": {},
+        })
