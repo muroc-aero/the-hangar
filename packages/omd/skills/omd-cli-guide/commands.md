@@ -87,49 +87,22 @@ Useful for sharing, archiving, or debugging.
 
 ## provenance
 
-View the provenance chain for a plan. There are two viewing modes:
-
-### Static HTML viewer (plan-lifecycle provenance)
-
-Generates a standalone Cytoscape.js HTML file from the omd analysis DB.
-Shows plan entities, execute/assess/replan activities, run records, assessment
-entities, and PROV edges. The file opens in any browser with no server needed.
+View the provenance chain for a plan.
 
 ```bash
-omd-cli provenance <plan_id> --format html -o <output.html>
+omd-cli provenance <plan_id> [--format text|html|json] [--diff V1 V2] [--output PATH] [--db PATH]
 ```
 
-Then open the file in a browser. On WSL:
-```bash
-explorer.exe "$(wslpath -w <output.html>)"
-```
-
-**When to offer this to the user:** After any `omd-cli run` or when the user
-asks to see the provenance graph. Generate the file and tell the user the path
-so they can open it. This is the primary way to visualize omd provenance.
-
-### Text timeline
-
-```bash
-omd-cli provenance <plan_id> --format text
-```
-
-Human-readable timeline of entities and activities. Good for quick checks
-in the terminal.
-
-### Version diff
-
-```bash
-omd-cli provenance <plan_id> --diff V1 V2
-```
-
-Compare two plan versions: shows metadata diff and which keys changed.
-
-**Full options:**
-- `--format` -- `text` (timeline) or `html` (Cytoscape.js DAG)
+**Options:**
+- `--format` -- `text` (timeline), `html` (Cytoscape.js DAG), or `json` (raw data)
 - `--diff V1 V2` -- compare two plan versions
 - `--output`, `-o` -- output file path (required for html format)
-- `--db` -- path to analysis DB
+
+**WSL tip:** The interactive viewer (`omd-cli viewer`) may not bridge to
+Windows. Use `--format html` to export a static DAG and open it with:
+```bash
+explorer.exe "$(wslpath -w dag.html)"
+```
 
 **Example output (text):**
 ```
@@ -138,49 +111,160 @@ Provenance timeline for: plan-paraboloid-analysis
   [2026-04-03T13:04:57] plan v1 (plan-paraboloid-analysis/v1) by have-agent
   [2026-04-03T13:04:57] EXECUTE (act-execute-run-...) by omd -- completed
   [2026-04-03T13:04:58] run_record (run-...) by omd
-  [2026-04-03T13:04:58] ASSESS (act-assess-run-...) by omd -- completed
-  [2026-04-03T13:04:58] assessment (assessment-run-...) by omd
 
 Edges:
   run-... --wasGeneratedBy--> act-execute-run-...
   act-execute-run-... --used--> plan-paraboloid-analysis/v1
-  act-assess-run-... --used--> run-...
-  assessment-run-... --wasGeneratedBy--> act-assess-run-...
 ```
 
-## viewer
+## plan
 
-Start the provenance viewer as a live HTTP server. Serves two views:
+Plan authoring subcommands. Each mutation subcommand mutates one
+modular file in the plan directory, validates the result against the
+partial plan schema (`validate_partial`), and (when `--rationale` is
+provided) appends a structured entry to `decisions.yaml`.
 
-- `/omd-provenance` -- omd plan-lifecycle provenance (plans, runs, assessments)
-  from the analysis DB. Lists all plans; click one to see its Cytoscape.js DAG.
-- `/viewer` -- SDK tool-call-level provenance from MCP server sessions
-  (populated when running via `uv run python -m hangar.omd.server`).
+Under `--interactive`, every subcommand prompts for missing fields
+via Click and **requires** a non-empty rationale — empty rationale
+exits 1. Non-interactive calls treat `--rationale` as optional.
+
+### plan init
+
+Scaffold a plan directory with `metadata.yaml`. Creates the directory
+if it does not exist.
 
 ```bash
-omd-cli viewer [--port PORT] [--db PATH]
+omd-cli plan init <plan_dir> --id <plan_id> --name <name> \
+    [--description TEXT] [--interactive]
 ```
 
-**Options:**
-- `--port` -- port to serve on (default: 7654)
-- `--db` -- path to SDK provenance database
+### plan add-component
 
-**Usage:**
-1. Run `omd-cli viewer` in one terminal
-2. Open `http://localhost:7654/omd-provenance` in a browser to see plan DAGs
-3. Click a plan ID to view its full Cytoscape.js provenance graph
-4. Press Ctrl+C in the terminal to stop the server
+Write `components/<comp_id>.yaml` as a bare mapping.
 
-**When to offer this to the user:** After any `omd-cli run`, tell the user
-they can start the viewer to browse all plan provenance interactively. For a
-quick one-off, the static HTML export (see `provenance` command above) works
-without needing a running server.
+```bash
+omd-cli plan add-component <plan_dir> \
+    --id <comp_id> --type <comp_type> \
+    --config-file <yaml-file> \
+    [--rationale TEXT] [--replace] [--interactive]
+```
 
-### Summary: how to view provenance
+Non-interactive mode requires `--config-file`. Interactive mode
+prompts for a curated field list when `--type` is
+`oas/AerostructPoint`; other types fall back to `$EDITOR` for paste-in
+YAML.
 
-| Situation | Command | What it shows |
-|-----------|---------|---------------|
-| Browse all plans interactively | `omd-cli viewer`, open `/omd-provenance` | Plan/run/assessment DAGs (live server) |
-| One-off static file | `omd-cli provenance <plan_id> --format html -o dag.html` | Single plan DAG (static HTML) |
-| Quick terminal check | `omd-cli provenance <plan_id> --format text` | Text timeline |
-| MCP session tool calls | `omd-cli viewer`, open `/viewer` | Tool call sequence + decisions |
+### plan add-requirement
+
+Append a requirement to `requirements.yaml`.
+
+```bash
+omd-cli plan add-requirement <plan_dir> \
+    --id <req_id> --text <text> \
+    [--type performance|structural|stability|constraint|objective] \
+    [--priority primary|secondary|goal] \
+    [--rationale TEXT] [--replace] [--interactive]
+```
+
+Duplicate ids error unless `--replace` is set.
+
+### plan add-dv
+
+Add a design variable to `optimization.yaml`.
+
+```bash
+omd-cli plan add-dv <plan_dir> \
+    --name <dv_name> --lower <float> --upper <float> \
+    [--scaler <float>] [--units TEXT] \
+    [--rationale TEXT] [--replace] [--interactive]
+```
+
+The DV name is validated against the short-name set of declared
+components (e.g. `twist_cp`, `thickness_cp`, `chord_cp` for OAS
+AerostructPoint). Prefixed forms like `wing.twist_cp` are accepted as
+long as the suffix matches. `--interactive` echoes the allowed short
+names before prompting for `--name`.
+
+### plan set-objective
+
+Set the optimization objective in `optimization.yaml`.
+
+```bash
+omd-cli plan set-objective <plan_dir> \
+    --name <objective_name> \
+    [--scaler <float>] [--units TEXT] \
+    [--rationale TEXT] [--interactive]
+```
+
+Replaces any existing objective. Same short-name validation as
+`add-dv`.
+
+### plan add-decision
+
+Append a hand-authored decision entry to `decisions.yaml`.
+
+```bash
+omd-cli plan add-decision <plan_dir> \
+    --stage <stage> --decision <text> \
+    [--rationale TEXT] [--element-path TEXT] [--id TEXT] \
+    [--interactive]
+```
+
+Off-list stages (outside `RECOMMENDED_DECISION_STAGES` in
+`plan_schema.py`) are accepted but emit a warning to stderr.
+
+### plan set-operating-point
+
+Merge flight-condition fields into `operating_points.yaml`.
+
+```bash
+omd-cli plan set-operating-point <plan_dir> \
+    [--mach FLOAT] [--alpha FLOAT] [--velocity FLOAT] \
+    [--altitude FLOAT] [--re FLOAT] [--rho FLOAT] \
+    [--units SI|imperial] \
+    [--rationale TEXT] [--interactive]
+```
+
+Only sets the fields that are provided; existing keys are preserved
+unless overwritten. `--units` applies to `--altitude` only: `SI` → m,
+`imperial` → ft. At least one field must be provided in
+non-interactive mode.
+
+### plan set-solver
+
+Write `solvers.yaml` (nonlinear + linear).
+
+```bash
+omd-cli plan set-solver <plan_dir> \
+    [--nonlinear TYPE] [--linear TYPE] \
+    [--nonlinear-maxiter INT] [--nonlinear-atol FLOAT] \
+    [--rationale TEXT] [--interactive]
+```
+
+At least one of `--nonlinear`, `--linear` is required. Unspecified
+legs are left unchanged.
+
+### plan set-analysis-strategy
+
+Scaffold `analysis_plan.yaml` with N empty phases. Each phase gets
+`{id, name: TODO, mode: analysis, depends_on, success_criteria: []}`
+so the partial validator passes immediately. Phase ids are
+`{prefix}{n}` with `depends_on` chaining each phase to its
+predecessor.
+
+```bash
+omd-cli plan set-analysis-strategy <plan_dir> \
+    --phases <N> [--phase-id-prefix TEXT] \
+    [--rationale TEXT] [--interactive]
+```
+
+### plan review
+
+Review a plan directory (or assembled plan.yaml) for completeness.
+
+```bash
+omd-cli plan review <plan_path> [--format text|json]
+```
+
+Emits per-section findings (OK / WARN / MISSING / ERROR). Always exits
+0 (advisory). Use `--format json` for CI gating.

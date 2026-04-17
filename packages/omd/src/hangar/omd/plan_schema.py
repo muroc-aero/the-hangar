@@ -7,6 +7,7 @@ and optimization, extensible to other component types.
 
 from __future__ import annotations
 
+import copy
 import json
 from pathlib import Path
 from typing import Any
@@ -526,6 +527,23 @@ RECOMMENDED_DECISION_STAGES: tuple[str, ...] = (
 # ---------------------------------------------------------------------------
 
 
+def _build_partial_schema() -> dict[str, Any]:
+    """Derive a relaxed schema that permits missing top-level sections.
+
+    Used by the interactive plan builder to validate in-progress plans
+    before every write. Nested ``required`` constraints (metadata fields,
+    component fields, etc.) are preserved so a section that *is* present
+    must still be structurally valid.
+    """
+    partial = copy.deepcopy(PLAN_SCHEMA)
+    partial["required"] = []
+    partial["title"] = "MDAO Analysis Plan (partial)"
+    return partial
+
+
+PLAN_SCHEMA_PARTIAL: dict[str, Any] = _build_partial_schema()
+
+
 def validate_plan(plan: dict) -> list[dict[str, str]]:
     """Validate a plan dict against the JSON Schema.
 
@@ -537,6 +555,21 @@ def validate_plan(plan: dict) -> list[dict[str, str]]:
         Empty list means valid.
     """
     validator = jsonschema.Draft202012Validator(PLAN_SCHEMA)
+    errors = []
+    for error in sorted(validator.iter_errors(plan), key=lambda e: list(e.path)):
+        path = ".".join(str(p) for p in error.absolute_path) or "(root)"
+        errors.append({"path": path, "message": error.message})
+    return errors
+
+
+def validate_partial(plan: dict) -> list[dict[str, str]]:
+    """Validate a partial plan dict against the relaxed JSON Schema.
+
+    Like :func:`validate_plan` but never complains about missing
+    top-level sections. Still enforces the structural shape of every
+    present section. Intended for in-progress plan authoring.
+    """
+    validator = jsonschema.Draft202012Validator(PLAN_SCHEMA_PARTIAL)
     errors = []
     for error in sorted(validator.iter_errors(plan), key=lambda e: list(e.path)):
         path = ".".join(str(p) for p in error.absolute_path) or "(root)"
