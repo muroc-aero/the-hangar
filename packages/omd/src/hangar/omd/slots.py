@@ -217,16 +217,25 @@ _oas_aerostruct_drag_provider.removes_fields = [
     "ac|aero|polar|e",
     "ac|aero|polar|CD0_TO",
     "ac|aero|polar|CD0_cruise",
+    "ac|geom|wing|toverc",
 ]
 _oas_aerostruct_drag_provider.design_variables = {
     "twist_cp": "ac|geom|wing|twist",
     "toverc_cp": "ac|geom|wing|toverc",
+    "skin_thickness_cp": "ac|geom|wing|skin_thickness",
+    "spar_thickness_cp": "ac|geom|wing|spar_thickness",
 }
 _oas_aerostruct_drag_provider.result_paths = {
     "drag": "drag",
+    "W_wing": "ac|weights|W_wing",
+    "failure": "failure",
 }
 _oas_aerostruct_drag_provider.adds_fields = {
     "ac|aero|CD_nonwing": {"value": 0.0145},
+    "ac|geom|wing|twist": {"value": [-2.0, 0.0, 2.0], "units": "deg"},
+    "ac|geom|wing|toverc": {"value": [0.12, 0.12, 0.12]},
+    "ac|geom|wing|skin_thickness": {"value": [0.005, 0.010, 0.015], "units": "m"},
+    "ac|geom|wing|spar_thickness": {"value": [0.005, 0.0075, 0.010], "units": "m"},
 }
 
 

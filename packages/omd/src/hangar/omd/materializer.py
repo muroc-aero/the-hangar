@@ -99,11 +99,21 @@ def materialize(
     if not components:
         raise ValueError("Plan must contain at least one component")
 
+    # If optimization is configured, defer factory setup so the materializer
+    # can register design vars / constraints / objective before setup() runs.
+    has_optimization = (
+        plan.get("design_variables")
+        and plan.get("objective")
+    )
+
     # For single-component plans, the factory builds the full problem
     if len(components) == 1:
         comp = components[0]
         factory = get_factory(comp["type"])
-        prob, metadata = factory(comp["config"], operating_points)
+        config = dict(comp["config"])
+        if has_optimization:
+            config["_defer_setup"] = True
+        prob, metadata = factory(config, operating_points)
     else:
         prob, metadata = _materialize_composite(
             components, operating_points, plan,
@@ -116,10 +126,6 @@ def materialize(
         _configure_solvers(prob, plan, metadata)
 
     # Configure optimization
-    has_optimization = (
-        plan.get("design_variables")
-        and plan.get("objective")
-    )
     if has_optimization:
         _configure_driver(prob, plan, metadata)
 
