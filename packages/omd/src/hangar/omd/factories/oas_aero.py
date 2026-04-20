@@ -7,6 +7,8 @@ no coupling -- pure aerodynamics via the vortex lattice method.
 
 from __future__ import annotations
 
+from hangar.omd.factory_metadata import FactoryMetadata
+
 from typing import Any
 
 import numpy as np
@@ -132,7 +134,7 @@ def _connect_aero_surface(
 def build_oas_aeropoint(
     component_config: dict,
     operating_points: dict,
-) -> tuple[om.Problem, dict]:
+) -> tuple[om.Problem, FactoryMetadata]:
     """Build an OAS aero-only problem from plan config.
 
     Args:
