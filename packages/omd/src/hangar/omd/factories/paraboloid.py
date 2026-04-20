@@ -8,6 +8,8 @@ Analytic minimum at x = 20/3, y = -22/3, f = -82/3.
 
 from __future__ import annotations
 
+from hangar.omd.factory_metadata import FactoryMetadata
+
 from typing import Any
 
 import openmdao.api as om
@@ -37,7 +39,7 @@ class _Paraboloid(om.ExplicitComponent):
 def build_paraboloid(
     component_config: dict,
     operating_points: dict,
-) -> tuple[om.Problem, dict[str, Any]]:
+) -> tuple[om.Problem, FactoryMetadata]:
     """Build a paraboloid problem from plan config.
 
     Args:

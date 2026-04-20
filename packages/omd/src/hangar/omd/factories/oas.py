@@ -7,6 +7,8 @@ on hangar-oas.
 
 from __future__ import annotations
 
+from hangar.omd.factory_metadata import FactoryMetadata
+
 import logging
 from typing import Any
 
@@ -393,7 +395,7 @@ def _connect_aerostruct_surface(
 def build_oas_aerostruct(
     component_config: dict,
     operating_points: dict,
-) -> tuple[om.Problem, dict]:
+) -> tuple[om.Problem, FactoryMetadata]:
     """Build an OAS aerostructural problem from plan config.
 
     Creates a complete om.Problem with IndepVarComp, AerostructGeometry,
@@ -558,7 +560,7 @@ def build_oas_aerostruct(
 def build_oas_aerostruct_multipoint(
     component_config: dict,
     operating_points: dict,
-) -> tuple[om.Problem, dict]:
+) -> tuple[om.Problem, FactoryMetadata]:
     """Build a multipoint OAS aerostructural problem from plan config.
 
     Creates shared geometry groups and N AerostructPoint groups (one per

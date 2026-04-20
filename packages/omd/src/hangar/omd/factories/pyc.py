@@ -6,6 +6,8 @@ pyCycle archetype classes in hangar.omd.pyc.
 
 from __future__ import annotations
 
+from hangar.omd.factory_metadata import FactoryMetadata
+
 from typing import Any
 
 import openmdao.api as om
@@ -44,7 +46,7 @@ from hangar.omd.pyc.defaults import (
 def build_pyc_turbojet_design(
     component_config: dict,
     operating_points: dict,
-) -> tuple[om.Problem, dict[str, Any]]:
+) -> tuple[om.Problem, FactoryMetadata]:
     """Build a single design-point turbojet problem from plan config.
 
     The Cycle class IS the model (prob.model = Turbojet(...)), not a
@@ -128,7 +130,7 @@ def build_pyc_turbojet_design(
 def build_pyc_turbojet_multipoint(
     component_config: dict,
     operating_points: dict,
-) -> tuple[om.Problem, dict[str, Any]]:
+) -> tuple[om.Problem, FactoryMetadata]:
     """Build a multi-point turbojet problem (design + off-design).
 
     The operating_points dict must contain a ``flight_points`` list with
@@ -254,7 +256,7 @@ def _merge(defaults, config):
 def build_pyc_hbtf_design(
     component_config: dict,
     operating_points: dict,
-) -> tuple[om.Problem, dict[str, Any]]:
+) -> tuple[om.Problem, FactoryMetadata]:
     """Build an HBTF design-point problem via MPHbtf (design only, no OD)."""
     params = _merge(DEFAULT_HBTF_PARAMS, component_config)
     guesses = component_config.get("initial_guesses", DEFAULT_HBTF_DESIGN_GUESSES)
@@ -311,7 +313,7 @@ def build_pyc_hbtf_design(
 def build_pyc_ab_turbojet_design(
     component_config: dict,
     operating_points: dict,
-) -> tuple[om.Problem, dict[str, Any]]:
+) -> tuple[om.Problem, FactoryMetadata]:
     """Build an afterburning turbojet design-point problem."""
     params = _merge(DEFAULT_AB_TURBOJET_PARAMS, component_config)
     guesses = component_config.get("initial_guesses",
@@ -387,7 +389,7 @@ def build_pyc_ab_turbojet_design(
 def build_pyc_single_turboshaft_design(
     component_config: dict,
     operating_points: dict,
-) -> tuple[om.Problem, dict[str, Any]]:
+) -> tuple[om.Problem, FactoryMetadata]:
     """Build a single-spool turboshaft design-point problem."""
     params = _merge(DEFAULT_SINGLE_TURBOSHAFT_PARAMS, component_config)
     guesses = component_config.get("initial_guesses",
@@ -450,7 +452,7 @@ def build_pyc_single_turboshaft_design(
 def build_pyc_multi_turboshaft_design(
     component_config: dict,
     operating_points: dict,
-) -> tuple[om.Problem, dict[str, Any]]:
+) -> tuple[om.Problem, FactoryMetadata]:
     """Build a 3-spool turboshaft design-point problem."""
     params = _merge(DEFAULT_MULTI_TURBOSHAFT_PARAMS, component_config)
     guesses = component_config.get("initial_guesses",
@@ -540,7 +542,7 @@ def build_pyc_multi_turboshaft_design(
 def build_pyc_mixedflow_design(
     component_config: dict,
     operating_points: dict,
-) -> tuple[om.Problem, dict[str, Any]]:
+) -> tuple[om.Problem, FactoryMetadata]:
     """Build a mixed-flow turbofan design-point problem."""
     params = _merge(DEFAULT_MIXEDFLOW_PARAMS, component_config)
     guesses = component_config.get("initial_guesses",

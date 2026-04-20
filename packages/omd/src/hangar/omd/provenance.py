@@ -143,8 +143,11 @@ def _entity_label(etype: str, eid: str, entity: dict, meta: dict) -> str:
         )
         return f"min {obj_short}\nDV: {dv_names}"
     if etype == "decision":
-        text = meta.get("decision", meta.get("rationale", "Decision"))
-        return str(text)[:30]
+        text = str(meta.get("decision", meta.get("rationale", "Decision")))
+        reason = str(meta.get("reason", ""))
+        if reason:
+            return f"{text[:120]}\n\n{reason[:140]}"
+        return text[:160]
     if etype == "aero_results":
         cl = meta.get("CL")
         ld = meta.get("L_over_D")
@@ -564,11 +567,12 @@ var STYLES = [
        }} }},
     {{ selector: 'node[entity_type="decision"]',
        style: {{
-         'shape': 'hexagon', 'width': 100, 'height': 50,
-         'background-color': '#1a1808', 'border-width': 2, 'border-color': '#d0a030',
-         'label': 'data(label)', 'text-wrap': 'wrap', 'font-size': 9,
-         'color': '#e0c060', 'text-valign': 'center', 'text-halign': 'center',
-         'text-max-width': '80px',
+         'shape': 'round-rectangle', 'width': 240, 'height': 90,
+         'background-color': '#2a2010', 'border-width': 2, 'border-color': '#e0b040',
+         'label': 'data(label)', 'text-wrap': 'wrap', 'font-size': 11,
+         'color': '#f0d080', 'text-valign': 'center', 'text-halign': 'center',
+         'text-max-width': '220px', 'padding': '8px',
+         'font-weight': 600,
        }} }},
     {{ selector: 'node[entity_type="aero_results"]',
        style: {{
