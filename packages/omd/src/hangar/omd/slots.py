@@ -10,6 +10,12 @@ Provider callable signature:
 
 Providers also carry metadata attributes:
     provider.slot_name       -- which slot this fills ("drag", "propulsion", etc.)
+    provider.slot_scope      -- "per_phase" (default) or "top_level".
+                                per_phase: wired inside each flight phase's
+                                DynamicAircraftModel.
+                                top_level: wired once as a sibling of the
+                                mission analysis subsystem (e.g. a 2.5g
+                                maneuver that sizes structure).
     provider.removes_fields  -- DictIndepVarComp fields to skip when this provider is active
     provider.adds_fields     -- dict of {field_name: {"value": ..., "units": ...}} to add
 """
@@ -77,6 +83,12 @@ def _register_builtins() -> None:
         logger.info("AerostructDragPolar not available, oas/aerostruct slot not registered")
 
     try:
+        from openconcept.aerodynamics.openaerostruct import Aerostruct  # noqa: F401
+        register_slot_provider("oas/maneuver", _oas_maneuver_provider)
+    except ImportError:
+        logger.info("Aerostruct not available, oas/maneuver slot not registered")
+
+    try:
         from openconcept.aerodynamics.openaerostruct.drag_polar import VLM  # noqa: F401
         register_slot_provider("oas/vlm-direct", _oas_vlm_direct_drag_provider)
     except ImportError:
@@ -138,6 +150,7 @@ def _oas_vlm_drag_provider(
 
 
 _oas_vlm_drag_provider.slot_name = "drag"
+_oas_vlm_drag_provider.slot_scope = "per_phase"
 _oas_vlm_drag_provider.removes_fields = [
     "ac|aero|polar|e",
     "ac|aero|polar|CD0_TO",
@@ -213,6 +226,7 @@ def _oas_aerostruct_drag_provider(
 
 
 _oas_aerostruct_drag_provider.slot_name = "drag"
+_oas_aerostruct_drag_provider.slot_scope = "per_phase"
 _oas_aerostruct_drag_provider.removes_fields = [
     "ac|aero|polar|e",
     "ac|aero|polar|CD0_TO",
@@ -521,6 +535,7 @@ def _oas_vlm_direct_drag_provider(
 
 
 _oas_vlm_direct_drag_provider.slot_name = "drag"
+_oas_vlm_direct_drag_provider.slot_scope = "per_phase"
 _oas_vlm_direct_drag_provider.removes_fields = [
     "ac|aero|polar|e",
     "ac|aero|polar|CD0_TO",
@@ -781,6 +796,7 @@ def _pyc_turbojet_propulsion_provider(
 
 
 _pyc_turbojet_propulsion_provider.slot_name = "propulsion"
+_pyc_turbojet_propulsion_provider.slot_scope = "per_phase"
 _pyc_turbojet_propulsion_provider.removes_fields = [
     "ac|propulsion|engine|rating",
     "ac|propulsion|propeller|diameter",
@@ -993,6 +1009,7 @@ def _pyc_hbtf_propulsion_provider(
 
 
 _pyc_hbtf_propulsion_provider.slot_name = "propulsion"
+_pyc_hbtf_propulsion_provider.slot_scope = "per_phase"
 _pyc_hbtf_propulsion_provider.removes_fields = [
     "ac|propulsion|engine|rating",
     "ac|propulsion|propeller|diameter",
@@ -1054,6 +1071,7 @@ def _pyc_surrogate_propulsion_provider(
 
 
 _pyc_surrogate_propulsion_provider.slot_name = "propulsion"
+_pyc_surrogate_propulsion_provider.slot_scope = "per_phase"
 _pyc_surrogate_propulsion_provider.removes_fields = [
     "ac|propulsion|engine|rating",
     "ac|propulsion|propeller|diameter",
@@ -1126,9 +1144,248 @@ def _parametric_weight_provider(
 
 
 _parametric_weight_provider.slot_name = "weight"
+_parametric_weight_provider.slot_scope = "per_phase"
 _parametric_weight_provider.removes_fields = []
 _parametric_weight_provider.design_variables = {}
 _parametric_weight_provider.result_paths = {
     "OEW": "OEW",
 }
 _parametric_weight_provider.adds_fields = {}
+
+
+# ---------------------------------------------------------------------------
+# OAS Aerostruct one-shot maneuver provider (top-level slot)
+# ---------------------------------------------------------------------------
+
+
+class _OasManeuverGroup(om.Group):
+    """One-shot Aerostruct sizing maneuver.
+
+    Runs a single Aerostruct analysis at fixed (M, altitude) with
+    load factor applied via an alpha-finding balance. The wing
+    geometry is promoted up so that it is shared with the mission's
+    drag slot (both bind to the same ``ac|geom|wing|*`` dv_comp
+    outputs in the parent Group).
+
+    Matches the pattern in
+    ``upstream/openconcept/openconcept/examples/B738_aerostructural.py``
+    lines 263-318.
+
+    Inputs (promoted from parent):
+        ac|geom|wing|S_ref, AR, taper, c4sweep, toverc, twist,
+        skin_thickness, spar_thickness
+        ac|weights|MTOW
+        ac|weights|orig_W_wing  (Raymer estimate of wing weight)
+        load_factor  (default 2.5)
+        W_wing_in  (wing weight used in the balance; defaults to orig)
+
+    Output (promoted from parent with rename):
+        failure -> failure_maneuver
+        ac|weights|W_wing -> W_wing_maneuver
+    """
+
+    def initialize(self):
+        self.options.declare("num_x", types=int, default=2)
+        self.options.declare("num_y", types=int, default=6)
+        self.options.declare("num_twist", types=int, default=3)
+        self.options.declare("num_toverc", types=int, default=3)
+        self.options.declare("num_skin", types=int, default=3)
+        self.options.declare("num_spar", types=int, default=3)
+        self.options.declare("mach", types=float, default=0.8)
+        self.options.declare("altitude_ft", types=float, default=20000.0)
+        self.options.declare("load_factor", types=float, default=2.5)
+        self.options.declare(
+            "surf_options", types=dict, default=None, allow_none=True,
+        )
+        self.options.declare(
+            "self_feedback_W_wing",
+            types=bool,
+            default=True,
+            desc=(
+                "If True, connect the maneuver's own Aerostruct W_wing "
+                "back to the kg_to_N balance. Set False when the parent "
+                "will connect the mission's W_wing instead."
+            ),
+        )
+
+    def setup(self):
+        from openconcept.aerodynamics.openaerostruct import Aerostruct
+        from openconcept.aerodynamics import Lift
+        from openconcept.atmospherics import DynamicPressureComp
+
+        self.add_subsystem(
+            "aerostructural_maneuver",
+            Aerostruct(
+                num_x=self.options["num_x"],
+                num_y=self.options["num_y"],
+                num_twist=self.options["num_twist"],
+                num_toverc=self.options["num_toverc"],
+                num_skin=self.options["num_skin"],
+                num_spar=self.options["num_spar"],
+                surf_options=self.options["surf_options"],
+            ),
+            promotes_inputs=[
+                "ac|geom|wing|S_ref",
+                "ac|geom|wing|AR",
+                "ac|geom|wing|taper",
+                "ac|geom|wing|c4sweep",
+                "ac|geom|wing|toverc",
+                "ac|geom|wing|skin_thickness",
+                "ac|geom|wing|spar_thickness",
+                "ac|geom|wing|twist",
+            ],
+            promotes_outputs=[
+                "failure",
+                "ac|weights|W_wing",
+            ],
+        )
+
+        self.set_input_defaults(
+            "aerostructural_maneuver.fltcond|M",
+            self.options["mach"],
+        )
+        self.set_input_defaults(
+            "aerostructural_maneuver.fltcond|h",
+            self.options["altitude_ft"],
+            units="ft",
+        )
+        # Aerostruct's mesh_gen consumes `ac|geom|wing|S_ref` alongside
+        # `lift.ac|geom|wing|S_ref`; register a common default so both
+        # promoted inputs agree when the maneuver is used standalone.
+        self.set_input_defaults(
+            "ac|geom|wing|S_ref", 1.0, units="m**2",
+        )
+
+        self.add_subsystem("dyn_pressure", DynamicPressureComp(num_nodes=1))
+        self.add_subsystem(
+            "lift",
+            Lift(num_nodes=1),
+            promotes_inputs=["ac|geom|wing|S_ref"],
+        )
+        self.add_subsystem(
+            "kg_to_N",
+            om.ExecComp(
+                "lift = load_factor * (MTOW - orig_W_wing + W_wing) * a",
+                lift={"units": "N"},
+                MTOW={"units": "kg"},
+                orig_W_wing={"units": "kg", "val": 1.0},
+                W_wing={"units": "kg", "val": 1.0},
+                a={"units": "m/s**2", "val": 9.807},
+                load_factor={"val": self.options["load_factor"]},
+            ),
+            promotes_inputs=[
+                "load_factor",
+                ("MTOW", "ac|weights|MTOW"),
+                ("orig_W_wing", "ac|weights|orig_W_wing"),
+            ],
+        )
+        self.add_subsystem(
+            "struct_sizing_AoA",
+            om.BalanceComp(
+                "alpha",
+                eq_units="N",
+                lhs_name="MTOW",
+                rhs_name="lift",
+                units="deg",
+                val=10.0,
+                lower=0.0,
+            ),
+        )
+
+        # Use the maneuver's own Aerostruct W_wing as the feedback input
+        # to the balance (default; can be overridden by the builder when
+        # wire_wing_weight=True to use the mission's climb-phase W_wing).
+        if self.options["self_feedback_W_wing"]:
+            self.connect("ac|weights|W_wing", "kg_to_N.W_wing")
+        self.connect("kg_to_N.lift", "struct_sizing_AoA.MTOW")
+        self.connect(
+            "aerostructural_maneuver.density.fltcond|rho",
+            "dyn_pressure.fltcond|rho",
+        )
+        self.connect(
+            "aerostructural_maneuver.airspeed.Utrue",
+            "dyn_pressure.fltcond|Utrue",
+        )
+        self.connect("dyn_pressure.fltcond|q", "lift.fltcond|q")
+        self.connect(
+            "aerostructural_maneuver.fltcond|CL", "lift.fltcond|CL",
+        )
+        self.connect("lift.lift", "struct_sizing_AoA.lift")
+        self.connect(
+            "struct_sizing_AoA.alpha",
+            "aerostructural_maneuver.fltcond|alpha",
+        )
+
+
+def _oas_maneuver_provider(
+    nn: int,
+    flight_phase: str,
+    config: dict,
+) -> tuple[om.Group, list[str], list[str]]:
+    """Build an Aerostruct sizing maneuver for the 'maneuver' top-level slot.
+
+    ``nn`` and ``flight_phase`` are ignored (the maneuver is one-shot,
+    outside the mission loop) but kept for signature parity with
+    per-phase providers.
+    """
+    num_x = int(config.get("num_x", 2))
+    num_y = int(config.get("num_y", 6))
+    num_twist = int(config.get("num_twist", 3))
+    num_toverc = int(config.get("num_toverc", 3))
+    num_skin = int(config.get("num_skin", 3))
+    num_spar = int(config.get("num_spar", 3))
+    mach = float(config.get("mach", 0.8))
+    altitude_ft = float(config.get("altitude_ft", 20000.0))
+    load_factor = float(config.get("load_factor", 2.5))
+    surf_options = config.get("surf_options")
+
+    self_feedback = not bool(config.get("wire_wing_weight", False))
+    component = _OasManeuverGroup(
+        num_x=num_x,
+        num_y=num_y,
+        num_twist=num_twist,
+        num_toverc=num_toverc,
+        num_skin=num_skin,
+        num_spar=num_spar,
+        mach=mach,
+        altitude_ft=altitude_ft,
+        load_factor=load_factor,
+        surf_options=surf_options,
+        self_feedback_W_wing=self_feedback,
+    )
+
+    promotes_inputs = [
+        "ac|geom|wing|S_ref",
+        "ac|geom|wing|AR",
+        "ac|geom|wing|taper",
+        "ac|geom|wing|c4sweep",
+        "ac|geom|wing|toverc",
+        "ac|geom|wing|skin_thickness",
+        "ac|geom|wing|spar_thickness",
+        "ac|geom|wing|twist",
+        "ac|weights|MTOW",
+        "ac|weights|orig_W_wing",
+        "load_factor",
+    ]
+    promotes_outputs = [
+        ("failure", "failure_maneuver"),
+        ("ac|weights|W_wing", "W_wing_maneuver"),
+    ]
+    return component, promotes_inputs, promotes_outputs
+
+
+_oas_maneuver_provider.slot_name = "maneuver"
+_oas_maneuver_provider.slot_scope = "top_level"
+_oas_maneuver_provider.removes_fields = []
+_oas_maneuver_provider.design_variables = {}
+_oas_maneuver_provider.result_paths = {
+    "failure": "failure_maneuver",
+    "W_wing": "W_wing_maneuver",
+    "alpha": "maneuver.struct_sizing_AoA.alpha",
+}
+_oas_maneuver_provider.adds_fields = {
+    "load_factor": {"value": 2.5},
+    # Raymer wing-weight estimate for B738 (overridden by builder from
+    # aircraft data when possible). kg units matching the ExecComp input.
+    "ac|weights|orig_W_wing": {"value": 6561.57, "units": "kg"},
+}

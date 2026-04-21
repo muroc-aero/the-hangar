@@ -62,7 +62,26 @@ def _build_mission_problem(
     is_hybrid = arch_info["has_battery"] and arch_info["has_fuel"]
     is_cfm56 = arch_info["prop_class"] == "CFM56"
 
-    AircraftModelClass = _make_aircraft_model_class(architecture, propulsion_overrides, slots)
+    # Partition slots by scope: per_phase slots are wired inside
+    # DynamicAircraftModel (one copy per flight phase); top_level slots
+    # are wired once as siblings of the mission analysis subsystem.
+    per_phase_slots: dict | None = None
+    top_level_slots: dict = {}
+    if slots:
+        from hangar.omd.slots import get_slot_provider as _gsp_partition
+        per_phase_slots = {}
+        for _s_name, _s_cfg in slots.items():
+            _prov = _gsp_partition(_s_cfg["provider"])
+            if getattr(_prov, "slot_scope", "per_phase") == "top_level":
+                top_level_slots[_s_name] = _s_cfg
+            else:
+                per_phase_slots[_s_name] = _s_cfg
+        if not per_phase_slots:
+            per_phase_slots = None
+
+    AircraftModelClass = _make_aircraft_model_class(
+        architecture, propulsion_overrides, per_phase_slots,
+    )
 
     if mission_type == "basic":
         MissionClass = BasicMission
@@ -143,6 +162,38 @@ def _build_mission_problem(
                 promotes_inputs=["*"],
                 promotes_outputs=["*"],
             )
+
+            # Wire top-level slots (one-shot, siblings of `analysis`).
+            # Providers with slot_scope="top_level" are instantiated once
+            # here and promote their geometry/weight inputs from the
+            # parent group, so they share values with the dv_comp that
+            # the mission also reads.
+            if top_level_slots:
+                from hangar.omd.slots import get_slot_provider as _gsp_tl
+                for _slot_name, _slot_cfg in top_level_slots.items():
+                    _prov_tl = _gsp_tl(_slot_cfg["provider"])
+                    _cfg_tl = dict(_slot_cfg.get("config", {}))
+                    _subgrp, _prom_in, _prom_out = _prov_tl(
+                        nn=1,
+                        flight_phase=None,
+                        config=_cfg_tl,
+                    )
+                    self.add_subsystem(
+                        _slot_name,
+                        _subgrp,
+                        promotes_inputs=_prom_in,
+                        promotes_outputs=_prom_out,
+                    )
+                    if _cfg_tl.get("wire_wing_weight", False):
+                        # Route the mission's first-phase W_wing into
+                        # the maneuver's kg_to_N balance. The provider
+                        # skipped its internal self-feedback connect
+                        # (see self_feedback_W_wing=False below).
+                        _first_phase = phases[0] if phases else "climb"
+                        self.connect(
+                            f"analysis.{_first_phase}.ac|weights|W_wing",
+                            f"{_slot_name}.kg_to_N.W_wing",
+                        )
 
             if is_hybrid:
                 self.add_subsystem(
@@ -225,13 +276,28 @@ def _build_mission_problem(
             if isinstance(slot_cfg, dict) and "provider" in slot_cfg:
                 provider = get_slot_provider(slot_cfg["provider"])
                 slot_dvs = getattr(provider, "design_variables", {})
+                scope = getattr(provider, "slot_scope", "per_phase")
                 subsys = _slot_subsys_map.get(slot_name, slot_name)
                 first_phase = phases[0] if phases else "climb"
                 for short_name, rel_path in slot_dvs.items():
                     if "|" in rel_path:
                         var_paths[short_name] = rel_path
+                    elif scope == "top_level":
+                        var_paths[short_name] = f"{slot_name}.{rel_path}"
                     else:
                         var_paths[short_name] = f"{first_phase}.{subsys}.{rel_path}"
+
+                # Top-level slot results are promoted with renames at
+                # the AnalysisGroup root; expose their short names so
+                # plans can reference them as constraints/objectives.
+                if scope == "top_level":
+                    slot_results = getattr(provider, "result_paths", {})
+                    for short_name, promoted in slot_results.items():
+                        if "." in promoted:
+                            var_paths[f"{short_name}_{slot_name}"] = promoted
+                        else:
+                            # Promoted name at AnalysisGroup root
+                            var_paths[promoted] = promoted
 
     metadata = {
         "component_family": "ocp",
