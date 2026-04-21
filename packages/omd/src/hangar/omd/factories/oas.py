@@ -436,21 +436,25 @@ def build_oas_aerostruct(
         point_masses_cfg is not None and len(point_masses_cfg) > 0
     )
 
+    skip_fields = set(component_config.get("skip_fields") or [])
+
     # Independent variables
     indep = om.IndepVarComp()
-    indep.add_output("v", val=flight["velocity"], units="m/s")
-    indep.add_output("alpha", val=flight["alpha"], units="deg")
-    indep.add_output("beta", val=flight.get("beta", 0.0), units="deg")
-    indep.add_output("Mach_number", val=flight["Mach_number"])
-    indep.add_output("re", val=flight["re"], units="1/m")
-    indep.add_output("rho", val=flight["rho"], units="kg/m**3")
-    indep.add_output("CT", val=flight["CT"], units="1/s")
-    indep.add_output("R", val=flight["R"], units="m")
-    indep.add_output("speed_of_sound", val=flight["speed_of_sound"], units="m/s")
-    indep.add_output("load_factor", val=flight["load_factor"])
-    indep.add_output(
-        "empty_cg", val=np.array(flight["empty_cg"]), units="m"
-    )
+    def _add(name, **kw):
+        if name in skip_fields:
+            return
+        indep.add_output(name, **kw)
+    _add("v", val=flight["velocity"], units="m/s")
+    _add("alpha", val=flight["alpha"], units="deg")
+    _add("beta", val=flight.get("beta", 0.0), units="deg")
+    _add("Mach_number", val=flight["Mach_number"])
+    _add("re", val=flight["re"], units="1/m")
+    _add("rho", val=flight["rho"], units="kg/m**3")
+    _add("CT", val=flight["CT"], units="1/s")
+    _add("R", val=flight["R"], units="m")
+    _add("speed_of_sound", val=flight["speed_of_sound"], units="m/s")
+    _add("load_factor", val=flight["load_factor"])
+    _add("empty_cg", val=np.array(flight["empty_cg"]), units="m")
 
     if has_point_masses:
         pm_arr = np.array(point_masses_cfg)
@@ -460,19 +464,15 @@ def build_oas_aerostruct(
             "W0_without_point_masses",
             flight["W0"],
         ))
-        indep.add_output("W0_without_point_masses", val=W0_wpm, units="kg")
-        indep.add_output("point_masses", val=pm_arr, units="kg")
-        indep.add_output("point_mass_locations", val=pml_arr, units="m")
+        _add("W0_without_point_masses", val=W0_wpm, units="kg")
+        _add("point_masses", val=pm_arr, units="kg")
+        _add("point_mass_locations", val=pml_arr, units="m")
     else:
-        indep.add_output("W0", val=flight["W0"], units="kg")
+        _add("W0", val=flight["W0"], units="kg")
     if ground_effect:
-        indep.add_output(
-            "height_agl", val=flight.get("height_agl", 8000.0), units="m"
-        )
+        _add("height_agl", val=flight.get("height_agl", 8000.0), units="m")
     if rotational:
-        indep.add_output(
-            "omega", val=np.array(omega) * np.pi / 180.0, units="rad/s"
-        )
+        _add("omega", val=np.array(omega) * np.pi / 180.0, units="rad/s")
     prob.model.add_subsystem("prob_vars", indep, promotes=["*"])
 
     if has_point_masses:

@@ -115,6 +115,14 @@ def validate_var_paths(plan: dict) -> list[ValidationFinding]:
     components = plan.get("components") or []
     known = _known_names_for(components)
 
+    # Shared-var names are always resolvable (they wire to the root
+    # shared_ivc subsystem in composite plans).
+    for sv in plan.get("shared_vars") or []:
+        if isinstance(sv, dict):
+            name = sv.get("name")
+            if isinstance(name, str) and name:
+                known.add(name)
+
     findings: list[ValidationFinding] = []
     findings += _check_name_list(plan.get("design_variables") or [],
                                  "design_variables", known)
@@ -130,6 +138,74 @@ def validate_var_paths(plan: dict) -> list[ValidationFinding]:
                 message=f"Unknown variable '{name}'.",
                 suggestions=_suggest(name, known),
             ))
+    return findings
+
+
+def validate_shared_vars(plan: dict) -> list[ValidationFinding]:
+    """Check shared_vars consumers reference real components.
+
+    Emits findings for:
+      - consumer id that does not match any declared component
+      - duplicate shared_var names
+      - consumer whose factory type has no skip_fields support
+        (pyc/* and paraboloid/* currently)
+    """
+    shared_vars = plan.get("shared_vars") or []
+    if not shared_vars:
+        return []
+
+    findings: list[ValidationFinding] = []
+    components = plan.get("components") or []
+    comp_types: dict[str, str] = {}
+    for comp in components:
+        if isinstance(comp, dict) and isinstance(comp.get("id"), str):
+            comp_types[comp["id"]] = comp.get("type", "")
+
+    seen_names: set[str] = set()
+    # pyc/* cycles are built as the model root with their own namespaces;
+    # they won't have an `ac|*`-style promoted input to drive, so the
+    # shared-IVC fanout will not wire. Other factories are allowed to try.
+    unsupported_prefixes = ("pyc/",)
+
+    for i, entry in enumerate(shared_vars):
+        if not isinstance(entry, dict):
+            continue
+        name = entry.get("name")
+        if isinstance(name, str):
+            if name in seen_names:
+                findings.append(ValidationFinding(
+                    path=f"shared_vars[{i}].name",
+                    message=f"Duplicate shared_vars entry '{name}'.",
+                ))
+            seen_names.add(name)
+
+        consumers = entry.get("consumers") or []
+        for j, cid in enumerate(consumers):
+            if not isinstance(cid, str):
+                continue
+            if cid not in comp_types:
+                suggestions = difflib.get_close_matches(
+                    cid, sorted(comp_types), n=3, cutoff=0.5,
+                )
+                findings.append(ValidationFinding(
+                    path=f"shared_vars[{i}].consumers[{j}]",
+                    message=(
+                        f"Consumer '{cid}' does not match any declared "
+                        f"component id."
+                    ),
+                    suggestions=suggestions,
+                ))
+                continue
+            ctype = comp_types[cid]
+            if ctype.startswith(unsupported_prefixes):
+                findings.append(ValidationFinding(
+                    path=f"shared_vars[{i}].consumers[{j}]",
+                    message=(
+                        f"Component '{cid}' (type '{ctype}') does not "
+                        f"support skip_fields; use explicit "
+                        f"'connections:' for this consumer instead."
+                    ),
+                ))
     return findings
 
 
@@ -153,6 +229,7 @@ def validate_plan_semantic(plan: dict, registry_types: set[str] | None = None) -
                 ))
 
     findings += validate_var_paths(plan)
+    findings += validate_shared_vars(plan)
     return findings
 
 
@@ -167,6 +244,7 @@ def format_findings(findings: list[ValidationFinding]) -> str:
 
 __all__ = [
     "validate_var_paths",
+    "validate_shared_vars",
     "validate_plan_semantic",
     "format_findings",
 ]

@@ -272,6 +272,33 @@ PLAN_SCHEMA: dict[str, Any] = {
                 },
             },
         },
+        "shared_vars": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["name", "consumers"],
+                "additionalProperties": False,
+                "properties": {
+                    "name": {"type": "string", "minLength": 1},
+                    "value": {
+                        "oneOf": [
+                            {"type": "number"},
+                            {
+                                "type": "array",
+                                "items": {"type": "number"},
+                            },
+                        ],
+                    },
+                    "units": {"type": "string"},
+                    "consumers": {
+                        "type": "array",
+                        "items": {"type": "string", "minLength": 1},
+                        "minItems": 1,
+                    },
+                    "rationale": {"type": "string"},
+                },
+            },
+        },
         "solvers": {
             "type": "object",
             "additionalProperties": False,

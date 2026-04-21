@@ -185,6 +185,23 @@ AerostructPoint). Prefixed forms like `wing.twist_cp` are accepted as
 long as the suffix matches. `--interactive` echoes the allowed short
 names before prompting for `--name`.
 
+### plan add-shared-var
+
+Append an entry to `shared_vars.yaml` so two or more components share
+one DV driven by a root `shared_ivc` IndepVarComp.
+
+```bash
+omd-cli plan add-shared-var <plan_dir> \
+    --name <var_name> --consumers <id1,id2,...> \
+    [--value <scalar | comma-list>] [--units TEXT] \
+    [--rationale TEXT] [--replace] [--interactive]
+```
+
+Consumers must match declared component ids. Scalar values pass
+through as a float; comma-separated values become a list (e.g.
+`--value 0.005,0.01,0.015`). See `plan-authoring.md` for the
+composition model and when to use `shared_vars` vs `connections:`.
+
 ### plan set-objective
 
 Set the optimization objective in `optimization.yaml`.

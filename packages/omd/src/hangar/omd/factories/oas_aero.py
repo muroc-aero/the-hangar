@@ -153,22 +153,25 @@ def build_oas_aeropoint(
     flight = {**_DEFAULT_AERO_CONDITIONS, **operating_points}
 
     ground_effect = any(s.get("groundplane", False) for s in surfaces)
+    skip_fields = set(component_config.get("skip_fields") or [])
 
     prob = om.Problem(reports=False)
 
     # Independent variables (aero-only: no CT, R, W0, etc.)
     indep = om.IndepVarComp()
-    indep.add_output("v", val=flight["velocity"], units="m/s")
-    indep.add_output("alpha", val=flight["alpha"], units="deg")
-    indep.add_output("beta", val=flight.get("beta", 0.0), units="deg")
-    indep.add_output("Mach_number", val=flight["Mach_number"])
-    indep.add_output("re", val=flight["re"], units="1/m")
-    indep.add_output("rho", val=flight["rho"], units="kg/m**3")
-    indep.add_output("cg", val=np.array(flight.get("cg", [0.0, 0.0, 0.0])), units="m")
+    def _add(name, **kw):
+        if name in skip_fields:
+            return
+        indep.add_output(name, **kw)
+    _add("v", val=flight["velocity"], units="m/s")
+    _add("alpha", val=flight["alpha"], units="deg")
+    _add("beta", val=flight.get("beta", 0.0), units="deg")
+    _add("Mach_number", val=flight["Mach_number"])
+    _add("re", val=flight["re"], units="1/m")
+    _add("rho", val=flight["rho"], units="kg/m**3")
+    _add("cg", val=np.array(flight.get("cg", [0.0, 0.0, 0.0])), units="m")
     if ground_effect:
-        indep.add_output(
-            "height_agl", val=flight.get("height_agl", 8000.0), units="m"
-        )
+        _add("height_agl", val=flight.get("height_agl", 8000.0), units="m")
     prob.model.add_subsystem("prob_vars", indep, promotes=["*"])
 
     point_name = "aero_point_0"

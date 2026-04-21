@@ -365,6 +365,88 @@ def plan_add_dv_cmd(
     click.echo(f"Added DV {name}: [{lower}, {upper}]")
 
 
+@plan_group.command("add-shared-var")
+@click.argument("plan_dir", type=click.Path(exists=True, file_okay=False))
+@click.option("--name", default=None, help="Shared-var name (e.g. 'ac|geom|wing|AR')")
+@click.option("--value", default=None,
+              help="Scalar or comma-separated list (e.g. '9.45' or '0.005,0.01,0.015')")
+@click.option("--consumers", default=None,
+              help="Comma-separated component ids (e.g. 'mission,maneuver')")
+@click.option("--units", default=None)
+@click.option("--rationale", default=None)
+@click.option("--interactive", "-i", is_flag=True)
+@click.option("--replace", is_flag=True)
+def plan_add_shared_var_cmd(
+    plan_dir: str,
+    name: str | None,
+    value: str | None,
+    consumers: str | None,
+    units: str | None,
+    rationale: str | None,
+    interactive: bool,
+    replace: bool,
+) -> None:
+    """Append an entry to shared_vars.yaml."""
+    from hangar.omd.plan_mutate import add_shared_var, load_partial
+    from hangar.sdk.errors import UserInputError
+
+    if interactive:
+        partial = load_partial(Path(plan_dir))
+        known_ids = sorted({
+            c.get("id") for c in partial.get("components", []) or []
+            if isinstance(c, dict) and isinstance(c.get("id"), str)
+        })
+        if known_ids:
+            click.echo(f"Declared components: {', '.join(known_ids)}")
+        name = _prompt(name, "Shared-var name")
+        value = _prompt(value, "Value (scalar or comma list)", default="")
+        consumers = _prompt(consumers, "Consumers (comma-separated ids)")
+        rationale = _require_interactive_rationale(rationale)
+
+    if name is None or consumers is None:
+        _plan_error_exit(
+            UserInputError(
+                "--name and --consumers are required "
+                "(or pass --interactive)"
+            )
+        )
+
+    parsed_value: float | list[float] | None = None
+    if value is not None and value != "":
+        parts = [p.strip() for p in value.split(",") if p.strip()]
+        try:
+            if len(parts) == 1:
+                parsed_value = float(parts[0])
+            else:
+                parsed_value = [float(p) for p in parts]
+        except ValueError:
+            _plan_error_exit(
+                UserInputError(f"--value must be numeric (got {value!r})")
+            )
+
+    consumer_list = [c.strip() for c in consumers.split(",") if c.strip()]
+    if not consumer_list:
+        _plan_error_exit(
+            UserInputError("--consumers must list at least one component id")
+        )
+
+    try:
+        add_shared_var(
+            Path(plan_dir),
+            name=name,
+            consumers=consumer_list,
+            value=parsed_value,
+            units=units,
+            rationale=rationale,
+            replace=replace,
+        )
+    except UserInputError as exc:
+        _plan_error_exit(exc)
+    click.echo(
+        f"Added shared_var {name} (consumers: {', '.join(consumer_list)})"
+    )
+
+
 @plan_group.command("set-objective")
 @click.argument("plan_dir", type=click.Path(exists=True, file_okay=False))
 @click.option("--name", default=None)
