@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from hangar.omd.factory_metadata import FactoryMetadata
+from hangar.omd.factory_metadata import FactoryContract, FactoryMetadata, VarSpec
 
 import copy
 
@@ -474,3 +474,72 @@ def build_ocp_mission_with_reserve(
         slots=slots,
         skip_fields=skip_fields,
     )
+
+
+# Shared contract across all three OCP mission entry points. Lists the
+# DictIndepVarComp fields universally present across every template in
+# ``AIRCRAFT_TEMPLATES``. Fuselage, propeller, hybrid, and OEW fields
+# are template-dependent and stay explicit-only for now (users can
+# still share them via ``shared_vars:``). Units are declared ``None``
+# for fields whose units vary by template (e.g., gear lengths are in
+# ``ft`` in b738 but ``m`` elsewhere) -- the integrity validator only
+# checks units when the contract pins one.
+_OCP_MISSION_CONTRACT = FactoryContract(
+    produces={
+        "ac|aero|CLmax_TO": VarSpec(default=2.0, semantic_tag="geometry"),
+        "ac|aero|polar|e": VarSpec(default=0.78, semantic_tag="geometry"),
+        "ac|aero|polar|CD0_TO": VarSpec(default=0.03, semantic_tag="geometry"),
+        "ac|aero|polar|CD0_cruise": VarSpec(
+            default=0.018, semantic_tag="geometry",
+        ),
+        "ac|geom|wing|S_ref": VarSpec(
+            units="m**2", default=124.6, semantic_tag="geometry",
+        ),
+        "ac|geom|wing|AR": VarSpec(default=9.45, semantic_tag="geometry"),
+        "ac|geom|wing|c4sweep": VarSpec(
+            units="deg", default=25.0, semantic_tag="geometry",
+        ),
+        "ac|geom|wing|taper": VarSpec(default=0.159, semantic_tag="geometry"),
+        "ac|geom|wing|toverc": VarSpec(default=0.12, semantic_tag="geometry"),
+        "ac|geom|hstab|S_ref": VarSpec(
+            units="m**2", default=32.8, semantic_tag="geometry",
+        ),
+        "ac|geom|hstab|c4_to_wing_c4": VarSpec(
+            units="m", default=17.9, semantic_tag="geometry",
+        ),
+        "ac|geom|vstab|S_ref": VarSpec(
+            units="m**2", default=26.4, semantic_tag="geometry",
+        ),
+        # Gear lengths vary between ft and m across templates.
+        "ac|geom|nosegear|length": VarSpec(
+            default=1.3, semantic_tag="geometry",
+        ),
+        "ac|geom|maingear|length": VarSpec(
+            default=1.8, semantic_tag="geometry",
+        ),
+        "ac|weights|MTOW": VarSpec(
+            units="kg", default=79002.0, semantic_tag="weight",
+        ),
+        "ac|weights|W_fuel_max": VarSpec(
+            units="kg", default=20826.0, semantic_tag="weight",
+        ),
+        "ac|weights|MLW": VarSpec(
+            units="kg", default=66360.0, semantic_tag="weight",
+        ),
+        "ac|propulsion|engine|rating": VarSpec(
+            units="lbf", default=27000.0, semantic_tag="propulsion",
+        ),
+        "ac|num_passengers_max": VarSpec(
+            default=189, semantic_tag="mission_param",
+        ),
+        # q_cruise units differ between templates (imperial vs SI).
+        "ac|q_cruise": VarSpec(
+            default=7500.0, semantic_tag="mission_param",
+        ),
+    },
+    consumes={},
+)
+
+build_ocp_basic_mission.contract = _OCP_MISSION_CONTRACT
+build_ocp_full_mission.contract = _OCP_MISSION_CONTRACT
+build_ocp_mission_with_reserve.contract = _OCP_MISSION_CONTRACT

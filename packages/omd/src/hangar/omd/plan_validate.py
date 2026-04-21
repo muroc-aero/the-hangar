@@ -123,6 +123,32 @@ def validate_var_paths(plan: dict) -> list[ValidationFinding]:
             if isinstance(name, str) and name:
                 known.add(name)
 
+    # Auto-derived shared_vars (Fix 3): when composition_policy=auto,
+    # any name declared as produced by >=2 components resolves to the
+    # root shared_ivc.
+    if plan.get("composition_policy") == "auto":
+        from hangar.omd.registry import get_factory_contract
+
+        no_auto = set(plan.get("no_auto_share") or [])
+        producer_counts: dict[str, int] = {}
+        for comp in components:
+            if not isinstance(comp, dict):
+                continue
+            ctype = comp.get("type")
+            if not isinstance(ctype, str):
+                continue
+            try:
+                contract = get_factory_contract(ctype)
+            except KeyError:
+                continue
+            if contract is None:
+                continue
+            for name in contract.produces:
+                producer_counts[name] = producer_counts.get(name, 0) + 1
+        for name, count in producer_counts.items():
+            if count >= 2 and name not in no_auto:
+                known.add(name)
+
     findings: list[ValidationFinding] = []
     findings += _check_name_list(plan.get("design_variables") or [],
                                  "design_variables", known)
@@ -209,6 +235,95 @@ def validate_shared_vars(plan: dict) -> list[ValidationFinding]:
     return findings
 
 
+def validate_factory_contracts(plan: dict) -> list[ValidationFinding]:
+    """Advisory validation for Fix 3 auto-derived shared_vars.
+
+    Emits informational findings when ``composition_policy=auto`` and
+    reports:
+      - Names that would be auto-hoisted (informational).
+      - ``no_auto_share`` entries that do not match any producer
+        (warns with close-match suggestions).
+      - Multiple contracts declaring different ``default`` values for
+        the same name (informational; first producer wins).
+
+    Safe to call on plans without ``composition_policy`` set; returns
+    an empty list when the policy is ``explicit`` (the default).
+    """
+    policy = plan.get("composition_policy", "explicit")
+    if policy != "auto":
+        return []
+
+    from hangar.omd.registry import get_factory_contract
+
+    findings: list[ValidationFinding] = []
+    components = plan.get("components") or []
+    user_shared_names = {
+        sv["name"] for sv in (plan.get("shared_vars") or [])
+        if isinstance(sv, dict) and "name" in sv
+    }
+
+    producers: dict[str, list[tuple[str, object]]] = {}
+    for comp in components:
+        if not isinstance(comp, dict):
+            continue
+        ctype = comp.get("type")
+        cid = comp.get("id")
+        if not isinstance(ctype, str) or not isinstance(cid, str):
+            continue
+        try:
+            contract = get_factory_contract(ctype)
+        except KeyError:
+            continue
+        if contract is None:
+            continue
+        for name, spec in contract.produces.items():
+            producers.setdefault(name, []).append((cid, spec))
+
+    all_produced = set(producers.keys())
+    no_auto = plan.get("no_auto_share") or []
+    for i, name in enumerate(no_auto):
+        if not isinstance(name, str):
+            continue
+        if name not in all_produced:
+            suggestions = difflib.get_close_matches(
+                name, sorted(all_produced), n=3, cutoff=0.5,
+            )
+            findings.append(ValidationFinding(
+                path=f"no_auto_share[{i}]",
+                message=(
+                    f"'{name}' is listed in no_auto_share but no "
+                    f"component contract declares it as produced."
+                ),
+                suggestions=suggestions,
+            ))
+
+    for name, prods in sorted(producers.items()):
+        if len(prods) < 2:
+            continue
+        if name in user_shared_names or name in no_auto:
+            continue
+        consumer_ids = sorted(pid for pid, _ in prods)
+        findings.append(ValidationFinding(
+            path="composition_policy",
+            message=(
+                f"Auto-shared '{name}' across {consumer_ids} "
+                f"(default from '{prods[0][0]}')."
+            ),
+        ))
+        defaults = {getattr(spec, "default", None) for _, spec in prods}
+        if len(defaults) > 1:
+            findings.append(ValidationFinding(
+                path=f"shared_vars(auto)[{name}]",
+                message=(
+                    f"Producers for '{name}' declare different defaults "
+                    f"({sorted(str(d) for d in defaults)}); "
+                    f"first producer '{prods[0][0]}' wins."
+                ),
+            ))
+
+    return findings
+
+
 def validate_plan_semantic(plan: dict, registry_types: set[str] | None = None) -> list[ValidationFinding]:
     """Run all semantic checks (component types known + var paths resolve)."""
     findings: list[ValidationFinding] = []
@@ -230,6 +345,7 @@ def validate_plan_semantic(plan: dict, registry_types: set[str] | None = None) -
 
     findings += validate_var_paths(plan)
     findings += validate_shared_vars(plan)
+    findings += validate_factory_contracts(plan)
     return findings
 
 
@@ -243,8 +359,9 @@ def format_findings(findings: list[ValidationFinding]) -> str:
 
 
 __all__ = [
-    "validate_var_paths",
-    "validate_shared_vars",
+    "validate_factory_contracts",
     "validate_plan_semantic",
+    "validate_shared_vars",
+    "validate_var_paths",
     "format_findings",
 ]

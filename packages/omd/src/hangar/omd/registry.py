@@ -7,7 +7,10 @@ functions that build OpenMDAO problems from plan YAML configs.
 from __future__ import annotations
 
 import logging
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
+
+if TYPE_CHECKING:
+    from hangar.omd.factory_metadata import FactoryContract
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +69,20 @@ def get_factory(component_type: str) -> Callable:
             f"Available: {available}"
         )
     return _FACTORIES[component_type]
+
+
+def get_factory_contract(component_type: str) -> "FactoryContract | None":
+    """Look up the FactoryContract declared by a factory, if any.
+
+    Factories attach their declared contract as a ``.contract`` attribute
+    on the registered callable. Returns None when the factory is not
+    registered or has no contract attached.
+    """
+    _ensure_builtins()
+    factory = _FACTORIES.get(component_type)
+    if factory is None:
+        return None
+    return getattr(factory, "contract", None)
 
 
 def list_factories() -> list[str]:

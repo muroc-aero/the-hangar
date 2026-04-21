@@ -13,7 +13,7 @@ from pathlib import Path
 
 import openmdao.api as om
 
-from hangar.omd.registry import get_factory
+from hangar.omd.registry import get_factory, get_factory_contract
 
 logger = logging.getLogger(__name__)
 
@@ -168,6 +168,72 @@ def materialize(
 # ---------------------------------------------------------------------------
 
 
+def _derive_auto_shared_vars(
+    components: list[dict],
+    plan: dict,
+    user_shared: list[dict],
+) -> list[dict]:
+    """Derive shared_vars entries from overlapping factory contracts.
+
+    Walks each component's FactoryContract.produces; any name declared by
+    two or more components becomes an auto-hoisted shared_vars entry with
+    ``_auto=True``. User-declared names (``user_shared``) and names listed
+    in ``plan["no_auto_share"]`` are excluded. Returns an empty list when
+    ``composition_policy`` is not ``"auto"`` or when no overlap exists.
+    """
+    policy = plan.get("composition_policy", "explicit")
+    if policy != "auto":
+        return []
+
+    no_auto = set(plan.get("no_auto_share") or [])
+    user_shared_names = {
+        sv["name"] for sv in user_shared if isinstance(sv, dict) and "name" in sv
+    }
+
+    # name -> list[(comp_id, VarSpec)] for producers; name -> set[comp_id] for consumers
+    producers: dict[str, list[tuple[str, object]]] = {}
+    consumers: dict[str, set[str]] = {}
+    for comp in components:
+        contract = get_factory_contract(comp["type"])
+        if contract is None:
+            continue
+        for name, spec in contract.produces.items():
+            producers.setdefault(name, []).append((comp["id"], spec))
+        for name in contract.consumes:
+            consumers.setdefault(name, set()).add(comp["id"])
+
+    auto: list[dict] = []
+    for name in sorted(producers):
+        prods = producers[name]
+        if len(prods) < 2:
+            continue
+        if name in user_shared_names or name in no_auto:
+            continue
+        consumer_ids = sorted(
+            {pid for pid, _ in prods} | consumers.get(name, set())
+        )
+        canonical = prods[0][1]
+        entry = {
+            "name": name,
+            "consumers": consumer_ids,
+            "_auto": True,
+        }
+        # Only emit value/units when the contract actually specifies a
+        # default. Fix 2 already handles missing value/units keys.
+        default = getattr(canonical, "default", None)
+        if default is not None:
+            entry["value"] = default
+        units = getattr(canonical, "units", None)
+        if units is not None:
+            entry["units"] = units
+        auto.append(entry)
+        logger.info(
+            "Auto-sharing '%s' across %s (default from '%s')",
+            name, consumer_ids, prods[0][0],
+        )
+    return auto
+
+
 def _materialize_composite(
     components: list[dict],
     operating_points: dict,
@@ -193,7 +259,17 @@ def _materialize_composite(
     # Shared DVs (plan-level) injected as `skip_fields` per consumer so
     # each factory omits the named inputs from its internal IVC. The
     # root `shared_ivc` subsystem drives them instead.
-    shared_vars = plan.get("shared_vars") or []
+    #
+    # Fix 3 (Phase 3a): when `composition_policy == "auto"`, walk each
+    # factory's FactoryContract.produces; any name declared by >=2
+    # components is hoisted into shared_vars automatically. User-declared
+    # shared_vars win (by name) and `no_auto_share` blocks individual
+    # names from auto-hoisting. Policy defaults to "explicit" so the
+    # behavior is identical to Fix 2 when unspecified.
+    user_shared = list(plan.get("shared_vars") or [])
+    auto_shared = _derive_auto_shared_vars(components, plan, user_shared)
+    shared_vars = user_shared + auto_shared
+
     consumer_skip_fields: dict[str, list[str]] = {}
     for sv in shared_vars:
         for consumer_id in sv.get("consumers", []):

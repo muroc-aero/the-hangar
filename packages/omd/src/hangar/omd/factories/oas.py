@@ -7,7 +7,7 @@ on hangar-oas.
 
 from __future__ import annotations
 
-from hangar.omd.factory_metadata import FactoryMetadata
+from hangar.omd.factory_metadata import FactoryContract, FactoryMetadata, VarSpec
 
 import logging
 from typing import Any
@@ -552,6 +552,37 @@ def build_oas_aerostruct(
     return prob, metadata
 
 
+# Shared contract used by both the single-point and multipoint OAS
+# aerostruct factories. Lists the flight-condition IVC names that the
+# internal ``prob_vars`` IndepVarComp drives by default. Names wrapped
+# in ``skip_fields`` fall off the IVC and become undriven promoted
+# inputs that the root ``shared_ivc`` can fan out to.
+_OAS_AEROSTRUCT_CONTRACT = FactoryContract(
+    produces={
+        "v": VarSpec(units="m/s", default=248.136, semantic_tag="flight_condition"),
+        "alpha": VarSpec(units="deg", default=5.0, semantic_tag="flight_condition"),
+        "beta": VarSpec(units="deg", default=0.0, semantic_tag="flight_condition"),
+        "Mach_number": VarSpec(default=0.84, semantic_tag="flight_condition"),
+        "re": VarSpec(units="1/m", default=1.0e6, semantic_tag="flight_condition"),
+        "rho": VarSpec(units="kg/m**3", default=0.38, semantic_tag="flight_condition"),
+        "CT": VarSpec(units="1/s", default=9.81e-6, semantic_tag="flight_condition"),
+        "R": VarSpec(units="m", default=14.3e6, semantic_tag="flight_condition"),
+        "speed_of_sound": VarSpec(
+            units="m/s", default=295.07, semantic_tag="flight_condition",
+        ),
+        "load_factor": VarSpec(default=1.0, semantic_tag="flight_condition"),
+        "empty_cg": VarSpec(
+            shape=(3,), units="m", default=[0.35, 0.0, 0.0],
+            semantic_tag="flight_condition",
+        ),
+        "W0": VarSpec(units="kg", default=25000.0, semantic_tag="weight"),
+    },
+    consumes={},
+)
+
+build_oas_aerostruct.contract = _OAS_AEROSTRUCT_CONTRACT
+
+
 # ---------------------------------------------------------------------------
 # Multipoint aerostruct factory
 # ---------------------------------------------------------------------------
@@ -801,3 +832,16 @@ def build_oas_aerostruct_multipoint(
     }
 
     return prob, metadata
+
+
+# Multipoint's flight-condition IVC is vectorized (one entry per
+# flight_point) with a different shape surface than the single-point
+# case. Phase 3a does not auto-share across multipoint; its contract
+# is intentionally left empty so the auto-derivation in the
+# materializer treats it as a no-op participant. Users can still share
+# geometry or mission params across multipoint via explicit
+# ``shared_vars:``.
+build_oas_aerostruct_multipoint.contract = FactoryContract(
+    produces={},
+    consumes={},
+)

@@ -8,7 +8,7 @@ Analytic minimum at x = 20/3, y = -22/3, f = -82/3.
 
 from __future__ import annotations
 
-from hangar.omd.factory_metadata import FactoryMetadata
+from hangar.omd.factory_metadata import FactoryContract, FactoryMetadata, VarSpec
 
 from typing import Any
 
@@ -72,3 +72,12 @@ def build_paraboloid(
         metadata["initial_values"]["y"] = float(operating_points["y"])
 
     return prob, metadata
+
+
+build_paraboloid.contract = FactoryContract(
+    produces={},
+    consumes={
+        "x": VarSpec(default=0.0, description="Paraboloid x input"),
+        "y": VarSpec(default=0.0, description="Paraboloid y input"),
+    },
+)

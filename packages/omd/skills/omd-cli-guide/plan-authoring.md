@@ -129,6 +129,61 @@ honor `skip_fields` out of the box. pyCycle factories are *not*
 supported — the cycle IS the model, not a composable subsystem; the
 validator flags a `pyc/*` consumer with a clear error message.
 
+### Auto-derived shared vars (`composition_policy: auto`)
+
+Factories declare a `FactoryContract` (see `factory_metadata.py`)
+listing the names they drive via an internal IndepVarComp. When a
+plan sets `composition_policy: auto`, the materializer walks those
+contracts and hoists any name declared by two or more components
+into the root `shared_ivc` automatically — no `shared_vars:` block
+required.
+
+```yaml
+# plan.yaml (monolithic; or add composition_policy at the top of
+# metadata.yaml when using the modular layout)
+composition_policy: auto
+no_auto_share:           # optional escape hatch
+  - ac|geom|wing|toverc  # keep each consumer's internal IVC driving this
+
+components:
+  - id: mission
+    type: ocp/BasicMission
+    config: {aircraft_template: b738, ...}
+  - id: sizing
+    type: ocp/BasicMission
+    config: {aircraft_template: b738, ...}
+# No shared_vars: block needed -- both OCP missions produce the same
+# ac|geom|wing|* / ac|weights|* / ac|propulsion|* names, so auto-share
+# hoists every overlap into a single root shared_ivc.
+```
+
+Rules:
+
+- Policy defaults to `explicit` (Fix 2 behavior). Setting `auto`
+  is opt-in for now.
+- User-declared `shared_vars` always win by name: if you list
+  `ac|geom|wing|AR` explicitly, the auto-derivation skips it.
+- `no_auto_share: [name1, name2]` blocks individual names from
+  auto-hoisting. Use it for a sizing component that *does* want to
+  drive the value itself rather than read it.
+- Auto-hoisting only triggers when two or more components declare
+  the SAME name in `produces`. Cross-tool sharing (OCP ↔ OAS,
+  different promoted names) still needs explicit `shared_vars:` or
+  `connections:`.
+- `omd-cli plan review` (and `validate_plan_semantic`) prints each
+  auto-hoisted name so you can confirm the wiring before running.
+
+**Factory coverage (Phase 3a).**
+
+| Factory | Auto-share participant? | Notes |
+|---------|------------------------|-------|
+| `ocp/BasicMission`, `ocp/FullMission`, `ocp/MissionWithReserve` | Yes | Universal `_COMMON_FIELDS` are declared; template-dependent fields (fuselage, propeller, hybrid, OEW) still need explicit `shared_vars:`. |
+| `oas/AeroPoint` | Yes | Flight-condition IVC names. |
+| `oas/AerostructPoint` | Yes | Flight-condition IVC + `W0`. |
+| `oas/AerostructMultipoint` | No | Vectorized IVCs have different shape semantics; explicit-only. |
+| `paraboloid/Paraboloid` | Consumer only | Declares `x`, `y` under `consumes` (no IVC to skip). |
+| `pyc/*` | No | Cycle-is-model; no external IVC. |
+
 ## Decision Logging (Required)
 
 Agents MUST record decisions at key points in every omd workflow.

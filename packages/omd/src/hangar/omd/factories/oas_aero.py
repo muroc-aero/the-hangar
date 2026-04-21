@@ -7,7 +7,7 @@ no coupling -- pure aerodynamics via the vortex lattice method.
 
 from __future__ import annotations
 
-from hangar.omd.factory_metadata import FactoryMetadata
+from hangar.omd.factory_metadata import FactoryContract, FactoryMetadata, VarSpec
 
 from typing import Any
 
@@ -213,3 +213,20 @@ def build_oas_aeropoint(
     }
 
     return prob, metadata
+
+
+build_oas_aeropoint.contract = FactoryContract(
+    produces={
+        "v": VarSpec(units="m/s", default=248.136, semantic_tag="flight_condition"),
+        "alpha": VarSpec(units="deg", default=5.0, semantic_tag="flight_condition"),
+        "beta": VarSpec(units="deg", default=0.0, semantic_tag="flight_condition"),
+        "Mach_number": VarSpec(default=0.84, semantic_tag="flight_condition"),
+        "re": VarSpec(units="1/m", default=1.0e6, semantic_tag="flight_condition"),
+        "rho": VarSpec(units="kg/m**3", default=0.38, semantic_tag="flight_condition"),
+        "cg": VarSpec(
+            shape=(3,), units="m", default=[0.0, 0.0, 0.0],
+            semantic_tag="flight_condition",
+        ),
+    },
+    consumes={},
+)
