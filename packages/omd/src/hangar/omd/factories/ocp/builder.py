@@ -47,6 +47,7 @@ def _build_mission_problem(
     propulsion_overrides: dict | None = None,
     defer_setup: bool = False,
     slots: dict | None = None,
+    skip_fields: list[str] | None = None,
 ) -> tuple[om.Problem, FactoryMetadata]:
     """Build a complete OpenMDAO mission problem.
 
@@ -104,7 +105,13 @@ def _build_mission_problem(
                 promotes_outputs=["*"],
             )
 
-            _fields_to_remove: set[str] = set()
+            # User-requested skip_fields (from plan-level shared_vars)
+            # are held separately from slot-provider removes_fields so
+            # that a slot that declares both `removes_fields` and
+            # `adds_fields` for the same path (replace semantics) still
+            # re-adds the field with the slot's chosen value.
+            _user_skip: set[str] = set(skip_fields or [])
+            _fields_to_remove: set[str] = set(_user_skip)
             _fields_to_add: dict[str, dict] = {}
             if slots:
                 from hangar.omd.slots import get_slot_provider
@@ -127,18 +134,25 @@ def _build_mission_problem(
                 _hybrid = [f for f in _HYBRID_FIELDS if f not in _fields_to_remove]
                 _register_fields(dv_comp, ac_data, _hybrid)
             if arch_info["num_engines"] > 1:
-                _register_fields(dv_comp, ac_data, _MULTI_ENGINE_FIELDS)
+                _multi = [f for f in _MULTI_ENGINE_FIELDS if f not in _fields_to_remove]
+                _register_fields(dv_comp, ac_data, _multi)
             if is_cfm56 or (slots and "propulsion" in slots):
-                _register_fields(dv_comp, ac_data, _OEW_FIELDS)
+                _oew = [f for f in _OEW_FIELDS if f not in _fields_to_remove]
+                _register_fields(dv_comp, ac_data, _oew)
 
+            # Only suppress adds_fields when the USER asked to skip
+            # them (shared_vars); slot providers with overlapping
+            # removes_fields/adds_fields retain their replace semantics.
             for _field_path, _field_spec in _fields_to_add.items():
+                if _field_path in _user_skip:
+                    continue
                 dv_comp.add_output(
                     _field_path,
                     val=_field_spec.get("value", 0.0),
                     units=_field_spec.get("units"),
                 )
 
-            if is_hybrid:
+            if is_hybrid and "ac|propulsion|battery|specific_energy" not in _user_skip:
                 spec_energy = 300
                 if propulsion_overrides and "battery_specific_energy" in propulsion_overrides:
                     spec_energy = propulsion_overrides["battery_specific_energy"]
@@ -386,6 +400,7 @@ def build_ocp_basic_mission(
     mission_params = config.get("mission_params", {})
     solver_settings = config.get("solver_settings", {})
     propulsion_overrides = config.get("propulsion_overrides")
+    skip_fields = config.get("skip_fields")
 
     return _build_mission_problem(
         aircraft_data=ac_data,
@@ -397,6 +412,7 @@ def build_ocp_basic_mission(
         propulsion_overrides=propulsion_overrides,
         defer_setup=defer_setup,
         slots=slots,
+        skip_fields=skip_fields,
     )
 
 
@@ -414,6 +430,7 @@ def build_ocp_full_mission(
     mission_params = config.get("mission_params", {})
     solver_settings = config.get("solver_settings", {})
     propulsion_overrides = config.get("propulsion_overrides")
+    skip_fields = config.get("skip_fields")
 
     return _build_mission_problem(
         aircraft_data=ac_data,
@@ -425,6 +442,7 @@ def build_ocp_full_mission(
         propulsion_overrides=propulsion_overrides,
         defer_setup=defer_setup,
         slots=slots,
+        skip_fields=skip_fields,
     )
 
 
@@ -442,6 +460,7 @@ def build_ocp_mission_with_reserve(
     mission_params = config.get("mission_params", {})
     solver_settings = config.get("solver_settings", {})
     propulsion_overrides = config.get("propulsion_overrides")
+    skip_fields = config.get("skip_fields")
 
     return _build_mission_problem(
         aircraft_data=ac_data,
@@ -453,4 +472,5 @@ def build_ocp_mission_with_reserve(
         propulsion_overrides=propulsion_overrides,
         defer_setup=defer_setup,
         slots=slots,
+        skip_fields=skip_fields,
     )

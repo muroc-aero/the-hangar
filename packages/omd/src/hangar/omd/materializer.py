@@ -190,6 +190,15 @@ def _materialize_composite(
     all_initial_values: dict[str, object] = {}
     all_initial_values_with_units: dict[str, dict] = {}
 
+    # Shared DVs (plan-level) injected as `skip_fields` per consumer so
+    # each factory omits the named inputs from its internal IVC. The
+    # root `shared_ivc` subsystem drives them instead.
+    shared_vars = plan.get("shared_vars") or []
+    consumer_skip_fields: dict[str, list[str]] = {}
+    for sv in shared_vars:
+        for consumer_id in sv.get("consumers", []):
+            consumer_skip_fields.setdefault(consumer_id, []).append(sv["name"])
+
     for comp in components:
         comp_id = comp["id"]
         comp_type = comp["type"]
@@ -201,6 +210,12 @@ def _materialize_composite(
         # Inject _defer_setup so OCP factories skip their internal setup
         config = dict(comp["config"])
         config["_defer_setup"] = True
+
+        # Merge shared-var driven skip_fields with any user-provided list
+        if comp_id in consumer_skip_fields:
+            user_skip = list(config.get("skip_fields") or [])
+            merged = list(dict.fromkeys(user_skip + consumer_skip_fields[comp_id]))
+            config["skip_fields"] = merged
 
         inner_prob, inner_meta = factory(config, operating_points)
 
@@ -228,9 +243,53 @@ def _materialize_composite(
         if slots_cfg:
             component_metadata[comp_id]["active_slots"] = slots_cfg
 
+    # Root shared IVC: one independent variable per shared_vars entry,
+    # fanned out to each declared consumer subsystem. DV registration
+    # for these names resolves to `shared_ivc.{name}` (see
+    # `_resolve_var_path`) so the DV is registered once at the root.
+    shared_var_paths: dict[str, str] = {}
+    if shared_vars:
+        shared_ivc = om.IndepVarComp()
+        for sv in shared_vars:
+            name = sv["name"]
+            kw: dict = {}
+            if "value" in sv and sv["value"] is not None:
+                kw["val"] = sv["value"]
+            if sv.get("units"):
+                kw["units"] = sv["units"]
+            shared_ivc.add_output(name, **kw)
+            # The shared IVC is promoted so its outputs are accessible
+            # at the model root by their promoted names (no prefix).
+            # DVs, constraints, and objectives reference the shared
+            # value by that promoted name.
+            shared_var_paths[name] = name
+        shared_names = [sv["name"] for sv in shared_vars]
+        prob.model.add_subsystem(
+            "shared_ivc", shared_ivc, promotes_outputs=shared_names,
+        )
+        for sv in shared_vars:
+            name = sv["name"]
+            for consumer_id in sv.get("consumers", []):
+                # Source uses the promoted root-level name (since the
+                # shared IVC's outputs are promoted above). Target
+                # uses the consumer subsystem's component-root input.
+                prob.model.connect(name, f"{consumer_id}.{name}")
+
     # Wire explicit connections from the plan
     for conn in plan.get("connections", []):
         prob.model.connect(conn["src"], conn["tgt"])
+
+    # Merge per-component var_paths with component-id prefix + shared
+    # vars so downstream consumers (tests, run.py) can resolve names
+    # without re-running the driver configuration.
+    merged_var_paths: dict[str, str] = {}
+    for comp_id, comp_meta in component_metadata.items():
+        for short_name, full_path in comp_meta.get("var_paths", {}).items():
+            merged_var_paths[f"{comp_id}.{short_name}"] = f"{comp_id}.{full_path}"
+            if short_name not in merged_var_paths:
+                merged_var_paths[short_name] = f"{comp_id}.{full_path}"
+    for sv_name, sv_path in shared_var_paths.items():
+        merged_var_paths[sv_name] = sv_path
 
     # Build composite metadata
     metadata: dict = {
@@ -240,6 +299,8 @@ def _materialize_composite(
         "component_metadata": component_metadata,
         "initial_values": all_initial_values,
         "initial_values_with_units": all_initial_values_with_units,
+        "shared_var_paths": shared_var_paths,
+        "var_paths": merged_var_paths,
     }
 
     return prob, metadata
@@ -541,6 +602,11 @@ def _configure_driver(
                 merged_var_paths[f"{comp_id}.{short_name}"] = f"{comp_id}.{full_path}"
                 if short_name not in merged_var_paths:
                     merged_var_paths[short_name] = f"{comp_id}.{full_path}"
+        # Shared-var names win over component-local var_paths so
+        # `design_variables: [{name: ac|geom|wing|AR}]` registers the
+        # DV at the root shared_ivc rather than the first component.
+        for sv_name, sv_path in metadata.get("shared_var_paths", {}).items():
+            merged_var_paths[sv_name] = sv_path
         var_paths = merged_var_paths or var_paths
 
     for dv in plan.get("design_variables", []):

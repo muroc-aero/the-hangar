@@ -83,6 +83,7 @@ _STAGE_FOR_PRIMITIVE: dict[str, str] = {
     "add_component": "component_selection",
     "add_requirement": "problem_definition",
     "add_dv": "dv_setup",
+    "add_shared_var": "dv_setup",
     "set_objective": "objective_selection",
     "set_operating_point": "operating_point_selection",
     "set_solver": "solver_selection",
@@ -144,6 +145,7 @@ _STEM_TO_KEY: dict[str, str] = {
     "requirements": "requirements",
     "operating_points": "operating_points",
     "connections": "connections",
+    "shared_vars": "shared_vars",
     "solvers": "solvers",
     "decisions": "decisions",
     "rationale": "rationale",
@@ -720,6 +722,89 @@ def set_analysis_strategy(
     return analysis_plan
 
 
+def add_shared_var(
+    plan_dir: Path,
+    *,
+    name: str,
+    consumers: list[str],
+    value: float | list[float] | None = None,
+    units: str | None = None,
+    rationale: str | None = None,
+    replace: bool = False,
+) -> dict:
+    """Append an entry to ``shared_vars.yaml``.
+
+    Each consumer must match a declared component id. Duplicate names
+    are rejected unless ``replace`` is set.
+    """
+    plan_dir = Path(plan_dir)
+    _require_plan_dir(plan_dir)
+
+    if not name:
+        raise UserInputError("name must be a non-empty string")
+    if not consumers:
+        raise UserInputError("consumers must be a non-empty list")
+
+    plan = load_partial(plan_dir)
+    known_ids = {
+        c.get("id") for c in plan.get("components", []) or []
+        if isinstance(c, dict) and isinstance(c.get("id"), str)
+    }
+    for cid in consumers:
+        if not isinstance(cid, str) or not cid:
+            raise UserInputError(
+                f"consumer id must be a non-empty string (got {cid!r})"
+            )
+        if known_ids and cid not in known_ids:
+            raise UserInputError(
+                f"consumer '{cid}' does not match any declared component "
+                f"id. Known: {sorted(known_ids)}"
+            )
+
+    existing = _load_section(plan_dir, "shared_vars", "shared_vars")
+    if existing is None:
+        shared_list: list = []
+    elif isinstance(existing, list):
+        shared_list = existing
+    else:
+        raise UserInputError(
+            "shared_vars.yaml must be a list or {shared_vars: [...]}"
+        )
+
+    entry: dict[str, Any] = {"name": name, "consumers": list(consumers)}
+    if value is not None:
+        entry["value"] = value
+    if units is not None:
+        entry["units"] = units
+
+    idx = next(
+        (i for i, d in enumerate(shared_list)
+         if isinstance(d, dict) and d.get("name") == name),
+        None,
+    )
+    if idx is not None and not replace:
+        raise UserInputError(
+            f"shared_vars entry '{name}' already exists "
+            "(pass replace=True to overwrite)"
+        )
+    if idx is not None:
+        shared_list[idx] = entry
+    else:
+        shared_list.append(entry)
+
+    _write_yaml(plan_dir / "shared_vars.yaml", shared_list)
+    _validate_partial(plan_dir)
+
+    _capture_decision(
+        plan_dir,
+        primitive="add_shared_var",
+        rationale=rationale,
+        summary=f"shared_var {name} consumers={list(consumers)}",
+        element_path=f"shared_vars[{name}]",
+    )
+    return entry
+
+
 # ---------------------------------------------------------------------------
 # Public re-exports
 # ---------------------------------------------------------------------------
@@ -730,6 +815,7 @@ __all__ = [
     "add_decision",
     "add_dv",
     "add_requirement",
+    "add_shared_var",
     "init_plan",
     "load_partial",
     "set_analysis_strategy",

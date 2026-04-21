@@ -78,6 +78,57 @@ file reverted.
 See `packages/omd/docs/plan-authoring-workflow.md` for a richer
 walkthrough and `commands.md` for the full subcommand reference.
 
+## Sharing design variables across components (`shared_vars`)
+
+For composite plans where two or more components must read the same
+design variable (for example: a cruise mission and a 2.5g sizing
+point sharing `ac|geom|wing|AR`), declare the shared input in a
+plan-level `shared_vars` block instead of wiring it per-element with
+`connections:`.
+
+```yaml
+# shared_vars.yaml (assembled into plan.yaml at the top level)
+- name: ac|geom|wing|AR
+  value: 9.45
+  consumers: [mission, sizing]
+- name: ac|geom|wing|skin_thickness
+  value: [0.005, 0.01, 0.015]
+  units: m
+  consumers: [mission, sizing]
+```
+
+The materializer builds a root `shared_ivc` IndepVarComp, filters the
+named fields out of each consumer's internal IVC (via the factory
+`skip_fields` contract), and connects `shared_ivc` → every consumer.
+Design variables and constraints may reference a `shared_vars` name
+directly; the DV is registered once at the root IVC and drives all
+consumers.
+
+Add entries from the CLI:
+
+```bash
+omd-cli plan add-shared-var hangar_studies/my-plan \
+    --name "ac|geom|wing|AR" --value 9.45 \
+    --consumers mission,sizing \
+    --rationale "Both points size the same wing geometry."
+```
+
+**When to use `shared_vars` vs `connections:`.**
+
+- `shared_vars` — same value owned by an IVC, wired to two or more
+  components that each expose the name as a promoted input (typical
+  for `ac|*` aircraft parameters across multiple OCP components).
+- `connections:` — a component's computed output feeding another
+  component's input (data dependency, not a shared DV). Keep using
+  `connections:` for cross-tool wiring that doesn't fit the shared
+  IVC model.
+
+**Factory support.** OCP (`ocp/BasicMission`, `ocp/FullMission`,
+`ocp/MissionWithReserve`) and OAS flight-condition IVCs (`oas/*`)
+honor `skip_fields` out of the box. pyCycle factories are *not*
+supported — the cycle IS the model, not a composable subsystem; the
+validator flags a `pyc/*` consumer with a clear error message.
+
 ## Decision Logging (Required)
 
 Agents MUST record decisions at key points in every omd workflow.

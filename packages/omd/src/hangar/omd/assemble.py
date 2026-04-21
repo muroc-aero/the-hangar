@@ -28,6 +28,7 @@ _STEM_TO_KEY = {
     "requirements": "requirements",
     "operating_points": "operating_points",
     "connections": "connections",
+    "shared_vars": "shared_vars",
     "solvers": "solvers",
     "decisions": "decisions",
     "rationale": "rationale",
