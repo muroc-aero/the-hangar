@@ -45,7 +45,13 @@ _OAS_COMMON = {
     "failure", "tsaiwu_sr", "S_ref",
 }
 
-_OCP_COMMON = {"fuel_burn", "OEW", "MTOW", "TOFL"}
+_OCP_COMMON = {
+    "fuel_burn", "OEW", "MTOW", "TOFL",
+    # Top-level maneuver-slot outputs (see slots.py
+    # `_oas_maneuver_provider.result_paths` and
+    # `factories/ocp/builder.py` var_paths wiring)
+    "failure_maneuver", "W_wing_maneuver", "alpha_maneuver",
+}
 
 _KNOWN_BY_PREFIX: dict[str, set[str]] = {
     "oas/": _GENERIC_PROMOTED | _OAS_COMMON,

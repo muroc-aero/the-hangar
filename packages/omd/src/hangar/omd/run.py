@@ -873,7 +873,12 @@ def _extract_ocp_profiles(prob, phases: list[str], prefix: str = "") -> dict:
     return profiles
 
 
-_SLOT_SUBSYS_MAP = {"propulsion": "propmodel", "drag": "drag", "weight": "weight"}
+_SLOT_SUBSYS_MAP = {
+    "propulsion": "propmodel",
+    "drag": "drag",
+    "weight": "weight",
+    "maneuver": "maneuver",
+}
 
 
 def _extract_slot_results(
@@ -904,15 +909,27 @@ def _extract_slot_results(
             from hangar.omd.slots import get_slot_provider
             provider_fn = get_slot_provider(provider_name)
             result_paths = getattr(provider_fn, "result_paths", {})
+            scope = getattr(provider_fn, "slot_scope", "per_phase")
         except Exception:
             result_paths = {}
+            scope = "per_phase"
         subsys = _SLOT_SUBSYS_MAP.get(slot_name, slot_name)
         for var_name, internal_path in result_paths.items():
-            for path_template in (
-                f"{comp_prefix}{first_phase}.{internal_path}",
-                f"{comp_prefix}{first_phase}.acmodel.{subsys}.{internal_path}",
-                f"{comp_prefix}{first_phase}.{subsys}.{internal_path}",
-            ):
+            if scope == "top_level":
+                # Top-level slots are siblings of `analysis`; their
+                # result paths are either promoted names at the
+                # AnalysisGroup root or absolute paths (containing a
+                # dot) rooted at the slot subsystem.
+                candidates = (
+                    f"{comp_prefix}{internal_path}",
+                )
+            else:
+                candidates = (
+                    f"{comp_prefix}{first_phase}.{internal_path}",
+                    f"{comp_prefix}{first_phase}.acmodel.{subsys}.{internal_path}",
+                    f"{comp_prefix}{first_phase}.{subsys}.{internal_path}",
+                )
+            for path_template in candidates:
                 try:
                     val = prob.get_val(path_template)
                     slot_data[var_name] = float(
