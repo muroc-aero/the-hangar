@@ -299,6 +299,14 @@ PLAN_SCHEMA: dict[str, Any] = {
                 },
             },
         },
+        "composition_policy": {
+            "type": "string",
+            "enum": ["explicit", "auto"],
+        },
+        "no_auto_share": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1},
+        },
         "solvers": {
             "type": "object",
             "additionalProperties": False,

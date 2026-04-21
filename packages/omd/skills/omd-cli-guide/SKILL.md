@@ -49,7 +49,8 @@ Load these on demand; `SKILL.md` is the index:
 | Topic | File | When to load |
 |-------|------|-------------|
 | Command reference | `commands.md` | Need flags, options, or behavior for a specific subcommand |
-| Plan authoring (builder, decisions, requirements, analysis_plan, review) | `plan-authoring.md` | Authoring a plan; logging decisions; writing requirements with acceptance criteria; scaffolding phased strategies; running completeness checks |
+| Plan authoring (builder, decisions, requirements, analysis_plan, review) | `plan-authoring.md` | Authoring a plan; logging decisions; writing requirements with acceptance criteria; scaffolding phased strategies; running completeness checks; `shared_vars` and `composition_policy: auto` |
+| Factory contracts (produces/consumes for auto-shared vars) | `factory-contracts.md` | Adding a new factory, modifying `FactoryContract` declarations, or debugging auto-derivation under `composition_policy: auto` |
 | Slots and fidelity (drag, propulsion, weight providers) | `slots-and-fidelity.md` | Composing OCP missions with VLM drag or pyCycle propulsion; choosing between surrogate and direct-coupled providers |
 | OAS specifics (mesh, wingbox multipoint) | `oas-specifics.md` | Building any `oas/AeroPoint`, `oas/AerostructPoint`, or `oas/AerostructMultipoint` plan |
 | OCP specifics (custom aircraft data, solver settings) | `ocp-specifics.md` | Defining inline `aircraft_data` instead of a template; tuning OCP mission solver settings |

@@ -6,7 +6,7 @@ pyCycle archetype classes in hangar.omd.pyc.
 
 from __future__ import annotations
 
-from hangar.omd.factory_metadata import FactoryMetadata
+from hangar.omd.factory_metadata import FactoryContract, FactoryMetadata
 
 from typing import Any
 
@@ -631,3 +631,19 @@ def build_pyc_mixedflow_design(
         "archetype_meta": MIXEDFLOW_TURBOFAN_META,
     }
     return prob, metadata
+
+
+# pyCycle archetypes install their Cycle class as the model root and do
+# not expose an external IVC that ``skip_fields`` could operate on.
+# Contracts are declared empty so the integrity validator can run
+# against them (and xfail on skip_fields), but nothing auto-shares.
+# ``validate_shared_vars`` also rejects pyc/* consumers explicitly.
+_PYC_EMPTY_CONTRACT = FactoryContract(produces={}, consumes={})
+
+build_pyc_turbojet_design.contract = _PYC_EMPTY_CONTRACT
+build_pyc_turbojet_multipoint.contract = _PYC_EMPTY_CONTRACT
+build_pyc_hbtf_design.contract = _PYC_EMPTY_CONTRACT
+build_pyc_ab_turbojet_design.contract = _PYC_EMPTY_CONTRACT
+build_pyc_single_turboshaft_design.contract = _PYC_EMPTY_CONTRACT
+build_pyc_multi_turboshaft_design.contract = _PYC_EMPTY_CONTRACT
+build_pyc_mixedflow_design.contract = _PYC_EMPTY_CONTRACT

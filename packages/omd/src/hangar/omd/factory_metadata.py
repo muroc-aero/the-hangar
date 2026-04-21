@@ -16,11 +16,72 @@ Usage in factories::
 Because ``FactoryMetadata`` is a ``TypedDict(total=False)``, factories can
 supply only the subset of keys they care about.  It is fully compatible
 with existing dict-based call sites; no runtime behavior changes.
+
+This file also defines ``VarSpec`` and ``FactoryContract`` for the
+produces/consumes contract used by the materializer's auto-derivation
+of ``shared_vars`` (see ``MULTI_TOOL_COMPOSITION_PLAN.md`` Fix 3).
+Factories attach a ``FactoryContract`` to their registered function as
+a ``.contract`` attribute; lookups go through
+``registry.get_factory_contract``.
 """
 
 from __future__ import annotations
 
-from typing import Any, TypedDict
+from dataclasses import dataclass, field
+from types import MappingProxyType
+from typing import Any, Literal, Mapping, TypedDict
+
+SemanticTag = Literal[
+    "geometry",
+    "flight_condition",
+    "material",
+    "propulsion",
+    "weight",
+    "mission_param",
+]
+
+
+@dataclass(frozen=True)
+class VarSpec:
+    """Declared shape/units/default/semantics for one produced or consumed variable.
+
+    ``shape=None`` means the variable is a scalar and OpenMDAO infers the
+    default ``(1,)`` shape. ``default=1.0`` (not ``None``) so downstream
+    ``add_output(val=...)`` calls are always well-defined. The plan's
+    ``initial_values`` section still overrides IVC values post-setup.
+    """
+
+    shape: tuple[int, ...] | None = None
+    units: str | None = None
+    default: Any = 1.0
+    semantic_tag: SemanticTag | None = None
+    description: str = ""
+
+
+@dataclass(frozen=True)
+class FactoryContract:
+    """Factory-declared produces/consumes surface.
+
+    ``produces`` names the promoted inputs that the factory would drive
+    through its own internal IndepVarComp by default. When two components
+    in a composite plan declare overlapping ``produces`` names, the
+    materializer hoists those names to the root ``shared_ivc`` and adds
+    them to each component's ``skip_fields``.
+
+    ``consumes`` names the promoted inputs that the factory expects but
+    does not produce. Currently informational; future cross-tool work
+    (Phase 3b+) can use it with ``semantic_tag`` to translate names
+    across factories.
+    """
+
+    produces: Mapping[str, VarSpec] = field(default_factory=dict)
+    consumes: Mapping[str, VarSpec] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        # Freeze mapping values so downstream code cannot mutate a
+        # factory's declared contract at runtime.
+        object.__setattr__(self, "produces", MappingProxyType(dict(self.produces)))
+        object.__setattr__(self, "consumes", MappingProxyType(dict(self.consumes)))
 
 
 class FactoryMetadata(TypedDict, total=False):
@@ -111,4 +172,4 @@ class FactoryMetadata(TypedDict, total=False):
     """Composite: per-component metadata nested under its comp_id."""
 
 
-__all__ = ["FactoryMetadata"]
+__all__ = ["FactoryContract", "FactoryMetadata", "SemanticTag", "VarSpec"]
