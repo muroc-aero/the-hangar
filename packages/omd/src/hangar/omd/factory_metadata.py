@@ -171,5 +171,14 @@ class FactoryMetadata(TypedDict, total=False):
     component_metadata: dict[str, dict]
     """Composite: per-component metadata nested under its comp_id."""
 
+    skipped_initial_values: list[dict]
+    """Entries the materializer failed to set via ``prob.set_val``.
+
+    Each entry is ``{"name": str, "error": str, "source": str}`` where
+    ``source`` is ``"initial_values"`` or ``"initial_values_with_units"``.
+    Populated only when at least one assignment failed; consumers should
+    treat a missing key as "all assignments succeeded".
+    """
+
 
 __all__ = ["FactoryContract", "FactoryMetadata", "SemanticTag", "VarSpec"]

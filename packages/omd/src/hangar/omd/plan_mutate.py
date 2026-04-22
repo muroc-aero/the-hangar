@@ -84,6 +84,7 @@ _STAGE_FOR_PRIMITIVE: dict[str, str] = {
     "add_requirement": "problem_definition",
     "add_dv": "dv_setup",
     "add_shared_var": "dv_setup",
+    "set_composition_policy": "formulation",
     "set_objective": "objective_selection",
     "set_operating_point": "operating_point_selection",
     "set_solver": "solver_selection",
@@ -146,6 +147,8 @@ _STEM_TO_KEY: dict[str, str] = {
     "operating_points": "operating_points",
     "connections": "connections",
     "shared_vars": "shared_vars",
+    "composition_policy": "composition_policy",
+    "no_auto_share": "no_auto_share",
     "solvers": "solvers",
     "decisions": "decisions",
     "rationale": "rationale",
@@ -805,6 +808,54 @@ def add_shared_var(
     return entry
 
 
+def set_composition_policy(
+    plan_dir: Path,
+    *,
+    policy: str,
+    no_auto_share: list[str] | None = None,
+    rationale: str | None = None,
+) -> dict:
+    """Write ``composition_policy.yaml`` (and optional ``no_auto_share.yaml``).
+
+    ``policy`` must be one of ``"explicit"`` or ``"auto"``. When
+    ``no_auto_share`` is None the on-disk list is left untouched;
+    pass ``[]`` to clear it.
+    """
+    plan_dir = Path(plan_dir)
+    _require_plan_dir(plan_dir)
+
+    if policy not in ("explicit", "auto"):
+        raise UserInputError(
+            f"policy must be 'explicit' or 'auto' (got {policy!r})"
+        )
+
+    _write_yaml(plan_dir / "composition_policy.yaml", policy)
+    if no_auto_share is not None:
+        if not isinstance(no_auto_share, list):
+            raise UserInputError("no_auto_share must be a list of strings")
+        for n in no_auto_share:
+            if not isinstance(n, str) or not n:
+                raise UserInputError(
+                    f"no_auto_share entries must be non-empty strings "
+                    f"(got {n!r})"
+                )
+        _write_yaml(plan_dir / "no_auto_share.yaml", list(no_auto_share))
+
+    _validate_partial(plan_dir)
+
+    summary = f"composition_policy={policy}"
+    if no_auto_share:
+        summary += f", no_auto_share={no_auto_share}"
+    _capture_decision(
+        plan_dir,
+        primitive="set_composition_policy",
+        rationale=rationale,
+        summary=summary,
+        element_path="composition_policy",
+    )
+    return {"policy": policy, "no_auto_share": no_auto_share}
+
+
 # ---------------------------------------------------------------------------
 # Public re-exports
 # ---------------------------------------------------------------------------
@@ -819,6 +870,7 @@ __all__ = [
     "init_plan",
     "load_partial",
     "set_analysis_strategy",
+    "set_composition_policy",
     "set_objective",
     "set_operating_point",
     "set_solver",

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from hangar.omd.factory_metadata import FactoryContract, FactoryMetadata, VarSpec
+from hangar.omd.factory_metadata import FactoryContract, FactoryMetadata
 
 import copy
 
@@ -23,6 +23,7 @@ from hangar.omd.factories.ocp.defaults import (
     BASIC_MISSION_PHASES,
     FULL_MISSION_PHASES,
     _COMMON_FIELDS,
+    _COMMON_FIELD_SPECS,
     _FUSELAGE_FIELDS,
     _PROPELLER_FIELDS,
     _HYBRID_FIELDS,
@@ -184,6 +185,7 @@ def _build_mission_problem(
             # the mission also reads.
             if top_level_slots:
                 from hangar.omd.slots import get_slot_provider as _gsp_tl
+                _first_phase = phases[0] if phases else "climb"
                 for _slot_name, _slot_cfg in top_level_slots.items():
                     _prov_tl = _gsp_tl(_slot_cfg["provider"])
                     _cfg_tl = dict(_slot_cfg.get("config", {}))
@@ -198,16 +200,16 @@ def _build_mission_problem(
                         promotes_inputs=_prom_in,
                         promotes_outputs=_prom_out,
                     )
-                    if _cfg_tl.get("wire_wing_weight", False):
-                        # Route the mission's first-phase W_wing into
-                        # the maneuver's kg_to_N balance. The provider
-                        # skipped its internal self-feedback connect
-                        # (see self_feedback_W_wing=False below).
-                        _first_phase = phases[0] if phases else "climb"
-                        self.connect(
-                            f"analysis.{_first_phase}.ac|weights|W_wing",
-                            f"{_slot_name}.kg_to_N.W_wing",
-                        )
+
+                    # Apply declarative connections declared by the
+                    # provider. Each entry may gate on a config key via
+                    # ``when_config`` and substitutes ``{slot_name}``
+                    # and ``{first_phase}`` into its src/tgt strings.
+                    from hangar.omd.slots import resolve_required_connections
+                    for _src, _tgt in resolve_required_connections(
+                        _prov_tl, _slot_name, _first_phase, _cfg_tl,
+                    ):
+                        self.connect(_src, _tgt)
 
             if is_hybrid:
                 self.add_subsystem(
@@ -476,67 +478,14 @@ def build_ocp_mission_with_reserve(
     )
 
 
-# Shared contract across all three OCP mission entry points. Lists the
-# DictIndepVarComp fields universally present across every template in
-# ``AIRCRAFT_TEMPLATES``. Fuselage, propeller, hybrid, and OEW fields
-# are template-dependent and stay explicit-only for now (users can
-# still share them via ``shared_vars:``). Units are declared ``None``
-# for fields whose units vary by template (e.g., gear lengths are in
-# ``ft`` in b738 but ``m`` elsewhere) -- the integrity validator only
-# checks units when the contract pins one.
+# Shared contract across all three OCP mission entry points. Produces
+# is derived from ``_COMMON_FIELD_SPECS`` (defaults.py) so that adding
+# or removing a common field in one place updates the contract
+# automatically. Fuselage, propeller, hybrid, and OEW fields are
+# template-dependent and stay explicit-only for now -- users can
+# still share them via ``shared_vars:``.
 _OCP_MISSION_CONTRACT = FactoryContract(
-    produces={
-        "ac|aero|CLmax_TO": VarSpec(default=2.0, semantic_tag="geometry"),
-        "ac|aero|polar|e": VarSpec(default=0.78, semantic_tag="geometry"),
-        "ac|aero|polar|CD0_TO": VarSpec(default=0.03, semantic_tag="geometry"),
-        "ac|aero|polar|CD0_cruise": VarSpec(
-            default=0.018, semantic_tag="geometry",
-        ),
-        "ac|geom|wing|S_ref": VarSpec(
-            units="m**2", default=124.6, semantic_tag="geometry",
-        ),
-        "ac|geom|wing|AR": VarSpec(default=9.45, semantic_tag="geometry"),
-        "ac|geom|wing|c4sweep": VarSpec(
-            units="deg", default=25.0, semantic_tag="geometry",
-        ),
-        "ac|geom|wing|taper": VarSpec(default=0.159, semantic_tag="geometry"),
-        "ac|geom|wing|toverc": VarSpec(default=0.12, semantic_tag="geometry"),
-        "ac|geom|hstab|S_ref": VarSpec(
-            units="m**2", default=32.8, semantic_tag="geometry",
-        ),
-        "ac|geom|hstab|c4_to_wing_c4": VarSpec(
-            units="m", default=17.9, semantic_tag="geometry",
-        ),
-        "ac|geom|vstab|S_ref": VarSpec(
-            units="m**2", default=26.4, semantic_tag="geometry",
-        ),
-        # Gear lengths vary between ft and m across templates.
-        "ac|geom|nosegear|length": VarSpec(
-            default=1.3, semantic_tag="geometry",
-        ),
-        "ac|geom|maingear|length": VarSpec(
-            default=1.8, semantic_tag="geometry",
-        ),
-        "ac|weights|MTOW": VarSpec(
-            units="kg", default=79002.0, semantic_tag="weight",
-        ),
-        "ac|weights|W_fuel_max": VarSpec(
-            units="kg", default=20826.0, semantic_tag="weight",
-        ),
-        "ac|weights|MLW": VarSpec(
-            units="kg", default=66360.0, semantic_tag="weight",
-        ),
-        "ac|propulsion|engine|rating": VarSpec(
-            units="lbf", default=27000.0, semantic_tag="propulsion",
-        ),
-        "ac|num_passengers_max": VarSpec(
-            default=189, semantic_tag="mission_param",
-        ),
-        # q_cruise units differ between templates (imperial vs SI).
-        "ac|q_cruise": VarSpec(
-            default=7500.0, semantic_tag="mission_param",
-        ),
-    },
+    produces=dict(_COMMON_FIELD_SPECS),
     consumes={},
 )
 

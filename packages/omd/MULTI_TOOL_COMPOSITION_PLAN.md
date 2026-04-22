@@ -238,3 +238,45 @@ class FactoryContract:
 - Backend for the omd viewer / provenance DAG: shared_vars change the
   graph structure; the viewer will need to represent shared DVs as
   fan-out edges (Fix 2 follow-up).
+
+---
+
+## Phase 3a follow-ups
+
+After the first-pass review of the three-fix rollout, the items
+below were acknowledged as Phase 3a scope but deferred to separate
+work:
+
+- **Multipoint OAS contract.** `oas/AerostructMultipoint` declares an
+  empty `FactoryContract`; its vectorized `prob_vars` IVC has a
+  shape that depends on `flight_points`, so it does not fit the
+  single-shape contract model. Plans with multipoint OAS + OCP
+  still need explicit `shared_vars:` to share wing geometry. A
+  per-flight-point contract shape (or a `consumes`-only contract
+  with promotion rules) should close this gap in a later phase.
+- **pyc/\* contracts.** All pyCycle archetypes declare empty
+  contracts. Cycle groups are the OpenMDAO model root, not a
+  composable subsystem with an IVC to skip against, so auto-share
+  would need a different mechanism (e.g., wrapper IVCs for
+  parameters shared across design and off-design points).
+- **Cross-tool semantic-tag translation.** Fix 3 matches names
+  literally; OCP calls wing aspect ratio `ac|geom|wing|AR` while OAS
+  factories do not expose it at all. A cross-tool translator keyed
+  on `VarSpec.semantic_tag` is the intended Phase 3b+ step toward
+  auto-sharing across tool boundaries.
+- **Phase 3b: flip the `composition_policy` default to `auto`.**
+  Gated on Phase 3a green tests on a real Adler composite run and
+  the cross-tool translation above. Keep the `explicit` setting
+  available as an opt-out.
+- **Adler monolithic-vs-composite parity.** The Fix 2 validation
+  gate calls for an end-to-end run proving the Adler plan can be
+  expressed either as a single OCP mission with an `oas/maneuver`
+  slot, or as two components (mission + standalone Aerostruct
+  sizing case) sharing geometry via `shared_vars`. `tests/
+  test_shared_vars.py::TestFormulationEquivalence` covers the
+  primitive on paraboloid; the full Adler parity run requires a
+  new `oas/aerostruct-sizing` standalone component factory and is
+  tracked as a separate follow-up.
+- **Viewer/DAG fan-out edges.** The provenance viewer still renders
+  shared DVs as a single node; Fix 2 did not extend the DAG
+  layout. Adding a fan-out representation is follow-up work.

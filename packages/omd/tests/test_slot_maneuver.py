@@ -5,6 +5,11 @@ Covers the first of three multi-tool composition fixes (see
 provider wraps OpenConcept's ``Aerostruct`` in a one-shot sizing case
 with an alpha-finding balance so a structural stress constraint can be
 enforced at (e.g.) 2.5g while the mission runs at cruise conditions.
+
+Tests are split by cost: provider-metadata and declarative-wiring
+checks stay fast; anything that stands up a b738 mission is marked
+``slow`` so ``pytest -m 'not slow'`` still validates the slot
+mechanism end-to-end.
 """
 
 from __future__ import annotations
@@ -14,11 +19,8 @@ import openmdao.api as om
 import pytest
 
 
-pytestmark = [pytest.mark.slow]
-
-
 # ---------------------------------------------------------------------------
-# Provider registration and attributes
+# Provider registration and attributes (fast -- no openconcept mission)
 # ---------------------------------------------------------------------------
 
 
@@ -41,12 +43,31 @@ class TestProviderMetadata:
                 f"Provider {name} is missing slot_scope='per_phase'"
             )
 
+    def test_required_connections_declared(self):
+        """oas/maneuver declares its W_wing tap as a required_connections
+        entry so the builder wires it without special-casing in the
+        factory code."""
+        from hangar.omd.slots import get_slot_provider
+        fn = get_slot_provider("oas/maneuver")
+        conns = getattr(fn, "required_connections", [])
+        assert conns, "oas/maneuver must declare required_connections"
+        entry = next(
+            (c for c in conns if c.get("when_config") == "wire_wing_weight"),
+            None,
+        )
+        assert entry is not None, (
+            "wire_wing_weight connection must be declared on the provider"
+        )
+        assert "{first_phase}" in entry["src"]
+        assert "{slot_name}" in entry["tgt"]
+
 
 # ---------------------------------------------------------------------------
 # Standalone _OasManeuverGroup behavior
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 class TestManeuverGroupStandalone:
 
     def _build(self):
@@ -146,6 +167,7 @@ def _b738_with_maneuver_plan(include_maneuver: bool) -> dict:
     }
 
 
+@pytest.mark.slow
 class TestBuilderSlotPartition:
     """The builder must keep per_phase slots inside each phase and
     wire top_level slots as siblings of `analysis`."""
@@ -199,6 +221,7 @@ class TestBuilderSlotPartition:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 class TestManeuverAnalysisRun:
     """Run analysis mode on a minimal b738 + maneuver plan and verify
     the failure_maneuver output is computed and reasonable."""

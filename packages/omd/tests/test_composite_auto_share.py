@@ -248,3 +248,127 @@ class TestDVResolution:
         assert not any(
             f.path.startswith("design_variables") for f in findings
         )
+
+
+# ---------------------------------------------------------------------------
+# Real-factory integration (slow -- two full OCP missions)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.slow
+class TestTwoOcpMissionsAutoShare:
+    """End-to-end Fix 3 integration: two real ``ocp/BasicMission``
+    components with ``composition_policy: auto`` must auto-hoist the
+    common wing/weight fields to a root ``shared_ivc`` -- no monkey
+    patching, no hand-written ``shared_vars:`` block.
+
+    The plan-level claim this guards is: "Phase 3a ships." If contract
+    drift or a registry regression breaks auto-derivation, this test
+    fails before the next Adler study run discovers it the hard way.
+    """
+
+    def _minimal_mission_plan(self) -> dict:
+        return {
+            "metadata": {"id": "two-ocp-auto", "name": "two", "version": 1},
+            "composition_policy": "auto",
+            "components": [
+                {
+                    "id": "cruise",
+                    "type": "ocp/BasicMission",
+                    "config": {
+                        "aircraft_template": "b738",
+                        "architecture": "twin_turbofan",
+                        "num_nodes": 3,
+                        "mission_params": {
+                            "cruise_altitude_ft": 35000.0,
+                            "mission_range_NM": 200.0,
+                            "climb_vs_ftmin": 1500.0,
+                            "climb_Ueas_kn": 230.0,
+                            "cruise_Ueas_kn": 270.0,
+                            "descent_vs_ftmin": 1500.0,
+                            "descent_Ueas_kn": 250.0,
+                        },
+                    },
+                },
+                {
+                    "id": "sizing",
+                    "type": "ocp/BasicMission",
+                    "config": {
+                        "aircraft_template": "b738",
+                        "architecture": "twin_turbofan",
+                        "num_nodes": 3,
+                        "mission_params": {
+                            "cruise_altitude_ft": 20000.0,
+                            "mission_range_NM": 100.0,
+                            "climb_vs_ftmin": 1500.0,
+                            "climb_Ueas_kn": 230.0,
+                            "cruise_Ueas_kn": 240.0,
+                            "descent_vs_ftmin": 1500.0,
+                            "descent_Ueas_kn": 230.0,
+                        },
+                    },
+                },
+            ],
+        }
+
+    def test_wing_geometry_auto_hoisted_across_two_missions(self):
+        pytest.importorskip("openconcept")
+        from hangar.omd.materializer import materialize
+
+        plan = self._minimal_mission_plan()
+        prob, meta = materialize(plan)
+        try:
+            # A shared_ivc is created.
+            shared = prob.model._get_subsystem("shared_ivc")
+            assert shared is not None, (
+                "auto-hoisting failed to create a root shared_ivc"
+            )
+            # All of _COMMON_FIELDS are declared by both OCP contracts,
+            # so every one of them should be hoisted. Spot-check the
+            # geometry + weight headliners.
+            shared_paths = meta.get("shared_var_paths", {})
+            for expected in (
+                "ac|geom|wing|AR",
+                "ac|geom|wing|S_ref",
+                "ac|geom|wing|taper",
+                "ac|weights|MTOW",
+                "ac|weights|MLW",
+            ):
+                assert expected in shared_paths, (
+                    f"{expected} should be auto-shared across both "
+                    f"OCP missions (got {sorted(shared_paths)})"
+                )
+        finally:
+            prob.cleanup()
+
+    def test_no_auto_share_blocks_individual_names(self):
+        pytest.importorskip("openconcept")
+        from hangar.omd.materializer import materialize
+
+        plan = self._minimal_mission_plan()
+        plan["no_auto_share"] = ["ac|geom|wing|AR"]
+        prob, meta = materialize(plan)
+        try:
+            shared_paths = meta.get("shared_var_paths", {})
+            assert "ac|geom|wing|AR" not in shared_paths, (
+                "no_auto_share did not block auto-hoisting"
+            )
+            # Other fields still hoist.
+            assert "ac|geom|wing|S_ref" in shared_paths
+        finally:
+            prob.cleanup()
+
+    def test_explicit_policy_suppresses_auto_hoisting(self):
+        """Default (explicit) policy must produce no shared_ivc even
+        though both contracts would otherwise hoist."""
+        pytest.importorskip("openconcept")
+        from hangar.omd.materializer import materialize
+
+        plan = self._minimal_mission_plan()
+        plan.pop("composition_policy", None)  # default == explicit
+        prob, meta = materialize(plan)
+        try:
+            assert prob.model._get_subsystem("shared_ivc") is None
+            assert meta.get("shared_var_paths", {}) == {}
+        finally:
+            prob.cleanup()

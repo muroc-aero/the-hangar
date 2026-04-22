@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from hangar.omd.factory_metadata import VarSpec
+
 
 DEFAULT_MISSION_PARAMS: dict = {
     "cruise_altitude_ft": 18000.0,
@@ -34,28 +36,61 @@ FULL_MISSION_PHASES = ["v0v1", "v1vr", "v1v0", "rotate", "climb", "cruise", "des
 TAKEOFF_PHASES = ["v0v1", "v1vr", "v1v0", "rotate"]
 
 
-_COMMON_FIELDS = [
-    "ac|aero|CLmax_TO",
-    "ac|aero|polar|e",
-    "ac|aero|polar|CD0_TO",
-    "ac|aero|polar|CD0_cruise",
-    "ac|geom|wing|S_ref",
-    "ac|geom|wing|AR",
-    "ac|geom|wing|c4sweep",
-    "ac|geom|wing|taper",
-    "ac|geom|wing|toverc",
-    "ac|geom|hstab|S_ref",
-    "ac|geom|hstab|c4_to_wing_c4",
-    "ac|geom|vstab|S_ref",
-    "ac|geom|nosegear|length",
-    "ac|geom|maingear|length",
-    "ac|weights|MTOW",
-    "ac|weights|W_fuel_max",
-    "ac|weights|MLW",
-    "ac|propulsion|engine|rating",
-    "ac|num_passengers_max",
-    "ac|q_cruise",
-]
+# Single source of truth for common DictIndepVarComp fields. The
+# FactoryContract in ``factories/ocp/builder.py`` derives ``produces``
+# from this mapping so that adding a field here auto-extends the
+# contract for the next ``composition_policy: auto`` run. Units are
+# ``None`` for fields whose units vary by template (e.g. gear lengths
+# are ``ft`` in b738 but ``m`` elsewhere); the contract-integrity
+# validator only checks units that are pinned here.
+_COMMON_FIELD_SPECS: dict[str, VarSpec] = {
+    "ac|aero|CLmax_TO": VarSpec(default=2.0, semantic_tag="geometry"),
+    "ac|aero|polar|e": VarSpec(default=0.78, semantic_tag="geometry"),
+    "ac|aero|polar|CD0_TO": VarSpec(default=0.03, semantic_tag="geometry"),
+    "ac|aero|polar|CD0_cruise": VarSpec(
+        default=0.018, semantic_tag="geometry",
+    ),
+    "ac|geom|wing|S_ref": VarSpec(
+        units="m**2", default=124.6, semantic_tag="geometry",
+    ),
+    "ac|geom|wing|AR": VarSpec(default=9.45, semantic_tag="geometry"),
+    "ac|geom|wing|c4sweep": VarSpec(
+        units="deg", default=25.0, semantic_tag="geometry",
+    ),
+    "ac|geom|wing|taper": VarSpec(default=0.159, semantic_tag="geometry"),
+    "ac|geom|wing|toverc": VarSpec(default=0.12, semantic_tag="geometry"),
+    "ac|geom|hstab|S_ref": VarSpec(
+        units="m**2", default=32.8, semantic_tag="geometry",
+    ),
+    "ac|geom|hstab|c4_to_wing_c4": VarSpec(
+        units="m", default=17.9, semantic_tag="geometry",
+    ),
+    "ac|geom|vstab|S_ref": VarSpec(
+        units="m**2", default=26.4, semantic_tag="geometry",
+    ),
+    # Gear lengths vary between ft and m across templates -- leave units unset.
+    "ac|geom|nosegear|length": VarSpec(default=1.3, semantic_tag="geometry"),
+    "ac|geom|maingear|length": VarSpec(default=1.8, semantic_tag="geometry"),
+    "ac|weights|MTOW": VarSpec(
+        units="kg", default=79002.0, semantic_tag="weight",
+    ),
+    "ac|weights|W_fuel_max": VarSpec(
+        units="kg", default=20826.0, semantic_tag="weight",
+    ),
+    "ac|weights|MLW": VarSpec(
+        units="kg", default=66360.0, semantic_tag="weight",
+    ),
+    "ac|propulsion|engine|rating": VarSpec(
+        units="lbf", default=27000.0, semantic_tag="propulsion",
+    ),
+    "ac|num_passengers_max": VarSpec(
+        default=189, semantic_tag="mission_param",
+    ),
+    # q_cruise units differ between templates (imperial vs SI).
+    "ac|q_cruise": VarSpec(default=7500.0, semantic_tag="mission_param"),
+}
+
+_COMMON_FIELDS = list(_COMMON_FIELD_SPECS.keys())
 
 _FUSELAGE_FIELDS = [
     "ac|geom|fuselage|S_wet",

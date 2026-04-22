@@ -447,6 +447,51 @@ def plan_add_shared_var_cmd(
     )
 
 
+@plan_group.command("set-composition-policy")
+@click.argument("plan_dir", type=click.Path(exists=True, file_okay=False))
+@click.option(
+    "--policy",
+    type=click.Choice(["explicit", "auto"], case_sensitive=False),
+    required=True,
+    help="'explicit' disables auto-sharing (default); 'auto' derives "
+         "shared_vars from FactoryContracts.",
+)
+@click.option(
+    "--no-auto-share",
+    default=None,
+    help="Comma-separated names to exclude from auto-hoisting. "
+         "Pass empty string to clear an existing list.",
+)
+@click.option("--rationale", default=None)
+def plan_set_composition_policy_cmd(
+    plan_dir: str,
+    policy: str,
+    no_auto_share: str | None,
+    rationale: str | None,
+) -> None:
+    """Set composition_policy (and optional no_auto_share list)."""
+    from hangar.omd.plan_mutate import set_composition_policy
+    from hangar.sdk.errors import UserInputError
+
+    names_list: list[str] | None = None
+    if no_auto_share is not None:
+        names_list = [n.strip() for n in no_auto_share.split(",") if n.strip()]
+
+    try:
+        set_composition_policy(
+            Path(plan_dir),
+            policy=policy.lower(),
+            no_auto_share=names_list,
+            rationale=rationale,
+        )
+    except UserInputError as exc:
+        _plan_error_exit(exc)
+    msg = f"composition_policy={policy}"
+    if names_list:
+        msg += f"; no_auto_share={names_list}"
+    click.echo(msg)
+
+
 @plan_group.command("set-objective")
 @click.argument("plan_dir", type=click.Path(exists=True, file_okay=False))
 @click.option("--name", default=None)

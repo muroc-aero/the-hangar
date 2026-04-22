@@ -137,24 +137,47 @@ def materialize(
     if metadata.get("_composite"):
         _validate_connection_units(prob, plan)
 
-    # Set initial values from metadata (factory-provided)
+    # Set initial values from metadata (factory-provided). Failures
+    # here are silent by design -- a factory may publish a name that
+    # got hoisted to the root shared IVC and thus has a different
+    # absolute path -- but we record what was skipped in metadata so
+    # tests and the CLI can surface it when debugging a misconfigured
+    # plan.
+    skipped_initial_values: list[dict] = []
     for name, val in metadata.get("initial_values", {}).items():
         try:
             prob.set_val(name, val)
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001 -- OpenMDAO raises many types
+            logger.debug(
+                "initial_values: could not set '%s' (%s)", name, exc,
+            )
+            skipped_initial_values.append(
+                {"name": name, "error": str(exc), "source": "initial_values"},
+            )
 
-    # Set initial values with units (OCP factories provide these)
     for name, spec in metadata.get("initial_values_with_units", {}).items():
+        units = spec.get("units") if isinstance(spec, dict) else None
+        val = spec.get("val") if isinstance(spec, dict) else spec
         try:
-            units = spec.get("units") if isinstance(spec, dict) else None
-            val = spec.get("val") if isinstance(spec, dict) else spec
             if units:
                 prob.set_val(name, val, units=units)
             else:
                 prob.set_val(name, val)
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.debug(
+                "initial_values_with_units: could not set '%s' (%s)",
+                name, exc,
+            )
+            skipped_initial_values.append(
+                {
+                    "name": name,
+                    "error": str(exc),
+                    "source": "initial_values_with_units",
+                },
+            )
+
+    if skipped_initial_values:
+        metadata["skipped_initial_values"] = skipped_initial_values
 
     # Configure recorder after setup
     rec_path = _configure_recorder(prob, recording_level, recorder_path)

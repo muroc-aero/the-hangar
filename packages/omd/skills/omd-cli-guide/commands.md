@@ -202,6 +202,21 @@ through as a float; comma-separated values become a list (e.g.
 `--value 0.005,0.01,0.015`). See `plan-authoring.md` for the
 composition model and when to use `shared_vars` vs `connections:`.
 
+### plan set-composition-policy
+
+Toggle the Fix 3 auto-share flag (and optionally populate a
+`no_auto_share` list) from the CLI.
+
+```bash
+omd-cli plan set-composition-policy <plan_dir> \
+    --policy explicit|auto \
+    [--no-auto-share "name1,name2"] \
+    [--rationale TEXT]
+```
+
+Writes `composition_policy.yaml` (and `no_auto_share.yaml` if names
+are supplied) which the assembler splices into the final plan.
+
 ### plan set-objective
 
 Set the optimization objective in `optimization.yaml`.

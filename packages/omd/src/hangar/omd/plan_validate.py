@@ -61,6 +61,16 @@ _KNOWN_BY_PREFIX: dict[str, set[str]] = {
 }
 
 
+# Recommended slot names per component type. Not enforced by the JSON
+# Schema (slots remain permissive via ``additionalProperties``) so
+# third-party slot providers keep working; ``validate_slot_names``
+# emits a WARN-style finding for values outside the set to catch typos
+# like ``"manuever"`` or ``"drag_polar"``.
+_KNOWN_SLOT_NAMES: dict[str, set[str]] = {
+    "ocp/": {"drag", "propulsion", "weight", "maneuver"},
+}
+
+
 def _known_names_for(components: list[dict]) -> set[str]:
     """Collect plausible short names across all components in a plan."""
     names: set[str] = set(_GENERIC_PROMOTED)
@@ -324,6 +334,50 @@ def validate_factory_contracts(plan: dict) -> list[ValidationFinding]:
     return findings
 
 
+def validate_slot_names(plan: dict) -> list[ValidationFinding]:
+    """Warn when a component declares a slot outside the known set.
+
+    The JSON Schema lets any slot name through via ``additionalProperties``
+    so third-party providers remain composable; this check flags typos
+    at the plan level by consulting ``_KNOWN_SLOT_NAMES`` per component
+    prefix. Close-match suggestions are included when available.
+    """
+    findings: list[ValidationFinding] = []
+    components = plan.get("components") or []
+    for i, comp in enumerate(components):
+        if not isinstance(comp, dict):
+            continue
+        ctype = comp.get("type")
+        if not isinstance(ctype, str):
+            continue
+        known: set[str] = set()
+        for prefix, names in _KNOWN_SLOT_NAMES.items():
+            if ctype.startswith(prefix):
+                known |= names
+        if not known:
+            continue
+        slots = (comp.get("config") or {}).get("slots") or {}
+        if not isinstance(slots, dict):
+            continue
+        for slot_name in slots:
+            if not isinstance(slot_name, str):
+                continue
+            if slot_name in known:
+                continue
+            suggestions = difflib.get_close_matches(
+                slot_name, sorted(known), n=3, cutoff=0.5,
+            )
+            findings.append(ValidationFinding(
+                path=f"components[{i}].config.slots.{slot_name}",
+                message=(
+                    f"Unknown slot '{slot_name}' for component type "
+                    f"'{ctype}'. Known slots: {sorted(known)}."
+                ),
+                suggestions=suggestions,
+            ))
+    return findings
+
+
 def validate_plan_semantic(plan: dict, registry_types: set[str] | None = None) -> list[ValidationFinding]:
     """Run all semantic checks (component types known + var paths resolve)."""
     findings: list[ValidationFinding] = []
@@ -345,6 +399,7 @@ def validate_plan_semantic(plan: dict, registry_types: set[str] | None = None) -
 
     findings += validate_var_paths(plan)
     findings += validate_shared_vars(plan)
+    findings += validate_slot_names(plan)
     findings += validate_factory_contracts(plan)
     return findings
 
@@ -362,6 +417,7 @@ __all__ = [
     "validate_factory_contracts",
     "validate_plan_semantic",
     "validate_shared_vars",
+    "validate_slot_names",
     "validate_var_paths",
     "format_findings",
 ]

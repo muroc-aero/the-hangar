@@ -57,6 +57,32 @@ def list_slot_providers() -> list[str]:
     return sorted(_PROVIDERS.keys())
 
 
+def resolve_required_connections(
+    provider: Callable,
+    slot_name: str,
+    first_phase: str,
+    config: dict,
+) -> list[tuple[str, str]]:
+    """Resolve a top-level provider's declarative connection specs.
+
+    Each ``required_connections`` entry may gate on a truthy
+    ``config[when_config]`` and supports ``{slot_name}`` and
+    ``{first_phase}`` template substitution on its ``src``/``tgt``.
+    Returns the list of ``(src, tgt)`` pairs to connect.
+    """
+    resolved: list[tuple[str, str]] = []
+    specs = getattr(provider, "required_connections", []) or []
+    fmt = {"slot_name": slot_name, "first_phase": first_phase}
+    for spec in specs:
+        gate = spec.get("when_config")
+        if gate and not config.get(gate):
+            continue
+        resolved.append(
+            (spec["src"].format(**fmt), spec["tgt"].format(**fmt)),
+        )
+    return resolved
+
+
 def _ensure_builtins() -> None:
     """Register built-in providers on first access."""
     global _initialized
@@ -1389,3 +1415,19 @@ _oas_maneuver_provider.adds_fields = {
     # aircraft data when possible). kg units matching the ExecComp input.
     "ac|weights|orig_W_wing": {"value": 6561.57, "units": "kg"},
 }
+# Optional top-level connections. Each entry is:
+#   {
+#       "when_config": <str>,   # only wire when this config key is truthy
+#       "src": <str>,           # supports {slot_name}, {first_phase}
+#       "tgt": <str>,           # same substitutions
+#   }
+# Applied by ``factories/ocp/builder.py`` after the slot subsystem is
+# added. Keeps the per-slot wiring declarative so new top-level slots
+# can taps into the mission without editing the builder.
+_oas_maneuver_provider.required_connections = [
+    {
+        "when_config": "wire_wing_weight",
+        "src": "analysis.{first_phase}.ac|weights|W_wing",
+        "tgt": "{slot_name}.kg_to_N.W_wing",
+    },
+]

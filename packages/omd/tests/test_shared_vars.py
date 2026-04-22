@@ -240,6 +240,106 @@ class TestRegression:
         prob.cleanup()
 
 
+class TestFormulationEquivalence:
+    """The plan's Fix 2 validation gate: the same problem must be
+    expressible with ``shared_vars`` or without it, and produce
+    identical numerical results when driven with the same value.
+
+    The "without shared_vars" baseline uses per-component ``set_val``
+    on each consumer's input (what plans did before Fix 2 shipped).
+    The shared-vars form uses a single ``set_val`` on the promoted
+    root name. Both must evaluate the paraboloid to the same
+    ``f_xy`` at the same ``(x, y)``.
+    """
+
+    def _materialize(self, plan: dict):
+        from hangar.omd.materializer import materialize
+        return materialize(plan)
+
+    def test_shared_vars_matches_per_component_drive(self):
+        """At identical (x, y), both formulations must yield the same
+        f_xy on each consumer. This is the load-bearing claim: the
+        shared IVC is a functional substitute for the pre-Fix-2
+        manual-drive workflow.
+        """
+        plan_shared = {
+            "metadata": {"id": "A", "name": "A", "version": 1},
+            "components": [
+                {"id": "a", "type": "paraboloid/Paraboloid", "config": {}},
+                {"id": "b", "type": "paraboloid/Paraboloid", "config": {}},
+            ],
+            "shared_vars": [
+                {"name": "x", "value": 0.0, "consumers": ["a", "b"]},
+            ],
+        }
+        plan_manual = {
+            "metadata": {"id": "B", "name": "B", "version": 1},
+            "components": [
+                {"id": "a", "type": "paraboloid/Paraboloid", "config": {}},
+                {"id": "b", "type": "paraboloid/Paraboloid", "config": {}},
+            ],
+        }
+
+        prob_shared, _ = self._materialize(plan_shared)
+        prob_manual, _ = self._materialize(plan_manual)
+        try:
+            for x_value, y_value in [(3.0, -4.0), (0.0, 0.0), (7.5, 2.5)]:
+                # Shared-vars form: one set_val at the promoted root.
+                prob_shared.set_val("x", x_value)
+                prob_shared.set_val("a.y", y_value)
+                prob_shared.set_val("b.y", y_value)
+                prob_shared.run_model()
+
+                # Manual form: per-consumer set_val.
+                prob_manual.set_val("a.x", x_value)
+                prob_manual.set_val("b.x", x_value)
+                prob_manual.set_val("a.y", y_value)
+                prob_manual.set_val("b.y", y_value)
+                prob_manual.run_model()
+
+                for cid in ("a", "b"):
+                    a = float(prob_shared.get_val(f"{cid}.f_xy"))
+                    b = float(prob_manual.get_val(f"{cid}.f_xy"))
+                    assert abs(a - b) < 1e-12, (
+                        f"{cid}.f_xy differs at x={x_value}, y={y_value}: "
+                        f"shared_vars={a} manual={b}"
+                    )
+        finally:
+            prob_shared.cleanup()
+            prob_manual.cleanup()
+
+    def test_shared_ivc_dv_registration_matches_manual_registration(self):
+        """When the plan adds ``x`` as a DV, shared-vars registers it
+        once at the root IVC; manual form would need two DV entries
+        (one per consumer). Confirm the shared-vars form produces a
+        single DV — the efficiency win that motivated Fix 2.
+        """
+        plan = {
+            "metadata": {"id": "dv", "name": "dv", "version": 1},
+            "components": [
+                {"id": "a", "type": "paraboloid/Paraboloid", "config": {}},
+                {"id": "b", "type": "paraboloid/Paraboloid", "config": {}},
+            ],
+            "shared_vars": [
+                {"name": "x", "value": 0.0, "consumers": ["a", "b"]},
+            ],
+            "design_variables": [
+                {"name": "x", "lower": -10.0, "upper": 10.0},
+            ],
+            "objective": {"name": "a.f_xy"},
+        }
+        prob, meta = self._materialize(plan)
+        try:
+            prob.final_setup()
+            dvs = prob.model.get_design_vars()
+            # Promoted to the root, single registration.
+            assert list(dvs.keys()) == ["x"], (
+                f"expected a single DV registered at 'x', got {list(dvs)}"
+            )
+        finally:
+            prob.cleanup()
+
+
 # ---------------------------------------------------------------------------
 # Plan mutation CLI
 # ---------------------------------------------------------------------------
@@ -342,15 +442,11 @@ class TestPlanMutateCLI:
 
 class TestAssemblerPickup:
 
-    def test_shared_vars_yaml_spliced_in(self, tmp_path: Path):
-        from hangar.omd.assemble import assemble_plan
+    def _bootstrap(self, tmp_path: Path) -> Path:
         plan_dir = tmp_path / "plan"
         plan_dir.mkdir()
         (plan_dir / "metadata.yaml").write_text(
             "id: t\nname: t\nversion: 1\n"
-        )
-        (plan_dir / "shared_vars.yaml").write_text(
-            "- name: x\n  value: 3.0\n  consumers: [a, b]\n"
         )
         comp_dir = plan_dir / "components"
         comp_dir.mkdir()
@@ -358,11 +454,90 @@ class TestAssemblerPickup:
             (comp_dir / f"{cid}.yaml").write_text(
                 f"id: {cid}\ntype: paraboloid/Paraboloid\nconfig: {{}}\n"
             )
+        return plan_dir
+
+    def test_shared_vars_yaml_spliced_in(self, tmp_path: Path):
+        from hangar.omd.assemble import assemble_plan
+        plan_dir = self._bootstrap(tmp_path)
+        (plan_dir / "shared_vars.yaml").write_text(
+            "- name: x\n  value: 3.0\n  consumers: [a, b]\n"
+        )
         result = assemble_plan(plan_dir)
         assert result["errors"] == []
         assert result["plan"]["shared_vars"] == [
             {"name": "x", "value": 3.0, "consumers": ["a", "b"]},
         ]
+
+    def test_composition_policy_yaml_spliced_in(self, tmp_path: Path):
+        from hangar.omd.assemble import assemble_plan
+        plan_dir = self._bootstrap(tmp_path)
+        (plan_dir / "composition_policy.yaml").write_text("auto\n")
+        (plan_dir / "no_auto_share.yaml").write_text(
+            "- ac|geom|wing|toverc\n"
+        )
+        result = assemble_plan(plan_dir)
+        assert result["errors"] == []
+        assert result["plan"]["composition_policy"] == "auto"
+        assert result["plan"]["no_auto_share"] == ["ac|geom|wing|toverc"]
+
+
+class TestSetCompositionPolicy:
+
+    def test_writes_composition_policy_yaml(self, tmp_path: Path):
+        from hangar.omd.plan_mutate import init_plan, set_composition_policy
+
+        plan_dir = tmp_path / "plan"
+        init_plan(plan_dir, plan_id="p", name="P")
+        set_composition_policy(
+            plan_dir,
+            policy="auto",
+            no_auto_share=["ac|geom|wing|toverc"],
+        )
+        assert (plan_dir / "composition_policy.yaml").exists()
+        assert (plan_dir / "no_auto_share.yaml").exists()
+
+        data = yaml.safe_load(
+            (plan_dir / "composition_policy.yaml").read_text()
+        )
+        assert data == "auto"
+        nas = yaml.safe_load(
+            (plan_dir / "no_auto_share.yaml").read_text()
+        )
+        assert nas == ["ac|geom|wing|toverc"]
+
+    def test_rejects_invalid_policy(self, tmp_path: Path):
+        from hangar.omd.plan_mutate import init_plan, set_composition_policy
+        from hangar.sdk.errors import UserInputError
+
+        plan_dir = tmp_path / "plan"
+        init_plan(plan_dir, plan_id="p", name="P")
+        with pytest.raises(UserInputError):
+            set_composition_policy(plan_dir, policy="bogus")
+
+    def test_cli_command_wires_through(
+        self, tmp_path: Path, runner: CliRunner,
+    ):
+        from hangar.omd.cli import cli
+
+        plan_dir = tmp_path / "plan"
+        r = runner.invoke(
+            cli, ["plan", "init", str(plan_dir), "--id", "p", "--name", "P"],
+        )
+        assert r.exit_code == 0, r.output
+        r = runner.invoke(cli, [
+            "plan", "set-composition-policy", str(plan_dir),
+            "--policy", "auto",
+            "--no-auto-share", "ac|geom|wing|AR,ac|geom|wing|toverc",
+        ])
+        assert r.exit_code == 0, r.output
+        data = yaml.safe_load(
+            (plan_dir / "composition_policy.yaml").read_text()
+        )
+        assert data == "auto"
+        nas = yaml.safe_load(
+            (plan_dir / "no_auto_share.yaml").read_text()
+        )
+        assert nas == ["ac|geom|wing|AR", "ac|geom|wing|toverc"]
 
 
 # ---------------------------------------------------------------------------
