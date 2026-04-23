@@ -1,34 +1,36 @@
-# Task: Size a Single-Spool Turbojet at Sea-Level Static
+# Task: Single-Spool Turbojet Sea-Level Static Design Point
 
-Run a pyCycle turbojet design-point analysis using the omd pipeline.
+Run a pyCycle single-spool turbojet design-point analysis through the
+omd plan pipeline.
 
 ## Requirements
 
-- Engine: single-spool turbojet (compressor, burner, turbine, nozzle)
-- Compressor PR: 13.5, efficiency: 0.83
+- Component type: `pyc/TurbojetDesign`
+- Compressor: PR = 13.5, efficiency = 0.83
 - Turbine efficiency: 0.86
-- Shaft speed: 8070 rpm
+- Shaft speed: 8,070 rpm
 - Thermo method: CEA (chemical equilibrium)
-- Design point: sea-level static (alt=0 ft, MN~0)
-- Thrust target: 11,800 lbf
-- T4 target: 2,370 degR
+- Operating point: sea-level static (`alt = 0 ft`, `MN ~ 0`)
+- Targets: `Fn_target = 11,800 lbf`, `T4_target = 2,370 °R`
 
-## Steps
+## Tools
 
-1. Create a plan YAML with component type `pyc/TurbojetDesign`
-2. Set operating points: alt=0.0, MN=0.000001, Fn_target=11800.0, T4_target=2370.0
-3. Set engine config: comp_PR=13.5, comp_eff=0.83, turb_eff=0.86, Nmech=8070.0, thermo_method=CEA
-4. Run via: `omd-cli run plan.yaml --mode analysis`
-
-## Expected outputs
-
-- Net thrust (Fn) matching the 11,800 lbf target
-- TSFC in the range 0.8-1.5 lbm/hr/lbf (typical turbojet)
-- OPR equal to compressor PR (13.5, single-spool)
-- Gross thrust (Fg) slightly above net thrust (ram drag is near zero at SLS)
+- `omd-cli` for plan authoring, assembly, execution, results query,
+  and provenance.
+- `/omd-cli-guide` skill for plan structure and the decision-logging
+  contract. Load the `pycycle-specifics.md` companion file for
+  pyCycle component types, operating-point conventions, and
+  available plot types.
 
 ## Deliverables
 
-1. The plan YAML file
-2. Run results showing Fn, TSFC, OPR, Fg
-3. Interpretation of whether the results are physically reasonable
+1. Assembled plan under `hangar_studies/<plan-id>/` and a successful
+   `omd-cli run --mode analysis`.
+2. Reported `Fn`, `TSFC`, `OPR`, and `Fg` from the run summary.
+3. `decisions.yaml` entries:
+   - `formulation_decision` documenting the archetype, design point,
+     and thermo method.
+   - `result_interpretation` covering whether `Fn` matches the target,
+     whether `TSFC` is in the typical 0.8-1.5 lbm/hr/lbf turbojet
+     band, and whether `OPR` equals the compressor PR (single-spool).
+4. Provenance timeline via `omd-cli provenance <plan_id> --format text`.

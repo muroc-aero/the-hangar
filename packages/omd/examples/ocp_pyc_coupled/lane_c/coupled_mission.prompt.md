@@ -1,28 +1,39 @@
 # Task: Caravan Mission with pyCycle Turbojet Propulsion
 
-Run a Cessna 208 Caravan basic mission (climb/cruise/descent) using
-a pyCycle turbojet for propulsion instead of the default turboprop.
-The turbojet model should use a surrogate trained from pyCycle
-design + off-design sweeps.
+Run a Cessna 208 Caravan basic mission (climb / cruise / descent)
+through the omd plan pipeline using a pyCycle turbojet for propulsion
+in place of the default turboprop. The turbojet is intentionally
+unrealistic for this airframe; the point is to exercise the
+propulsion-slot mechanism.
 
 ## Requirements
 
-- Aircraft: Caravan (use the built-in template)
-- Propulsion: replace default turboprop with `pyc/turbojet` slot provider
+- Component type: `ocp/BasicMission`
+- Aircraft: Caravan (built-in template `caravan`)
+- Propulsion slot: `pyc/turbojet` (replacing the default turboprop)
 - Mission: 250 NM range, 18,000 ft cruise altitude
-- Turbojet config: design at 18,000 ft, Mach 0.35, 4000 lbf, T4=2370 degR
+- Turbojet design point: 18,000 ft, Mach 0.35, 4,000 lbf, T4 = 2,370 °R
+
+## Tools
+
+- `omd-cli` for plan authoring, assembly, execution, results query,
+  and provenance.
+- `/omd-cli-guide` skill for plan structure and the decision-logging
+  contract. Load the `slots-and-fidelity.md` companion file for
+  propulsion-slot providers, and `pycycle-specifics.md` for pyCycle
+  design-point and thermo-method options.
 
 ## Deliverables
 
-1. Create a plan YAML for this analysis using omd-cli
-2. Run the plan and report fuel burn, OEW, and MTOW
-3. Record a result interpretation decision noting this is a slot
-   mechanism demonstration, not a physical design
-4. Generate the provenance timeline
-
-## Notes
-
-- The turbojet is not realistic for a Caravan; the point is demonstrating
-  that the propulsion slot system works just like the drag slot
-- The pyCycle surrogate trains at startup (~30-60 seconds)
-- Use TABULAR thermo method for faster training
+1. Assembled plan under `hangar_studies/<plan-id>/` and a successful
+   `omd-cli run --mode analysis`. (Expect a one-time pyCycle deck
+   training step at startup.)
+2. Reported `fuel_burn_kg`, `OEW_kg`, and `MTOW_kg`.
+3. `decisions.yaml` entries:
+   - `formulation_decision` documenting the slot choice and the design
+     point, and noting that this is a slot-mechanism demonstration
+     rather than a physical design.
+   - `result_interpretation` covering whether the propulsion slot wired
+     correctly (e.g. fuel burn responds to thrust profile) regardless
+     of physical plausibility.
+4. Provenance timeline via `omd-cli provenance <plan_id> --format text`.

@@ -1,21 +1,33 @@
 # Task: Rectangular Wing Aero Study
 
-Run an aero analysis and twist optimization of a rectangular wing,
-then compare the results.
+Run a baseline VLM analysis and a twist optimization of a rectangular
+wing through the omd plan pipeline, then compare the two runs.
 
-## Part 1: Baseline Analysis
+## Requirements
 
-Analyze a rectangular wing (10 m span, 1 m chord) at Mach=0.84,
-alpha=5 deg using VLM with viscous drag. Report CL, CD, and L/D.
+- Component type: `oas/AeroPoint`
+- Wing: rectangular, 10 m span, 1 m chord
+- Flight: `Mach=0.84`, `alpha=5 deg` (full parameter set in
+  `aero_analysis.prompt.md`)
+- Optimization: DV `twist_cp in [-10, 15] deg`, constraint `CL=0.5`,
+  objective minimize `CD`, SLSQP
 
-## Part 2: Twist Optimization
+## Tools
 
-Optimize the twist distribution to minimize CD while holding CL = 0.5.
-Use twist_cp bounds of [-10, 15] deg and SLSQP optimizer.
+- `omd-cli` for plan authoring, assembly, execution, results query,
+  provenance, and plot generation.
+- `/omd-cli-guide` skill for plan structure and the decision-logging
+  contract. Load the `oas-specifics.md` companion file for OAS-specific
+  configuration.
 
-## Part 3: Comparison
+## Deliverables
 
-Compare baseline and optimized CD. Report the drag reduction in percent.
-Generate planform and lift distribution plots for both cases.
-
-Use `/omd-cli-guide` to learn the plan YAML structure.
+1. Two assembled plans under `hangar_studies/` (one analysis, one
+   optimize) and successful `omd-cli run` for each.
+2. Comparison table: baseline `CL`, `CD`, `L/D` vs. optimized values,
+   with drag-reduction percentage.
+3. `decisions.yaml` entries: `formulation_decision` on both plans,
+   `result_interpretation` on the analysis, `dv_selection` and
+   `convergence_assessment` on the optimization.
+4. `planform` and `lift` plots for both runs.
+5. Provenance timelines for both plans.

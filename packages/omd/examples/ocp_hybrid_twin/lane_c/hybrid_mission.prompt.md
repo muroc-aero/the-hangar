@@ -5,23 +5,32 @@ series-hybrid electric propulsion architecture.
 
 ## Requirements
 
-- Aircraft: King Air C90GT (built-in template "kingair")
-- Propulsion: twin_series_hybrid
-- Mission type: full (includes takeoff)
+- Component type: `ocp/FullMission`
+- Aircraft: King Air C90GT (built-in template `kingair`)
+- Propulsion: `twin_series_hybrid`
 - Mission: 250 NM range, 28,000 ft cruise altitude
-- Hybrid config: 50 kg battery weight, appropriate motor/generator
-  ratings for the King Air power class
+- Hybrid sizing: 50 kg battery, motor / generator ratings appropriate
+  for the King Air power class
+
+## Tools
+
+- `omd-cli` for plan authoring, assembly, execution, results query,
+  provenance, and plot generation.
+- `/omd-cli-guide` skill for plan structure and the decision-logging
+  contract. Load the `ocp-specifics.md` companion file for hybrid
+  architecture configuration (`battery_weight`, `motor_rating`,
+  `generator_rating`).
 
 ## Deliverables
 
-1. Create a plan YAML for an `ocp/FullMission` component with the
-   hybrid propulsion architecture
-2. Run the analysis and report fuel burn, OEW, MTOW, and TOFL
-3. Record a result interpretation decision: does the hybrid
-   architecture reduce fuel burn compared to a conventional twin
-   turboprop? What is the weight penalty from the battery/motors?
-4. Generate mission profile and weight breakdown plots
-
-Use `/omd-cli-guide` for plan structure and `/ocp-cli-guide` for
-hybrid propulsion architecture configuration (battery_weight,
-motor_rating, generator_rating fields).
+1. Assembled plan under `hangar_studies/<plan-id>/` and a successful
+   `omd-cli run --mode analysis`.
+2. Reported `fuel_burn_kg`, `OEW_kg`, `MTOW_kg`, and `TOFL`.
+3. `decisions.yaml` entries:
+   - `formulation_decision` documenting the architecture and battery /
+     motor sizing rationale.
+   - `result_interpretation` covering whether the hybrid architecture
+     reduces fuel burn versus a conventional twin turboprop and what
+     the weight penalty from battery / motors is.
+4. Mission-profile and weight plots via `omd-cli plot <run_id>`.
+5. Provenance timeline via `omd-cli provenance <plan_id> --format text`.
