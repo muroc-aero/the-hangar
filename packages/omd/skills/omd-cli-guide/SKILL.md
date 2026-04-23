@@ -50,6 +50,7 @@ Load these on demand; `SKILL.md` is the index:
 |-------|------|-------------|
 | Command reference | `commands.md` | Need flags, options, or behavior for a specific subcommand |
 | Plan authoring (builder, decisions, requirements, analysis_plan, review) | `plan-authoring.md` | Authoring a plan; logging decisions; writing requirements with acceptance criteria; scaffolding phased strategies; running completeness checks; `shared_vars` and `composition_policy: auto` |
+| Replan workflow (diagnose, fix, re-assemble, compare) | `replan.md` | A run failed, didn't converge, hit infeasibility, returned NaN, or produced unphysical results; recording the replan decision and following the version chain |
 | Factory contracts (produces/consumes for auto-shared vars) | `factory-contracts.md` | Adding a new factory, modifying `FactoryContract` declarations, or debugging auto-derivation under `composition_policy: auto` |
 | Slots and fidelity (drag, propulsion, weight providers) | `slots-and-fidelity.md` | Composing OCP missions with VLM drag or pyCycle propulsion; choosing between surrogate and direct-coupled providers |
 | OAS specifics (mesh, wingbox multipoint) | `oas-specifics.md` | Building any `oas/AeroPoint`, `oas/AerostructPoint`, or `oas/AerostructMultipoint` plan |
@@ -136,24 +137,52 @@ design_variables:
 
 ## Quick Start
 
-Two paths are supported — pick whichever fits the task:
+**Initial plans MUST be built with Path A (the interactive builder).**
+This is the only path that records decisions as the plan is assembled,
+which the decision-logging contract in `plan-authoring.md` requires.
+Path B exists for derived uses (sweep cells patched from a base plan,
+copies of an existing fixture, regenerating an assembled plan from
+hand-edited YAML); do not use it for a fresh plan.
 
-**Path A: interactive builder** (recommended for new plans; see
+**Path A: interactive builder** (required for new plans; see
 `plan-authoring.md`)
+
+Use one `omd-cli plan` subcommand per choice and pass `--rationale`
+on every one so a `decisions.yaml` entry is auto-appended. Add hand-
+authored decisions with `plan add-decision` for any choice that
+isn't covered by an `add-*` / `set-*` primitive (mesh resolution,
+formulation framing, replan reasoning). After the run, append a
+`result_interpretation` decision and re-assemble before treating the
+plan as final.
 
 ```bash
 omd-cli plan init hangar_studies/my-plan --id my-plan --name "My study"
-# ... omd-cli plan add-component / add-dv / set-objective / ...
+omd-cli plan add-component hangar_studies/my-plan \
+    --id wing --type oas/AerostructPoint --config-file wing.yaml \
+    --rationale "Baseline wing geometry"
+omd-cli plan set-operating-point hangar_studies/my-plan \
+    --mach 0.84 --alpha 5.0 --rationale "Cruise design point"
+omd-cli plan add-dv hangar_studies/my-plan \
+    --name twist_cp --lower -10 --upper 15 \
+    --rationale "Conservative envelope"
+omd-cli plan set-objective hangar_studies/my-plan \
+    --name structural_mass --rationale "Primary goal"
+omd-cli plan add-decision hangar_studies/my-plan \
+    --stage mesh_selection --decision "num_y=7" \
+    --rationale "Moderate fidelity for exploration"
 omd-cli plan review hangar_studies/my-plan
 omd-cli assemble hangar_studies/my-plan
 omd-cli run hangar_studies/my-plan/plan.yaml --mode analysis
+# Append a result_interpretation decision, then re-assemble.
 ```
 
-**Path B: hand-authored YAML** (still supported; useful for copying
-from an existing fixture)
+**Path B: hand-authored YAML** (reserved for derived uses — sweep
+cells patched from a base plan, copies of an existing fixture, or
+regenerating an assembled plan from hand-edited modular YAML; not
+for a brand-new plan)
 
 ```bash
-# 1. Create a plan directory with YAML files
+# 1. Start from an existing plan directory or fixture
 # 2. Assemble
 omd-cli assemble my-plan/
 
@@ -166,6 +195,28 @@ omd-cli results <run_id> --summary
 # 5. Check provenance
 omd-cli provenance <plan_id> --format text
 ```
+
+## Range-Safety Integration
+
+`range-safety` is a separate CLI in this monorepo that enforces
+catalog-level structural and traceability rules and post-run
+constraint satisfaction. Use it as standard pre-flight and assertion
+gates around `omd-cli run`:
+
+```bash
+# Pre-flight: validate the assembled plan against catalog and heuristics
+range-safety validate hangar_studies/my-plan/plan.yaml
+
+# Run
+omd-cli run hangar_studies/my-plan/plan.yaml --mode optimize
+
+# Post-run: assert convergence + constraint satisfaction
+range-safety assert <run_id> --plan hangar_studies/my-plan/plan.yaml
+```
+
+`validate` errors must be fixed before running; warnings should be
+addressed or justified in `decisions.yaml`. `assert` failure is a
+trigger to enter the replan workflow (see `replan.md`).
 
 ## Data Artifacts
 
