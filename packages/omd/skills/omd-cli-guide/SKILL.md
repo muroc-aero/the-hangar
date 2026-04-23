@@ -60,9 +60,21 @@ Load these on demand; `SKILL.md` is the index:
 
 ## Study Directory Convention
 
-New plans go under `hangar_studies/<descriptive-name>/`. This directory is
-gitignored (like `hangar_data/`) so working files stay local. Never write
-plan files to `/tmp` or other locations outside the repo.
+New plans MUST go under `hangar_studies/<descriptive-name>/` unless the
+user explicitly names a path inside `packages/*/demos/` or
+`packages/*/tests/fixtures/`. A prompt file, README, or sibling demo
+directory *referring to* such a location is **not** sufficient. If the
+user's instruction does not name the path, ask first before running
+`plan init`.
+
+`hangar_studies/` is gitignored (like `hangar_data/`) so working files
+stay local. Scratch inputs (e.g. config YAML passed via `--config-file`)
+may go to `/tmp`; nothing else outside the repo.
+
+**Confirm before writing outside `hangar_studies/`.** If you are about
+to run `omd-cli plan init` (or otherwise create plan files) at any path
+other than `hangar_studies/` or `/tmp/`, stop and confirm with the user
+first.
 
 ```bash
 # Example: create a new study
