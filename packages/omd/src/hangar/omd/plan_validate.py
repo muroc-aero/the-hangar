@@ -47,6 +47,11 @@ _OAS_COMMON = {
 
 _OCP_COMMON = {
     "fuel_burn", "OEW", "MTOW", "TOFL",
+    # Hybrid architectures expose a promoted mixed_objective
+    # (`fuel_burn + MTOW/100`) and, when include_cost_model is set, a
+    # promoted doc_per_nmi trip cost. Both are wired at the AnalysisGroup
+    # root in factories/ocp/builder.py.
+    "mixed_objective", "doc_per_nmi", "fuel_mileage",
     # Top-level maneuver-slot outputs (see slots.py
     # `_oas_maneuver_provider.result_paths` and
     # `factories/ocp/builder.py` var_paths wiring)

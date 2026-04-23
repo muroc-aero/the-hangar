@@ -49,6 +49,7 @@ def _build_mission_problem(
     defer_setup: bool = False,
     slots: dict | None = None,
     skip_fields: list[str] | None = None,
+    include_cost_model: bool = False,
 ) -> tuple[om.Problem, FactoryMetadata]:
     """Build a complete OpenMDAO mission problem.
 
@@ -243,6 +244,76 @@ def _build_mission_problem(
                 self.connect("ac|weights|MTOW", "aug_obj.MTOW")
                 self.connect("descent.fuel_used_final", "aug_obj.fuel_burn")
 
+                # Optional trip DOC cost model.  Coefficients follow
+                # Brelje & Martins 2018 EATS Section IV.D:
+                #   fuel     $2.50/gal  (=> 0.81169 USD/kg jet A @ 3.08 kg/gal)
+                #   elec     $36/MWh    (=> 0.01 USD/MJ)
+                #   airframe $277/kg of OEW (OEM premium 1.1x)
+                #   engine   $775/shp
+                #   motor    $100/shp
+                #   generator $100/shp
+                #   battery  $50/kg, 1500 cycle life
+                #   5 flights/day, 15 year life, 365 days/yr depreciation
+                # Battery energy used is approximated as
+                # (1 - SOC_final) * W_battery * spec_energy.
+                if include_cost_model:
+                    # Coefficients inlined so ExecComp's single-pass
+                    # evaluator does not need chained intermediates.
+                    # _DEPR = daily_flights * 365 * life_years = 27375.
+                    # Airframe cost subtracts engine/motor/generator
+                    # weights from OEW per paper Section IV.D; engines
+                    # are costed separately on $/shp.
+                    _TRIP = (
+                        "fuel_burn_kg * 0.8116883116883117"
+                        " + 0.9 * W_battery_kg * spec_energy_whkg * 0.0036 * 0.01"
+                        " + (277.0 * (OEW_kg - W_engines_kg - W_motors_kg - W_generator_kg)"
+                        "    + 775.0 * engine_hp"
+                        "    + 100.0 * motor_hp"
+                        "    + 100.0 * generator_hp)"
+                        " * 1.1 / 27375.0"
+                        " + 50.0 * W_battery_kg / 1500.0"
+                    )
+                    self.add_subsystem(
+                        "cost_model",
+                        om.ExecComp(
+                            [
+                                f"trip_doc_usd = {_TRIP}",
+                                f"doc_per_nmi = ({_TRIP}) / mission_range_nm",
+                            ],
+                            trip_doc_usd={"units": None, "val": 1.0},
+                            doc_per_nmi={"units": None, "val": 1.0},
+                            fuel_burn_kg={"units": "kg", "val": 100.0},
+                            OEW_kg={"units": "kg", "val": 2500.0},
+                            W_battery_kg={"units": "kg", "val": 500.0},
+                            W_engines_kg={"units": "kg", "val": 200.0},
+                            W_motors_kg={"units": "kg", "val": 100.0},
+                            W_generator_kg={"units": "kg", "val": 100.0},
+                            engine_hp={"units": "hp", "val": 750.0},
+                            motor_hp={"units": "hp", "val": 500.0},
+                            generator_hp={"units": "hp", "val": 500.0},
+                            spec_energy_whkg={"units": "W*h/kg", "val": 450.0},
+                            mission_range_nm={"units": "NM", "val": 500.0},
+                        ),
+                        promotes_outputs=["doc_per_nmi", "trip_doc_usd"],
+                    )
+                    self.connect("descent.fuel_used_final", "cost_model.fuel_burn_kg")
+                    self.connect("cruise.OEW", "cost_model.OEW_kg")
+                    self.connect("ac|weights|W_battery", "cost_model.W_battery_kg")
+                    self.connect("ac|propulsion|engine|rating", "cost_model.engine_hp")
+                    self.connect("ac|propulsion|motor|rating", "cost_model.motor_hp")
+                    self.connect("ac|propulsion|generator|rating", "cost_model.generator_hp")
+                    self.connect("ac|propulsion|battery|specific_energy",
+                                 "cost_model.spec_energy_whkg")
+                    self.connect("mission_range", "cost_model.mission_range_nm")
+                    # Component weights are identical across phases
+                    # (sizing is fixed); pick cruise as the reference.
+                    self.connect("cruise.propmodel.eng1.component_weight",
+                                 "cost_model.W_engines_kg")
+                    self.connect("cruise.propmodel.motors_weight",
+                                 "cost_model.W_motors_kg")
+                    self.connect("cruise.propmodel.gen1.component_weight",
+                                 "cost_model.W_generator_kg")
+
     prob = om.Problem(reports=False)
     prob.model = AnalysisGroup()
 
@@ -403,6 +474,7 @@ def build_ocp_basic_mission(
     solver_settings = config.get("solver_settings", {})
     propulsion_overrides = config.get("propulsion_overrides")
     skip_fields = config.get("skip_fields")
+    include_cost_model = bool(config.get("include_cost_model", False))
 
     return _build_mission_problem(
         aircraft_data=ac_data,
@@ -415,6 +487,7 @@ def build_ocp_basic_mission(
         defer_setup=defer_setup,
         slots=slots,
         skip_fields=skip_fields,
+        include_cost_model=include_cost_model,
     )
 
 
@@ -433,6 +506,7 @@ def build_ocp_full_mission(
     solver_settings = config.get("solver_settings", {})
     propulsion_overrides = config.get("propulsion_overrides")
     skip_fields = config.get("skip_fields")
+    include_cost_model = bool(config.get("include_cost_model", False))
 
     return _build_mission_problem(
         aircraft_data=ac_data,
@@ -445,6 +519,7 @@ def build_ocp_full_mission(
         defer_setup=defer_setup,
         slots=slots,
         skip_fields=skip_fields,
+        include_cost_model=include_cost_model,
     )
 
 
@@ -463,6 +538,7 @@ def build_ocp_mission_with_reserve(
     solver_settings = config.get("solver_settings", {})
     propulsion_overrides = config.get("propulsion_overrides")
     skip_fields = config.get("skip_fields")
+    include_cost_model = bool(config.get("include_cost_model", False))
 
     return _build_mission_problem(
         aircraft_data=ac_data,
@@ -475,6 +551,7 @@ def build_ocp_mission_with_reserve(
         defer_setup=defer_setup,
         slots=slots,
         skip_fields=skip_fields,
+        include_cost_model=include_cost_model,
     )
 
 
