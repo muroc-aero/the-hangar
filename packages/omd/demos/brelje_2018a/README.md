@@ -18,22 +18,25 @@ minimizes trip direct operating cost (DOC).
       cruise hybridization = 68.9%.
 - [x] Stage 2: Lane B fuel MDO plan -- `aug_obj.mixed_objective`
       matches Lane A to 8 sig figs.
-- [x] Stage 3: Sweep driver and Fig 5 5x5 coarse grid -- initial pass
-      19/25 converged; `retry_failed.py` warm-starts each failure from
-      its nearest converged neighbor (matches Brelje's recovery
-      approach), pulling the grid to 25/25 (one cell accepted as
-      feasible at SLSQP exit-mode 8 since all constraints are active
-      at bounds).  See `figures/comparison_fig5.png`.
+- [x] Stage 3: Sweep driver and Fig 5 5x5 coarse grid.  `sweep.py`
+      runs every cell through the Lane B omd pipeline
+      (`hangar.omd.run.run_plan`).  Warm-started cells use the new
+      plan-level `design_variables[].initial` hook so no Lane A
+      fallback is needed.  A few cells still report SLSQP exit-mode 8
+      (KKT numerical at a feasible optimum with all constraints
+      active at bounds); the post-processing step promotes those to
+      converged.  See `figures/comparison_fig5.png`.
 - [x] Stage 4: Cost model + Fig 6 -- OCP factory grew an
       `include_cost_model` flag (wires an inlined ExecComp with
       Brelje Section IV.D coefficients, including the engine-weight
-      subtraction from airframe cost); Fig 6 5x5 grid produced
-      25/25 converged.  The initial pass lands in a local minimum
-      (MTOW ~4400 kg uniformly), so the final pass warm-starts each
-      cell from the matching fuel-sweep optimum via
-      `retry_failed.py --warm-from fig5_grid.csv` -- this recovers
-      the paper's triangular MTOW pattern and drops DOC 3-6% at
-      every affected cell.  See `figures/comparison_fig6.png`.
+      subtraction from airframe cost).  Cost MDO has competing local
+      minima; the template-default starting point converges at MTOW
+      ~4400 kg, while seeding each cell from the matching fuel-sweep
+      optimum lets SLSQP find the true minimum (MTOW = 5700 kg across
+      the middle/lower-right region, matching the paper).  Both
+      passes run through Lane B via
+      `sweep.py --warm-from fig5_grid.csv`.  See
+      `figures/comparison_fig6.png`.
 - [ ] Stage 5: Full 21x12 = 252-cell grid (optional refinement;
       estimated ~3 h wall time on 4 workers).
 - [x] Stage 6: README, Lane C prompt, TODO.md update.
@@ -51,15 +54,13 @@ uv run python packages/omd/demos/brelje_2018a/lane_a/hybrid_mdo.py \
 uv run omd-cli run packages/omd/demos/brelje_2018a/lane_b/fuel_mdo/plan.yaml --mode optimize
 uv run omd-cli run packages/omd/demos/brelje_2018a/lane_b/cost_mdo/plan.yaml --mode optimize
 
-# Fuel MDO (Fig 5): sweep, retry any failures, plot, comparison PNG
+# Fuel MDO (Fig 5) -- all via Lane B
 uv run python packages/omd/demos/brelje_2018a/sweep.py --objective fuel --grid 5x5 --workers 4
-uv run python packages/omd/demos/brelje_2018a/retry_failed.py --objective fuel
 uv run python packages/omd/demos/brelje_2018a/plotting.py --figure 5
 uv run python packages/omd/demos/brelje_2018a/compare.py --figure 5
 
-# Cost MDO (Fig 6): sweep, re-seed from fuel optimum (escapes local min), plot
-uv run python packages/omd/demos/brelje_2018a/sweep.py --objective cost --grid 5x5 --workers 4
-uv run python packages/omd/demos/brelje_2018a/retry_failed.py --objective cost \
+# Cost MDO (Fig 6) -- all via Lane B, warm-started from fuel grid to escape local min
+uv run python packages/omd/demos/brelje_2018a/sweep.py --objective cost --grid 5x5 --workers 4 \
     --warm-from packages/omd/demos/brelje_2018a/results/fig5_grid.csv
 uv run python packages/omd/demos/brelje_2018a/plotting.py --figure 6
 uv run python packages/omd/demos/brelje_2018a/compare.py --figure 6
@@ -147,3 +148,9 @@ packages/omd/demos/brelje_2018a/
 - `packages/omd/src/hangar/omd/plan_validate.py` -- `mixed_objective`,
   `doc_per_nmi`, `fuel_mileage` added to `_OCP_COMMON` so plans can
   reference them as objective names without tripping the validator.
+- `packages/omd/src/hangar/omd/materializer.py` +
+  `plan_schema.py` -- plan-level initial value overrides.  Two forms:
+    - Per-DV inline:  `design_variables: [{name: X, initial: 5700, units: kg}]`
+    - Top-level list: `initial_values: [{name: X, val: 5700, units: kg}]`
+  Materializer applies them after `prob.setup()`, overriding factory
+  initial_values.  Enables Lane-B-only warm starts.

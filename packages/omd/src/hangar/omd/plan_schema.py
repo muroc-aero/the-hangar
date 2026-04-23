@@ -358,6 +358,32 @@ PLAN_SCHEMA: dict[str, Any] = {
                 },
             },
         },
+        "initial_values": {
+            "type": "array",
+            "description": (
+                "Plan-level starting value overrides applied after "
+                "setup().  Useful for warm-starting optimizers.  DVs "
+                "can also declare `initial:` inline in "
+                "design_variables[]; top-level entries here work for "
+                "arbitrary paths (factory inputs, mission params, "
+                "etc.)."
+            ),
+            "items": {
+                "type": "object",
+                "required": ["name", "val"],
+                "additionalProperties": False,
+                "properties": {
+                    "name": {"type": "string", "minLength": 1},
+                    "val": {
+                        "oneOf": [
+                            {"type": "number"},
+                            {"type": "array", "items": {"type": "number"}},
+                        ],
+                    },
+                    "units": {"type": "string"},
+                },
+            },
+        },
         "constraints": {
             "type": "array",
             "items": {

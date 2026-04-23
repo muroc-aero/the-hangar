@@ -708,6 +708,13 @@ def _configure_driver(
             merged_var_paths[sv_name] = sv_path
         var_paths = merged_var_paths or var_paths
 
+    # Plan-level initial values live in metadata so materialize() can
+    # apply them after setup().  Two sources:
+    #   1. ``design_variables[*].initial`` -- per-DV warm starts.
+    #   2. Top-level ``initial_values: [{name, val, units?}, ...]`` --
+    #      arbitrary paths (mission params, factory inputs) that the
+    #      plan wants to override without a factory code change.
+    plan_initial: dict[str, dict] = {}
     for dv in plan.get("design_variables", []):
         dv_name = dv["name"]
         path = _resolve_var_path(dv_name, point_name, surface_names,
@@ -726,6 +733,27 @@ def _configure_driver(
         if "units" in dv:
             kwargs["units"] = dv["units"]
         prob.model.add_design_var(path, **kwargs)
+        if "initial" in dv:
+            plan_initial[path] = {
+                "val": dv["initial"],
+                "units": dv.get("units"),
+            }
+
+    for iv in plan.get("initial_values", []) or []:
+        name = iv["name"]
+        path = _resolve_var_path(name, point_name, surface_names,
+                                 component_type, var_paths=var_paths)
+        plan_initial[path] = {
+            "val": iv["val"],
+            "units": iv.get("units"),
+        }
+
+    if plan_initial:
+        # User-wins: merge AFTER factory initial_values_with_units so
+        # the plan's warm starts override factory defaults.
+        existing = dict(metadata.get("initial_values_with_units", {}) or {})
+        existing.update(plan_initial)
+        metadata["initial_values_with_units"] = existing
 
     # Constraints
     point_names = metadata.get("point_names")

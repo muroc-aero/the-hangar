@@ -24,6 +24,7 @@ import traceback
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import yaml
 
 DEMO_DIR = Path(__file__).resolve().parent
@@ -70,8 +71,30 @@ def _nan_row(design_range: float, spec_energy: float, error: str,
     return row
 
 
-def _patch_plan(plan: dict, design_range: float, spec_energy: float) -> dict:
-    """Return a deep-copied plan with the grid cell's range/spec_energy."""
+_WARM_FIELDS: dict[str, tuple[str, str | None]] = {
+    # csv column               -> (DV name, units)
+    "MTOW_kg":                 ("ac|weights|MTOW", "kg"),
+    "S_ref_m2":                ("ac|geom|wing|S_ref", "m**2"),
+    "engine_rating_hp":        ("ac|propulsion|engine|rating", "hp"),
+    "motor_rating_hp":         ("ac|propulsion|motor|rating", "hp"),
+    "generator_rating_hp":     ("ac|propulsion|generator|rating", "hp"),
+    "W_battery_kg":            ("ac|weights|W_battery", "kg"),
+    "cruise_hybridization":    ("cruise.hybridization", None),
+    "climb_hybridization":     ("climb.hybridization", None),
+    "descent_hybridization":   ("descent.hybridization", None),
+}
+
+
+def _patch_plan(
+    plan: dict,
+    design_range: float,
+    spec_energy: float,
+    warm_dvs: dict | None = None,
+) -> dict:
+    """Return a deep-copied plan with this cell's range/spec_energy, and
+    optional per-DV ``initial:`` warm starts applied via the omd
+    plan-level ``design_variables[].initial`` field (materializer
+    applies after prob.setup())."""
     import copy
     p = copy.deepcopy(plan)
     for comp in p.get("components", []):
@@ -81,6 +104,11 @@ def _patch_plan(plan: dict, design_range: float, spec_energy: float) -> dict:
             mp["battery_specific_energy"] = float(spec_energy)
             po = comp["config"].setdefault("propulsion_overrides", {})
             po["battery_specific_energy"] = float(spec_energy)
+    if warm_dvs:
+        for dv in p.get("design_variables", []):
+            for col, (dv_name, _units) in _WARM_FIELDS.items():
+                if dv["name"] == dv_name and col in warm_dvs:
+                    dv["initial"] = float(warm_dvs[col])
     # Bump version so caches do not collide; id gets a suffix per cell
     p.setdefault("metadata", {})
     p["metadata"]["id"] = f"{p['metadata'].get('id', 'brelje')}-r{int(design_range)}-e{int(spec_energy)}"
@@ -88,14 +116,40 @@ def _patch_plan(plan: dict, design_range: float, spec_energy: float) -> dict:
     return p
 
 
+def _warm_dvs_for_cell(
+    warm_df: "pd.DataFrame | None",
+    design_range: float,
+    spec_energy: float,
+) -> dict | None:
+    """Look up the matching cell in a warm-start CSV; fall back to the
+    nearest converged cell if exact match is missing.  Returns a dict of
+    DV column -> value (keys from _WARM_FIELDS) or None."""
+    if warm_df is None:
+        return None
+    import pandas as pd
+    ok = warm_df[warm_df["converged"].astype(str).str.lower() == "true"]
+    if len(ok) == 0:
+        return None
+    exact = ok[(ok.design_range_nm == design_range) & (ok.spec_energy_whkg == spec_energy)]
+    if len(exact) == 0:
+        span = 500.0
+        d = np.hypot(
+            (ok["design_range_nm"].to_numpy() - design_range) / span,
+            (ok["spec_energy_whkg"].to_numpy() - spec_energy) / span,
+        )
+        exact = ok.iloc[[int(np.argmin(d))]]
+    neigh = exact.iloc[0]
+    return {col: float(neigh[col]) for col in _WARM_FIELDS if col in neigh}
+
+
 def _run_one(args: tuple) -> dict:
     """Worker: run one MDO cell."""
-    base_plan_path, design_range, spec_energy = args
+    base_plan_path, design_range, spec_energy, warm_dvs = args
     t0 = time.perf_counter()
     try:
         with open(base_plan_path) as f:
             base_plan = yaml.safe_load(f)
-        patched = _patch_plan(base_plan, design_range, spec_energy)
+        patched = _patch_plan(base_plan, design_range, spec_energy, warm_dvs)
 
         with tempfile.TemporaryDirectory() as td:
             cell_path = Path(td) / "plan.yaml"
@@ -228,6 +282,12 @@ def main() -> int:
                    help="Skip cells already present in the checkpoint CSV.")
     p.add_argument("--fresh", action="store_true",
                    help="Delete checkpoint and start over.")
+    p.add_argument("--warm-from", type=str, default=None,
+                   help="Path to a CSV from a prior sweep whose converged "
+                        "DVs will warm-start each cell via the plan-level "
+                        "`design_variables[].initial` mechanism.  Use to "
+                        "seed the cost sweep from the fuel sweep so it "
+                        "escapes local minima.")
     args = p.parse_args()
 
     base_plan = FUEL_PLAN if args.objective == "fuel" else COST_PLAN
@@ -248,7 +308,14 @@ def main() -> int:
     print(f"Running {len(pending)} cells ({len(done)} already in {ckpt.name}) "
           f"on {args.workers} workers.")
 
-    work = [(base_plan, r, e) for (r, e) in pending]
+    warm_df = pd.read_csv(args.warm_from) if args.warm_from else None
+    if warm_df is not None:
+        print(f"Warm-starting DVs from {Path(args.warm_from).name} "
+              f"({len(warm_df)} cells).")
+    work = [
+        (base_plan, r, e, _warm_dvs_for_cell(warm_df, r, e))
+        for (r, e) in pending
+    ]
     started = time.perf_counter()
     failures = 0
 
