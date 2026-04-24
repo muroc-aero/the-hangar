@@ -555,12 +555,12 @@ footer .sep{margin:0 10px;opacity:.5;color:var(--accent)}
   </div>
 </section>
 
-<!-- MODEL (N2 + problem DAG) -->
+<!-- MODEL (N2 + problem graph) -->
 <section id="model">
   <div class="container">
     <span class="label">model</span>
     <h2>OpenMDAO model structure.</h2>
-    <p class="section-desc">Interactive N<sup>2</sup> matrix of the full problem, and the discipline-level problem DAG showing analysis flow between components. Both are generated during packaging; locally they may 404 until <code style="color:var(--accent);font-size:.95em">package-case-study.sh</code> extracts the artifacts.</p>
+    <p class="section-desc">Interactive N<sup>2</sup> matrix of the full problem, and the discipline-level problem graph showing analysis flow between components. Both are generated during packaging; locally they may 404 until <code style="color:var(--accent);font-size:.95em">package-case-study.sh</code> extracts the artifacts.</p>
 
     <div class="iframe-section">
       <div class="iframe-head">
@@ -574,11 +574,11 @@ footer .sep{margin:0 10px;opacity:.5;color:var(--accent)}
 
     <div class="iframe-section">
       <div class="iframe-head">
-        <h3>problem DAG</h3>
+        <h3>problem graph</h3>
         <a href="problem-dag.html" target="_blank" rel="noopener">open full screen -&gt;</a>
       </div>
       <div class="iframe-wrap">
-        <iframe src="problem-dag.html" title="Problem DAG"></iframe>
+        <iframe src="problem-dag.html" title="Problem graph"></iframe>
       </div>
     </div>
   </div>
@@ -589,15 +589,15 @@ footer .sep{margin:0 10px;opacity:.5;color:var(--accent)}
   <div class="container">
     <span class="label">provenance</span>
     <h2>W3C PROV-Agent graph &amp; plan detail.</h2>
-    <p class="section-desc">The provenance DAG shows plan entities, decisions, run activities, and result assessments as a directed graph. The plan detail page renders the YAML plan structure with cross-links into the provenance graph. Both are static renders of the live omd viewer.</p>
+    <p class="section-desc">The provenance graph shows plan entities, decisions, run activities, and result assessments, with directed edges recording how each flowed into the next. The plan detail page renders the YAML plan with cross-links into the graph. Both are static renders of the live omd viewer.</p>
 
     <div class="iframe-section">
       <div class="iframe-head">
-        <h3>provenance DAG</h3>
+        <h3>provenance graph</h3>
         <a href="provenance-dag.html" target="_blank" rel="noopener">open full screen -&gt;</a>
       </div>
       <div class="iframe-wrap">
-        <iframe src="provenance-dag.html" title="Provenance DAG"></iframe>
+        <iframe src="provenance-dag.html" title="Provenance graph"></iframe>
       </div>
     </div>
 
@@ -643,7 +643,7 @@ footer .sep{margin:0 10px;opacity:.5;color:var(--accent)}
 <span class="prompt">$</span> <span class="cmd">uv run python packages/omd/demos/brelje_2018a/compare.py --figure 5</span>
 <span class="prompt">$</span> <span class="cmd">uv run python packages/omd/demos/brelje_2018a/compare.py --figure 6</span>
 
-<span class="comment"># package N2, provenance DAG, problem DAG, plan detail for this page</span>
+<span class="comment"># package N2, provenance graph, problem graph, plan detail for this page</span>
 <span class="prompt">$</span> <span class="cmd">./deploy/scripts/package-case-study.sh brelje-2018a \
     run-20260423T190235-641af06b \
     --plan-id brelje-fuel-mdo-lane-c --version 1</span>

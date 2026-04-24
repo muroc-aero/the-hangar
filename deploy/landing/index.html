@@ -179,6 +179,9 @@ section .subtitle{color:var(--fg2);margin-bottom:48px;font-size:.92rem;max-width
 .contribute-box{max-width:860px;background:var(--bg2);border:1px solid var(--border);border-left:3px solid var(--accent);padding:26px 30px;font-family:var(--sans)}
 .contribute-box p{color:var(--fg2);font-size:.92rem;margin-bottom:12px;line-height:1.65}
 .contribute-box p:last-child{margin-bottom:0}
+.contribute-cta{text-align:center;margin:22px 0}
+.contribute-cta a{display:inline-block;font-family:var(--mono);font-size:.85rem;color:var(--accent);border:1px solid var(--accent-dim);padding:10px 22px;letter-spacing:.04em;text-decoration:none;transition:background .15s,border-color .15s}
+.contribute-cta a:hover{background:var(--bg3);border-color:var(--accent);text-decoration:none}
 
 /* ---- FOOTER ---- */
 footer{padding:36px 0;text-align:center;font-size:.75rem;color:var(--fg3);font-family:var(--mono);letter-spacing:.04em}
@@ -284,12 +287,12 @@ footer .sep{margin:0 10px;opacity:.5;color:var(--accent)}
 
 <span class="diff-add">+ plans, not scripts</span>
 <span class="diff-add">+ any tool behind one protocol</span>
-<span class="diff-add">+ provenance DAG by default, not opt-in</span>
+<span class="diff-add">+ every run records a provenance graph</span>
 <span class="diff-add">+ composition is a plan primitive</span>
 <span class="diff-add">+ agents author, diff, and re-run</span></div>
     </div>
 
-    <p class="target-lead after">The Hangar is where these tools live together. Each MDAO tool is defined, tested, and demonstrated in its own package; composition happens through a shared plan format. Every run carries a provenance DAG, so engineers lead review instead of chasing files.</p>
+    <p class="target-lead after">The Hangar is where these tools live together. Each MDAO tool is defined, tested, and demonstrated in its own package; composition happens through a shared plan format. Every run carries a provenance graph, so engineers lead review instead of chasing files.</p>
   </div>
 </section>
 
@@ -298,7 +301,7 @@ footer .sep{margin:0 10px;opacity:.5;color:var(--accent)}
   <div class="container">
     <span class="label">01 / compose</span>
     <h2>One plan. Any tools. One run.</h2>
-    <p class="subtitle">hangar-omd is a YAML-first OpenMDAO plan runner. Describe a trade study or MDO problem once; get a reproducible run with recordings, an N2 diagram, a provenance DAG, and plots. Today, components from OAS, OCP, and pyCycle compose inside one plan.</p>
+    <p class="subtitle">hangar-omd is a YAML-first OpenMDAO plan runner. Describe a trade study or MDO problem once; get a reproducible run with recordings, an N2 diagram, a provenance graph, and plots. Today, components from OAS, OCP, and pyCycle compose inside one plan.</p>
 
     <div class="compose-grid">
       <div class="terminal">
@@ -340,7 +343,7 @@ footer .sep{margin:0 10px;opacity:.5;color:var(--accent)}
         <ul class="compose-features">
           <li><strong>cross-tool compose</strong>OCP mission + OAS VLM drag + pyCycle surrogate propulsion in one plan</li>
           <li><strong>lane pattern</strong>same math three ways: direct Python (A), plan YAML (B), agent-interactive (C)</li>
-          <li><strong>provenance by default</strong>PROV-Agent DAG, OpenMDAO recorder .sql, N2 HTML, decisions log</li>
+          <li><strong>provenance by default</strong>PROV-Agent graph, OpenMDAO recorder .sql, N2 HTML, decisions log</li>
           <li><strong>plots ship with factories</strong>planform / lift / von-mises for OAS; station properties for pyCycle</li>
           <li><strong>export to Python</strong>omd-cli export emits a standalone OpenMDAO script for deep debugging</li>
         </ul>
@@ -478,7 +481,7 @@ https://mcp.lakesideai.dev/pyc/mcp</pre>
       </ul>
 
       <h3><span class="h">##</span>what you get back</h3>
-      <p>Every tool call returns a versioned envelope: results, physics validation (convergence, bounds, sanity checks), telemetry, and a <code>run_id</code> for provenance. Every run produces an N2 diagram, an OpenMDAO recorder .sql, and a PROV-Agent DAG entry. The agent handles setup boilerplate. You stay on the engineering.</p>
+      <p>Every tool call returns a versioned envelope: results, physics validation (convergence, bounds, sanity checks), telemetry, and a <code>run_id</code> for provenance. Every run produces an N2 diagram, an OpenMDAO recorder .sql, and a PROV-Agent graph entry. The agent handles setup boilerplate. You stay on the engineering.</p>
     </div>
   </div>
 </section>
@@ -488,7 +491,7 @@ https://mcp.lakesideai.dev/pyc/mcp</pre>
   <div class="container">
     <span class="label">05 / case-studies</span>
     <h2>Reproducing peer-reviewed MDAO.</h2>
-    <p class="subtitle">End-to-end engineering workflows executed by agents through The Hangar. Each study ships with plots, provenance DAG, N2 diagram, and the decisions log.</p>
+    <p class="subtitle">End-to-end engineering workflows executed by agents through The Hangar. Each study ships with plots, provenance graph, N2 diagram, and the decisions log.</p>
 
     <div class="studies">
 
@@ -568,9 +571,12 @@ https://mcp.lakesideai.dev/pyc/mcp</pre>
 <section id="contribute">
   <div class="container">
     <span class="label">07 / contribute</span>
-    <h2>Wrap another tool.</h2>
+    <h2>Add your tool today.</h2>
     <div class="contribute-box">
       <p>The Hangar supports new analysis tools beyond the initial three. The SDK provides shared infrastructure for response envelopes, provenance tracking, validation, and artifact storage, so you can focus on the tool-specific logic.</p>
+
+      <p class="contribute-cta"><a href="https://github.com/muroc-aero/the-hangar/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener">read CONTRIBUTING.md &rarr;</a></p>
+
       <p>Check the <a href="https://github.com/muroc-aero/the-hangar/issues" target="_blank" rel="noopener">issues</a> and <a href="https://github.com/muroc-aero/the-hangar/discussions" target="_blank" rel="noopener">discussions</a> to see what's being considered, propose new ones, or pick up an existing request.</p>
     </div>
   </div>

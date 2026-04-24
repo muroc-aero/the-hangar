@@ -28,7 +28,7 @@ claude mcp add --transport http pyc https://mcp.lakesideai.dev/pyc/mcp
 
 ## Case studies
 
-End-to-end engineering workflows executed through The Hangar. Each study ships with plots, an N2 diagram, a provenance DAG, and the decision log.
+End-to-end engineering workflows executed through The Hangar. Each study ships with plots, an N2 diagram, a provenance graph, and the decision log.
 
 | Study | What it demonstrates | Tools | Live |
 |-------|----------------------|-------|------|
@@ -67,7 +67,7 @@ This copies the CLI-guide skills from each package into `.claude/skills/` where 
 | `hangar-oas` | `hangar.oas` | OpenAeroStruct aerostructural analysis server | `oas-cli`, `oas-server` |
 | `hangar-ocp` | `hangar.ocp` | OpenConcept aircraft conceptual design and mission analysis server | `ocp-cli`, `ocp-server` |
 | `hangar-pyc` | `hangar.pyc` | pyCycle gas turbine cycle analysis server | `pyc-cli`, `pyc-server` |
-| `hangar-omd` | `hangar.omd` | General-purpose OpenMDAO plan runner -- YAML plans, factory registry, multi-tool composition, provenance DAG | `omd-cli` |
+| `hangar-omd` | `hangar.omd` | General-purpose OpenMDAO plan runner -- YAML plans, factory registry, multi-tool composition, provenance graph | `omd-cli` |
 | `hangar-viewer` | `hangar.viewer` | Unified provenance viewer for Hangar tool servers | `hangar-viewer` |
 
 These packages are not on PyPI. Install from the repo:
@@ -144,7 +144,7 @@ The full process is documented in the `/new-tool` skill (see `skills/new-tool/SK
 3. **Integrate the viewer** -- wire up the provenance viewer daemon thread and env vars matching the other packages
 4. **Set up the CLI** -- create `<tool>-cli` and `<tool>-server` console_scripts exposing all MCP tools through interactive, one-shot, and script modes
 5. **Verify auth and access** -- confirm OIDC auth, transport selection, and env var naming match the other packages
-6. **Run full integration tests** -- exercise every tool via CLI, verify response envelopes, validation, visualization, and provenance DAG
+6. **Run full integration tests** -- exercise every tool via CLI, verify response envelopes, validation, visualization, and provenance graph
 7. **Set up deployment** -- add to `docker-compose.yml`, `Caddyfile`, document Keycloak setup in `packages/<tool>/DEPLOY.md`, add to `.mcp.json`
 8. **Create a `<tool>-cli-guide` skill** -- following the `oas-cli-guide` structure with modes, commands, provenance, and example workflows
 
