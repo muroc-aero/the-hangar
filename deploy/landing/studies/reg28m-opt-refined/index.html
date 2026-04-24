@@ -3,249 +3,273 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Regional Aircraft Wing Optimization - The Hangar</title>
+<title>Regional 28m wing optimization - The Hangar</title>
 <link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#0b0f14;--bg2:#111820;--bg3:#171f2a;
-  --fg:#e2e8f0;--fg2:#94a3b8;--fg3:#64748b;
-  --accent:#38bdf8;--accent2:#0ea5e9;--accent-dim:#1e3a5f;
-  --green:#22c55e;--red:#ef4444;--amber:#f59e0b;
-  --border:#1e293b;--radius:10px;
-  --font:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;
-  --mono:'SF Mono',SFMono-Regular,ui-monospace,'Cascadia Code','Fira Code',Menlo,monospace;
+  --bg:#0a0908;--bg2:#14110f;--bg3:#1e1a16;
+  --fg:#f4ece1;--fg2:#a8a094;--fg3:#6b6560;
+  --accent:#ff9f1c;--accent2:#ffd89c;--accent-dim:#5a3a14;
+  --green:#a3c77a;--red:#e85d43;--amber:#ff9f1c;
+  --border:#2a2520;--radius:3px;
+  --mono:'IBM Plex Mono',SFMono-Regular,ui-monospace,Menlo,monospace;
+  --sans:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,sans-serif;
 }
 html{scroll-behavior:smooth}
-body{font-family:var(--font);background:var(--bg);color:var(--fg);line-height:1.6;-webkit-font-smoothing:antialiased}
+body{font-family:var(--mono);background:var(--bg);color:var(--fg);line-height:1.55;font-size:14px;-webkit-font-smoothing:antialiased}
+body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:1;opacity:.04;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/></filter><rect width='240' height='240' filter='url(%23n)' opacity='0.9'/></svg>");mix-blend-mode:overlay}
 a{color:var(--accent);text-decoration:none}
-a:hover{text-decoration:underline}
-.container{max-width:1100px;margin:0 auto;padding:0 24px}
+a:hover{text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px}
+.container{max-width:1200px;margin:0 auto;padding:0 32px;position:relative;z-index:2}
 
-/* ---- NAV ---- */
-nav{position:sticky;top:0;z-index:100;background:rgba(11,15,20,.85);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);padding:14px 0}
+nav{position:sticky;top:0;z-index:100;background:rgba(10,9,8,.88);backdrop-filter:blur(14px);border-bottom:1px solid var(--border);padding:14px 0}
 nav .container{display:flex;align-items:center;justify-content:space-between}
-nav .wordmark{font-size:1.1rem;font-weight:700;letter-spacing:.04em;color:var(--fg)}
+nav .wordmark{font-family:var(--mono);font-size:.85rem;font-weight:600;letter-spacing:.06em;color:var(--fg);text-transform:uppercase;cursor:pointer}
 nav .wordmark span{color:var(--accent)}
-nav .links{display:flex;gap:24px;font-size:.875rem;color:var(--fg2)}
+nav .links{display:flex;gap:22px;font-size:.78rem;color:var(--fg2);text-transform:lowercase;letter-spacing:.02em}
 nav .links a{color:var(--fg2)}
 nav .links a:hover{color:var(--fg)}
 
-/* ---- HEADER ---- */
-.study-header{padding:64px 0 40px;text-align:center}
-.study-header h1{font-size:2.4rem;font-weight:800;letter-spacing:-.02em;line-height:1.15;margin-bottom:12px}
-.study-header h1 span{color:var(--accent)}
-.study-header .subtitle{font-size:1.15rem;color:var(--fg2);max-width:700px;margin:0 auto 16px}
-.study-header .run-meta{font-family:var(--mono);font-size:.8rem;color:var(--fg3);margin-bottom:32px}
+.label{font-family:var(--mono);font-size:.7rem;font-weight:500;color:var(--accent);text-transform:uppercase;letter-spacing:.22em;margin-bottom:18px;display:block}
 
-/* ---- RESULTS CARDS ---- */
-.result-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:16px;margin-bottom:48px}
-.result-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px;text-align:center}
-.result-card .value{font-size:1.6rem;font-weight:700;color:var(--fg);margin-bottom:4px}
+.study-header{padding:80px 0 40px;border-bottom:1px solid var(--border)}
+.study-header h1{font-family:var(--mono);font-size:2.2rem;font-weight:500;letter-spacing:-.03em;line-height:1.12;margin-bottom:14px;color:var(--fg)}
+.study-header h1 .amber{color:var(--accent)}
+.study-header .subtitle{font-family:var(--sans);font-size:1.02rem;color:var(--fg2);max-width:780px;margin-bottom:20px;line-height:1.65}
+.study-header .run-meta{font-family:var(--mono);font-size:.75rem;color:var(--fg3);letter-spacing:.04em}
+.study-header .run-meta .k{color:var(--fg3)}
+.study-header .run-meta .v{color:var(--fg2)}
+.study-header .run-meta .sep{color:var(--accent);margin:0 12px;opacity:.5}
+
+.result-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1px;background:var(--border);border:1px solid var(--border);margin:40px 0 0}
+.result-card{background:var(--bg2);padding:22px 24px;text-align:left}
+.result-card .value{font-family:var(--mono);font-size:1.5rem;font-weight:500;color:var(--fg);margin-bottom:6px;letter-spacing:-.02em}
 .result-card .value.converged{color:var(--green)}
-.result-card .label{font-size:.8rem;color:var(--fg3);text-transform:uppercase;letter-spacing:.06em}
+.result-card .label-k{font-family:var(--mono);font-size:.7rem;color:var(--fg3);text-transform:lowercase;letter-spacing:.08em}
 
-/* ---- SECTIONS ---- */
-section{padding:48px 0}
-section h2{font-size:1.5rem;font-weight:700;margin-bottom:8px}
-section .section-desc{color:var(--fg2);margin-bottom:28px;font-size:.95rem}
+section{padding:64px 0;border-bottom:1px solid var(--border)}
+section h2{font-family:var(--mono);font-size:1.35rem;font-weight:500;letter-spacing:-.02em;margin-bottom:10px;color:var(--fg)}
+section .section-desc{color:var(--fg2);margin-bottom:36px;font-size:.92rem;max-width:720px;line-height:1.65;font-family:var(--sans)}
 
-/* ---- FORMULATION ---- */
-.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:24px}
-.form-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px 24px}
-.form-card h3{font-size:1rem;font-weight:600;color:var(--accent);margin-bottom:12px;border-bottom:1px solid var(--border);padding-bottom:8px}
-.form-card table{width:100%;border-collapse:collapse;font-size:.875rem}
-.form-card td{padding:5px 0;border-bottom:1px solid rgba(30,41,59,.5)}
-.form-card td:first-child{color:var(--fg2);width:50%;font-weight:500}
-.form-card td:last-child{color:var(--fg);font-family:var(--mono);font-size:.82rem;text-align:right}
-.form-card td.units{color:var(--fg3);font-size:.78rem}
-.form-card ul{list-style:none;padding:0}
-.form-card li{padding:8px 0;border-bottom:1px solid rgba(30,41,59,.5);font-size:.875rem;color:var(--fg2)}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:32px}
+.form-card{background:var(--bg2);border:1px solid var(--border);padding:22px 26px}
+.form-card h3{font-family:var(--mono);font-size:.88rem;font-weight:500;color:var(--accent);margin-bottom:14px;letter-spacing:.04em;text-transform:lowercase}
+.form-card h3::before{content:'## ';color:var(--accent);opacity:.6}
+.form-card table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:.78rem}
+.form-card td{padding:5px 0;border-bottom:1px solid rgba(42,37,32,.5);vertical-align:top}
+.form-card td:first-child{color:var(--fg3);width:55%}
+.form-card td:last-child{color:var(--fg);text-align:right}
+.form-card ul{list-style:none;padding:0;font-family:var(--mono);font-size:.78rem}
+.form-card li{padding:6px 0 6px 16px;border-bottom:1px solid rgba(42,37,32,.5);color:var(--fg2);line-height:1.6;position:relative}
 .form-card li:last-child{border-bottom:none}
+.form-card li::before{content:'-';position:absolute;left:0;color:var(--accent)}
 .form-card li strong{color:var(--fg);font-weight:600}
+.form-card li .bounds{color:var(--fg3);font-size:.92em}
 
-/* ---- DECISIONS ---- */
-.decisions{margin-top:24px}
-.decision{background:var(--bg2);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:0 var(--radius) var(--radius) 0;padding:16px 20px;margin-bottom:12px}
-.decision .dec-id{font-family:var(--mono);font-size:.75rem;color:var(--accent);font-weight:600;margin-bottom:4px}
-.decision .dec-text{font-size:.9rem;color:var(--fg);font-weight:500;margin-bottom:6px}
-.decision .dec-reason{font-size:.85rem;color:var(--fg2);line-height:1.5}
+.decisions{margin-top:16px}
+.stage{background:var(--bg2);border:1px solid var(--border);margin-bottom:10px;border-left:2px solid var(--accent)}
+.stage summary{padding:14px 20px;cursor:pointer;font-family:var(--mono);font-size:.82rem;color:var(--fg);display:flex;justify-content:space-between;align-items:center;gap:12px;list-style:none;user-select:none}
+.stage summary::-webkit-details-marker{display:none}
+.stage summary::before{content:'+';color:var(--accent);font-weight:600;margin-right:10px;font-family:var(--mono);font-size:1em}
+.stage[open] summary::before{content:'-'}
+.stage summary:hover{background:var(--bg3)}
+.stage summary .stage-name{font-weight:500;flex:1;text-transform:uppercase;letter-spacing:.06em;font-size:.74rem}
+.stage summary .stage-count{color:var(--fg3);font-size:.72rem;font-weight:400;letter-spacing:.04em}
+.stage-body{padding:4px 20px 18px;border-top:1px solid var(--border)}
+.decision{background:transparent;border:none;border-left:1px solid var(--border);padding:10px 0 10px 16px;margin:14px 0 0}
+.decision:first-child{margin-top:16px}
+.decision .dec-head{display:flex;gap:16px;margin-bottom:6px;align-items:baseline;flex-wrap:wrap}
+.decision .dec-id{font-family:var(--mono);font-size:.7rem;color:var(--accent);font-weight:600;letter-spacing:.08em}
+.decision .dec-text{font-family:var(--mono);font-size:.85rem;color:var(--fg);font-weight:500;margin-bottom:6px;line-height:1.5}
+.decision .dec-reason{font-family:var(--sans);font-size:.86rem;color:var(--fg2);line-height:1.6}
 
-/* ---- PLOTS ---- */
-.plot-group{margin-bottom:40px}
-.plot-group h3{font-size:1.1rem;font-weight:600;color:var(--fg);margin-bottom:16px}
-.plot-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:20px}
-.plot-item{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
-.plot-item img{width:100%;height:auto;display:block}
-.plot-item .caption{padding:10px 16px;font-size:.82rem;color:var(--fg3)}
+.plots-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:18px}
+.plot-item{background:var(--bg2);border:1px solid var(--border);overflow:hidden}
+.plot-item img{width:100%;height:auto;display:block;background:#fff}
+.plot-item .cap{padding:12px 18px;border-top:1px solid var(--border);font-family:var(--mono);font-size:.72rem;color:var(--fg3);line-height:1.6}
+.plot-item .cap .tag{color:var(--accent);margin-right:6px}
 
-/* ---- IFRAMES ---- */
-.iframe-section{margin-bottom:40px}
-.iframe-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
-.iframe-header h3{font-size:1.1rem;font-weight:600}
-.iframe-header a{font-size:.82rem;color:var(--accent)}
-.iframe-wrap{background:#fff;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
-.iframe-wrap.dark-bg{background:var(--bg2)}
+.iframe-section{margin-bottom:24px}
+.iframe-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px;gap:12px}
+.iframe-head h3{font-family:var(--mono);font-size:.92rem;font-weight:500;color:var(--fg)}
+.iframe-head h3::before{content:'## ';color:var(--accent)}
+.iframe-head a{font-family:var(--mono);font-size:.74rem;color:var(--accent)}
+.iframe-wrap{background:var(--bg2);border:1px solid var(--border);overflow:hidden}
+.iframe-wrap.light{background:#fff}
 .iframe-wrap iframe{width:100%;height:620px;border:none;display:block}
 
-/* ---- FOOTER ---- */
-footer{border-top:1px solid var(--border);padding:32px 0;text-align:center;font-size:.85rem;color:var(--fg3)}
+footer{padding:36px 0;text-align:center;font-size:.75rem;color:var(--fg3);font-family:var(--mono);letter-spacing:.04em}
 footer a{color:var(--fg3)}
-footer .sep{margin:0 8px;opacity:.4}
+footer a:hover{color:var(--accent)}
+footer .sep{margin:0 10px;opacity:.5;color:var(--accent)}
 
-/* ---- RESPONSIVE ---- */
-@media(max-width:768px){
-  .study-header h1{font-size:1.8rem}
-  .result-cards{grid-template-columns:repeat(3,1fr)}
+@media(max-width:860px){
+  .study-header h1{font-size:1.6rem}
   .form-grid{grid-template-columns:1fr}
-  .plot-grid{grid-template-columns:1fr}
-  .iframe-wrap iframe{height:400px}
+  .plots-grid{grid-template-columns:1fr}
+  nav .links{gap:14px;font-size:.72rem}
 }
-@media(max-width:480px){
-  .result-cards{grid-template-columns:repeat(2,1fr)}
+@media(max-width:540px){
+  .container{padding:0 20px}
+  section{padding:48px 0}
 }
 </style>
 </head>
 <body>
 
-<!-- NAV -->
 <nav>
   <div class="container">
-    <a href="../../" class="wordmark"><span>The</span> Hangar</a>
+    <a href="../../" class="wordmark" style="text-decoration:none;color:var(--fg)"><span>&#9656;</span> THE_HANGAR</a>
     <div class="links">
-      <a href="#results">Results</a>
-      <a href="#formulation">Formulation</a>
-      <a href="#plots">Plots</a>
-      <a href="#n2">N2</a>
-      <a href="#provenance">Provenance</a>
+      <a href="#results">results</a>
+      <a href="#formulation">formulation</a>
+      <a href="#decisions">decisions</a>
+      <a href="#plots">plots</a>
+      <a href="#model">model</a>
+      <a href="#provenance">provenance</a>
     </div>
   </div>
 </nav>
 
-<!-- HEADER -->
 <header class="study-header">
   <div class="container">
-    <h1>Regional Aircraft <span>Wing Optimization</span></h1>
-    <p class="subtitle">Aerostructural optimization of a 28m-span regional aircraft wing for minimum drag with structural constraints, using OpenAeroStruct via omd-cli.</p>
-    <p class="run-meta">plan: reg28m-opt-refined v1 &nbsp;|&nbsp; run: run-20260414T145425-65b0174e</p>
-  </div>
-</header>
+    <span class="label">05 / case-study</span>
+    <h1>Regional 28m wing &mdash; <span class="amber">aerostructural CD-min</span></h1>
+    <p class="subtitle">E190-class regional jet wing, vortex-lattice aero coupled with a tube FEM structural model. Minimize drag at a fixed lift coefficient, with a realistic structural-mass cap. Run end-to-end through the <code style="color:var(--accent);font-size:.95em">hangar-omd</code> Lane B plan pipeline.</p>
+    <div class="run-meta">
+      <span class="k">plan:</span> <span class="v">reg28m-opt-refined v1</span>
+      <span class="sep">/</span>
+      <span class="k">run:</span> <span class="v">run-20260414T145425-65b0174e</span>
+      <span class="sep">/</span>
+      <span class="k">factory:</span> <span class="v">oas/AerostructPoint</span>
+    </div>
 
-<!-- KEY RESULTS -->
-<section id="results">
-  <div class="container">
-    <div class="result-cards">
+    <div class="result-cards" id="results">
       <div class="result-card">
         <div class="value">0.500</div>
-        <div class="label">CL</div>
+        <div class="label-k">CL (lift constraint)</div>
       </div>
       <div class="result-card">
         <div class="value">0.02213</div>
-        <div class="label">CD</div>
+        <div class="label-k">CD (objective)</div>
       </div>
       <div class="result-card">
         <div class="value">22.60</div>
-        <div class="label">L/D</div>
+        <div class="label-k">L/D</div>
       </div>
       <div class="result-card">
-        <div class="value">3000</div>
-        <div class="label">Struct. Mass (kg)</div>
+        <div class="value">3000 kg</div>
+        <div class="label-k">struct mass (cap active)</div>
       </div>
       <div class="result-card">
         <div class="value">28</div>
-        <div class="label">Iterations</div>
+        <div class="label-k">SLSQP iterations</div>
       </div>
       <div class="result-card">
-        <div class="value converged">Converged</div>
-        <div class="label">Status</div>
+        <div class="value converged">converged</div>
+        <div class="label-k">status</div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- FORMULATION -->
+<section id="formulation">
+  <div class="container">
+    <span class="label">formulation</span>
+    <h2>MDO problem setup.</h2>
+    <p class="section-desc">Operating conditions, wing geometry, DVs, and constraints. Aluminum 7075-T6 tube FEM structural model coupled with vortex-lattice aero via OpenAeroStruct.</p>
+
+    <div class="form-grid">
+      <div class="form-card">
+        <h3>operating conditions</h3>
+        <table>
+          <tr><td>Mach</td><td>0.78</td></tr>
+          <tr><td>velocity</td><td>230.15 m/s</td></tr>
+          <tr><td>altitude density</td><td>0.3639 kg/m&sup3;</td></tr>
+          <tr><td>Reynolds number</td><td>5.5 &times; 10&sup6;</td></tr>
+          <tr><td>alpha (initial)</td><td>5.0 deg</td></tr>
+          <tr><td>gross weight (W0)</td><td>40,000 kg</td></tr>
+          <tr><td>design range</td><td>3,704 km (2,000 nmi)</td></tr>
+          <tr><td>load factor</td><td>1.0</td></tr>
+        </table>
+      </div>
+
+      <div class="form-card">
+        <h3>wing geometry</h3>
+        <table>
+          <tr><td>span</td><td>28.0 m</td></tr>
+          <tr><td>root chord</td><td>4.2 m</td></tr>
+          <tr><td>taper ratio</td><td>0.32</td></tr>
+          <tr><td>sweep</td><td>24.0 deg</td></tr>
+          <tr><td>dihedral</td><td>5.0 deg</td></tr>
+          <tr><td>mesh (ny &times; nx)</td><td>21 &times; 3</td></tr>
+          <tr><td>FEM model</td><td>tube</td></tr>
+          <tr><td>material</td><td>Al 7075-T6</td></tr>
+          <tr><td>safety factor</td><td>1.5</td></tr>
+        </table>
+      </div>
+
+      <div class="form-card">
+        <h3>design variables (3)</h3>
+        <ul>
+          <li><strong>twist_cp</strong> <span class="bounds">[-10, +15] deg, 5 stations</span></li>
+          <li><strong>thickness_cp</strong> <span class="bounds">[0.002, 0.05] m, 5 stations</span></li>
+          <li><strong>alpha</strong> <span class="bounds">[-5, +10] deg</span></li>
+        </ul>
+      </div>
+
+      <div class="form-card">
+        <h3>objective &amp; constraints</h3>
+        <ul>
+          <li><strong>minimize</strong> CD (drag coefficient)</li>
+          <li><strong>CL = 0.5</strong> <span class="bounds">equality</span></li>
+          <li><strong>failure &le; 0</strong> <span class="bounds">von Mises stress, KS aggregated</span></li>
+          <li><strong>struct_mass &le; 3000 kg</strong> <span class="bounds">realistic E190-class cap</span></li>
+        </ul>
+        <table style="margin-top:14px">
+          <tr><td>optimizer</td><td>SLSQP</td></tr>
+          <tr><td>maxiter</td><td>200</td></tr>
+          <tr><td>tol (ftol)</td><td>1e-9</td></tr>
+          <tr><td>timeout</td><td>600 s</td></tr>
+        </table>
       </div>
     </div>
   </div>
 </section>
 
-<!-- FORMULATION -->
-<section id="formulation">
+<!-- DECISIONS -->
+<section id="decisions">
   <div class="container">
-    <h2>Problem Formulation</h2>
-    <p class="section-desc">E190-class regional jet wing. Aluminum 7075-T6 tube FEM structural model coupled with vortex lattice aerodynamics.</p>
+    <span class="label">decisions</span>
+    <h2>Design decisions.</h2>
+    <p class="section-desc">Formulation choices that moved the problem from a coarse proof-of-concept to a production-quality run.</p>
 
-    <div class="form-grid">
-      <div class="form-card">
-        <h3>Operating Conditions</h3>
-        <table>
-          <tr><td>Mach</td><td>0.78</td></tr>
-          <tr><td>Velocity</td><td>230.15 m/s</td></tr>
-          <tr><td>Altitude density</td><td>0.3639 kg/m3</td></tr>
-          <tr><td>Reynolds number</td><td>5.5 x 10^6</td></tr>
-          <tr><td>Angle of attack (initial)</td><td>5.0 deg</td></tr>
-          <tr><td>Gross weight (W0)</td><td>40,000 kg</td></tr>
-          <tr><td>Design range</td><td>3,704 km (2,000 nmi)</td></tr>
-          <tr><td>Load factor</td><td>1.0</td></tr>
-        </table>
-      </div>
-
-      <div class="form-card">
-        <h3>Wing Geometry</h3>
-        <table>
-          <tr><td>Span</td><td>28.0 m</td></tr>
-          <tr><td>Root chord</td><td>4.2 m</td></tr>
-          <tr><td>Taper ratio</td><td>0.32</td></tr>
-          <tr><td>Sweep</td><td>24.0 deg</td></tr>
-          <tr><td>Dihedral</td><td>5.0 deg</td></tr>
-          <tr><td>Mesh (spanwise x chordwise)</td><td>21 x 3</td></tr>
-          <tr><td>FEM model</td><td>tube</td></tr>
-          <tr><td>Material</td><td>Al 7075-T6</td></tr>
-          <tr><td>Safety factor</td><td>1.5</td></tr>
-        </table>
-      </div>
-
-      <div class="form-card">
-        <h3>Design Variables</h3>
-        <ul>
-          <li><strong>twist_cp</strong> -- twist control points, [-10, +15] deg, 5 stations</li>
-          <li><strong>thickness_cp</strong> -- tube wall thickness, [0.002, 0.05] m, 5 stations</li>
-          <li><strong>alpha</strong> -- angle of attack, [-5, +10] deg</li>
-        </ul>
-      </div>
-
-      <div class="form-card">
-        <h3>Objective and Constraints</h3>
-        <ul>
-          <li><strong>Minimize</strong> CD (drag coefficient)</li>
-          <li><strong>CL = 0.5</strong> (lift constraint, equality)</li>
-          <li><strong>failure &le; 0</strong> (von Mises stress, inequality)</li>
-          <li><strong>structural mass &le; 3000 kg</strong> (realistic E190-class bound)</li>
-        </ul>
-        <table style="margin-top:12px">
-          <tr><td>Optimizer</td><td>SLSQP</td></tr>
-          <tr><td>Max iterations</td><td>200</td></tr>
-          <tr><td>Tolerance (ftol)</td><td>1e-9</td></tr>
-          <tr><td>Timeout</td><td>600 s</td></tr>
-        </table>
-      </div>
-    </div>
-
-    <!-- Decisions -->
     <div class="decisions">
-      <h3 style="font-size:1.1rem;font-weight:600;margin-bottom:16px">Design Decisions</h3>
-
-      <div class="decision">
-        <div class="dec-id">DEC-REF-01</div>
-        <div class="dec-text">Refined mesh (num_y=21, num_x=3) for production-quality results</div>
-        <div class="dec-reason">Coarse mesh (ny=7) proved the formulation works. 21 spanwise panels provides adequate resolution of spanwise lift and structural loads. 3 chordwise panels capture camber effects.</div>
-      </div>
-
-      <div class="decision">
-        <div class="dec-id">DEC-REF-02</div>
-        <div class="dec-text">CD objective with CL=0.5 and structural mass &le; 3000 kg constraints</div>
-        <div class="dec-reason">Fuelburn objective with L=W constraint proved numerically unstable with SLSQP (oscillating L_equals_W, singular matrices). CD minimization with CL constraint is better conditioned. Mass constraint prevents thickness from hitting upper bounds and produces realistic structural sizing. Coarse mesh converged in 35 iterations with this formulation.</div>
-      </div>
-
-      <div class="decision">
-        <div class="dec-id">DEC-REF-03</div>
-        <div class="dec-text">Structural mass upper bound 3000 kg</div>
-        <div class="dec-reason">E190-class wing structural weight is approximately 3000-4000 kg. Upper bound of 3000 kg forces the optimizer to trade structural stiffness against aerodynamic performance, producing meaningful thickness distributions.</div>
-      </div>
+      <details class="stage" open>
+        <summary><span class="stage-name">formulation</span><span class="stage-count">3 decisions</span></summary>
+        <div class="stage-body">
+          <div class="decision">
+            <div class="dec-head"><div class="dec-id">dec-ref-01</div></div>
+            <div class="dec-text">Refined mesh: num_y=21, num_x=3 for production-quality results</div>
+            <div class="dec-reason">The coarse mesh (ny=7) proved the formulation worked. 21 spanwise panels provide adequate resolution of spanwise lift and structural loads; 3 chordwise panels capture camber effects. Run cost roughly 3x the coarse mesh, still well under a minute.</div>
+          </div>
+          <div class="decision">
+            <div class="dec-head"><div class="dec-id">dec-ref-02</div></div>
+            <div class="dec-text">CD objective with CL=0.5 and structural mass &le; 3000 kg constraints</div>
+            <div class="dec-reason">Fuelburn objective with L=W constraint was numerically unstable with SLSQP (oscillating L_equals_W, singular matrices). CD minimization with a CL equality constraint is much better conditioned. The mass cap prevents thickness from hitting upper bounds and produces realistic structural sizing. The coarse mesh converged in 35 iterations with this formulation; the refined mesh converges in 28.</div>
+          </div>
+          <div class="decision">
+            <div class="dec-head"><div class="dec-id">dec-ref-03</div></div>
+            <div class="dec-text">Structural-mass upper bound set to 3000 kg</div>
+            <div class="dec-reason">E190-class wing structural weight is approximately 3000 to 4000 kg. Upper bound of 3000 kg forces the optimizer to trade structural stiffness against aerodynamic performance, producing meaningful thickness distributions. Looser bounds let the optimizer pad thickness without regard to weight.</div>
+          </div>
+        </div>
+      </details>
     </div>
   </div>
 </section>
@@ -253,122 +277,123 @@ footer .sep{margin:0 8px;opacity:.4}
 <!-- PLOTS -->
 <section id="plots">
   <div class="container">
-    <h2>Analysis Plots</h2>
-    <p class="section-desc">All plots generated from the converged optimization solution.</p>
+    <span class="label">run plots</span>
+    <h2>Analysis plots.</h2>
+    <p class="section-desc">All plots generated by <code style="color:var(--accent);font-size:.95em">omd-cli plot &lt;run_id&gt; --type all</code> from the converged optimization case in the OpenMDAO recorder.</p>
 
-    <div class="plot-group">
-      <h3>Convergence</h3>
-      <div class="plot-grid">
-        <div class="plot-item">
-          <img src="plots/convergence.png" alt="Convergence history" loading="lazy">
-          <div class="caption">Objective (CD) and constraint histories vs. optimizer iteration. Shows smooth convergence over 28 SLSQP iterations.</div>
-        </div>
-        <div class="plot-item">
-          <img src="plots/dv_evolution.png" alt="Design variable evolution" loading="lazy">
-          <div class="caption">Design variable values at each iteration. Twist, thickness, and angle of attack control points evolving toward the optimum.</div>
-        </div>
+    <div class="plots-grid">
+      <div class="plot-item">
+        <img src="plots/convergence.png" alt="Convergence history" loading="lazy">
+        <div class="cap"><span class="tag">convergence</span>CD objective and constraint histories vs SLSQP iteration (28 iters to converge)</div>
       </div>
-    </div>
-
-    <div class="plot-group">
-      <h3>Aerodynamics</h3>
-      <div class="plot-grid">
-        <div class="plot-item">
-          <img src="plots/lift.png" alt="Spanwise lift distribution" loading="lazy">
-          <div class="caption">Spanwise lift distribution at the optimized condition. Comparison with elliptical reference shows the optimizer balances induced drag against structural loads.</div>
-        </div>
-        <div class="plot-item">
-          <img src="plots/planform.png" alt="Wing planform" loading="lazy">
-          <div class="caption">Wing planform showing leading and trailing edges. Initial vs. optimized geometry overlay (if deformed shape differs).</div>
-        </div>
+      <div class="plot-item">
+        <img src="plots/dv_evolution.png" alt="DV evolution" loading="lazy">
+        <div class="cap"><span class="tag">dv_evolution</span>twist_cp, thickness_cp, alpha values across iterations</div>
       </div>
-    </div>
-
-    <div class="plot-group">
-      <h3>Structure</h3>
-      <div class="plot-grid">
-        <div class="plot-item">
-          <img src="plots/vonmises.png" alt="Von Mises stress" loading="lazy">
-          <div class="caption">Von Mises stress distribution along the span. Stress levels relative to the Al 7075-T6 yield stress with 1.5x safety factor.</div>
-        </div>
-        <div class="plot-item">
-          <img src="plots/failure.png" alt="Failure index" loading="lazy">
-          <div class="caption">Structural failure index (KS aggregated). Values at or below zero indicate the stress constraint is satisfied everywhere.</div>
-        </div>
-        <div class="plot-item">
-          <img src="plots/thickness.png" alt="Tube thickness" loading="lazy">
-          <div class="caption">Optimized tube wall thickness distribution. Thicker near the root where bending moments are highest, tapering outboard.</div>
-        </div>
-        <div class="plot-item">
-          <img src="plots/t_over_c.png" alt="Thickness-to-chord ratio" loading="lazy">
-          <div class="caption">Thickness-to-chord ratio along the span. Input airfoil thickness profile used by the aerodynamic model.</div>
-        </div>
-        <div class="plot-item">
-          <img src="plots/struct.png" alt="Structural overview" loading="lazy">
-          <div class="caption">Structural analysis summary showing the tube FEM element sizing and load paths through the wingbox.</div>
-        </div>
+      <div class="plot-item">
+        <img src="plots/lift.png" alt="Spanwise lift distribution" loading="lazy">
+        <div class="cap"><span class="tag">lift</span>spanwise lift distribution vs elliptical reference &mdash; induced-drag/struct tradeoff</div>
       </div>
-    </div>
-
-    <div class="plot-group">
-      <h3>Geometry</h3>
-      <div class="plot-grid">
-        <div class="plot-item">
-          <img src="plots/mesh_3d.png" alt="3D mesh" loading="lazy">
-          <div class="caption">3D view of the aerodynamic mesh with structural FEM overlay. 21 spanwise x 3 chordwise panels with tube elements.</div>
-        </div>
-        <div class="plot-item">
-          <img src="plots/twist.png" alt="Twist and chord" loading="lazy">
-          <div class="caption">Spanwise twist and chord distributions. Optimized twist produces washout toward the tip to manage structural loads.</div>
-        </div>
+      <div class="plot-item">
+        <img src="plots/planform.png" alt="Wing planform" loading="lazy">
+        <div class="cap"><span class="tag">planform</span>LE/TE outline; optimized vs initial overlay if deformed</div>
+      </div>
+      <div class="plot-item">
+        <img src="plots/vonmises.png" alt="Von Mises stress" loading="lazy">
+        <div class="cap"><span class="tag">vonmises</span>von Mises stress vs Al 7075-T6 yield with 1.5x safety factor</div>
+      </div>
+      <div class="plot-item">
+        <img src="plots/failure.png" alt="Failure index" loading="lazy">
+        <div class="cap"><span class="tag">failure</span>KS-aggregated failure index (satisfied when &le; 0)</div>
+      </div>
+      <div class="plot-item">
+        <img src="plots/thickness.png" alt="Tube thickness" loading="lazy">
+        <div class="cap"><span class="tag">thickness</span>optimized tube wall thickness; thicker at root, tapered outboard</div>
+      </div>
+      <div class="plot-item">
+        <img src="plots/t_over_c.png" alt="Thickness-to-chord" loading="lazy">
+        <div class="cap"><span class="tag">t_over_c</span>t/c ratio input to the aerodynamic model</div>
+      </div>
+      <div class="plot-item">
+        <img src="plots/struct.png" alt="Structural overview" loading="lazy">
+        <div class="cap"><span class="tag">struct</span>tube FEM element sizing and load paths through the wingbox</div>
+      </div>
+      <div class="plot-item">
+        <img src="plots/mesh_3d.png" alt="3D mesh" loading="lazy">
+        <div class="cap"><span class="tag">mesh_3d</span>3D aero mesh with structural FEM overlay (21 x 3 panels)</div>
+      </div>
+      <div class="plot-item">
+        <img src="plots/twist.png" alt="Twist and chord" loading="lazy">
+        <div class="cap"><span class="tag">twist</span>spanwise twist and chord distributions; washout to tip</div>
       </div>
     </div>
   </div>
 </section>
 
-<!-- N2 DIAGRAM -->
-<section id="n2">
+<!-- MODEL (N2 + problem DAG) -->
+<section id="model">
   <div class="container">
-    <h2>N2 Diagram</h2>
-    <p class="section-desc">Interactive N-squared diagram showing the OpenMDAO model hierarchy and data connections. Blue cells indicate feedforward connections; red cells indicate feedback (coupled) connections. Click subsystems to expand.</p>
+    <span class="label">model</span>
+    <h2>OpenMDAO model structure.</h2>
+    <p class="section-desc">Interactive N<sup>2</sup> matrix and problem DAG. Blue cells indicate feedforward connections, red cells indicate feedback. Both are static renders of the live omd viewer.</p>
 
     <div class="iframe-section">
-      <div class="iframe-header">
-        <h3>Model Structure</h3>
-        <a href="n2.html" target="_blank" rel="noopener">Open full screen &rarr;</a>
+      <div class="iframe-head">
+        <h3>N<sup>2</sup> diagram</h3>
+        <a href="n2.html" target="_blank" rel="noopener">open full screen -&gt;</a>
+      </div>
+      <div class="iframe-wrap light">
+        <iframe src="n2.html" title="N2 diagram"></iframe>
+      </div>
+    </div>
+
+    <div class="iframe-section">
+      <div class="iframe-head">
+        <h3>problem DAG</h3>
+        <a href="problem-dag.html" target="_blank" rel="noopener">open full screen -&gt;</a>
       </div>
       <div class="iframe-wrap">
-        <iframe src="n2.html" title="N2 Diagram"></iframe>
+        <iframe src="problem-dag.html" title="Problem DAG"></iframe>
       </div>
     </div>
   </div>
 </section>
 
-<!-- PROVENANCE DAG -->
+<!-- PROVENANCE + PLAN DETAIL -->
 <section id="provenance">
   <div class="container">
-    <h2>Provenance Graph</h2>
-    <p class="section-desc">W3C PROV-based directed acyclic graph showing the analysis workflow: plan entities, design decisions, execution activities, and result assessments. Nodes are color-coded by type. Click a node to inspect its metadata.</p>
+    <span class="label">provenance</span>
+    <h2>W3C PROV-Agent graph &amp; plan detail.</h2>
+    <p class="section-desc">The provenance DAG shows plan entities, decisions, run activities, and result assessments. The plan detail page renders the YAML plan with cross-links into provenance.</p>
 
     <div class="iframe-section">
-      <div class="iframe-header">
-        <h3>Analysis Workflow DAG</h3>
-        <a href="provenance-dag.html" target="_blank" rel="noopener">Open full screen &rarr;</a>
+      <div class="iframe-head">
+        <h3>provenance DAG</h3>
+        <a href="provenance-dag.html" target="_blank" rel="noopener">open full screen -&gt;</a>
       </div>
-      <div class="iframe-wrap dark-bg">
+      <div class="iframe-wrap">
         <iframe src="provenance-dag.html" title="Provenance DAG"></iframe>
       </div>
     </div>
+
+    <div class="iframe-section">
+      <div class="iframe-head">
+        <h3>plan detail</h3>
+        <a href="plan-detail.html" target="_blank" rel="noopener">open full screen -&gt;</a>
+      </div>
+      <div class="iframe-wrap">
+        <iframe src="plan-detail.html" title="Plan detail"></iframe>
+      </div>
+    </div>
   </div>
 </section>
 
-<!-- FOOTER -->
 <footer>
   <div class="container">
-    <a href="../../">&larr; Back to The Hangar</a>
-    <span class="sep">|</span>
-    <a href="https://github.com/muroc-aero/the-hangar" target="_blank" rel="noopener">GitHub</a>
-    <span class="sep">|</span> Powered by OpenAeroStruct + OpenMDAO + omd-cli
+    <a href="../../">&larr; back to the hangar</a>
+    <span class="sep">/</span>
+    <a href="https://github.com/muroc-aero/the-hangar" target="_blank" rel="noopener">github</a>
+    <span class="sep">/</span> fastmcp + openmdao + omd
   </div>
 </footer>
 

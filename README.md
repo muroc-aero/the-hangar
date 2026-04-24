@@ -26,6 +26,19 @@ claude mcp add --transport http pyc https://mcp.lakesideai.dev/pyc/mcp
 
 **claude.ai:** Settings > Integrations > Add MCP Server, then enter the endpoint URL.
 
+## Case studies
+
+End-to-end engineering workflows executed through The Hangar. Each study ships with plots, an N2 diagram, a provenance DAG, and the decision log.
+
+| Study | What it demonstrates | Tools | Live |
+|-------|----------------------|-------|------|
+| [Brelje 2018a reproduction](https://mcp.lakesideai.dev/studies/brelje-2018a/) | King Air twin series-hybrid MDO over range x battery specific energy. Reproduces Figs 5 and 6 of [Brelje & Martins 2018](https://doi.org/10.2514/6.2018-4979). | OCP + omd (Lane B plan) | [link](https://mcp.lakesideai.dev/studies/brelje-2018a/) |
+| [Regional 28m wing optimization](https://mcp.lakesideai.dev/studies/reg28m-opt-refined/) | Aerostructural CD-min on an E190-class wing with structural-mass cap. 28 SLSQP iterations, L/D=22.6 at CL=0.5. | OAS aerostruct + omd | [link](https://mcp.lakesideai.dev/studies/reg28m-opt-refined/) |
+
+![Brelje 2018a Fig 5 paper vs reproduced](packages/omd/demos/brelje_2018a/figures/comparison_fig5.png)
+
+*Brelje 2018a Fig 5 (fuel + MTOW/100 objective): paper (left) vs omd Lane B reproduction (right), 5x5 grid.*
+
 ## Local setup
 
 Clone and install, then start Claude Code from the repo root. The `.mcp.json` already configures all three servers as local MCP connections.
@@ -54,6 +67,7 @@ This copies the CLI-guide skills from each package into `.claude/skills/` where 
 | `hangar-oas` | `hangar.oas` | OpenAeroStruct aerostructural analysis server | `oas-cli`, `oas-server` |
 | `hangar-ocp` | `hangar.ocp` | OpenConcept aircraft conceptual design and mission analysis server | `ocp-cli`, `ocp-server` |
 | `hangar-pyc` | `hangar.pyc` | pyCycle gas turbine cycle analysis server | `pyc-cli`, `pyc-server` |
+| `hangar-omd` | `hangar.omd` | General-purpose OpenMDAO plan runner -- YAML plans, factory registry, multi-tool composition, provenance DAG | `omd-cli` |
 | `hangar-viewer` | `hangar.viewer` | Unified provenance viewer for Hangar tool servers | `hangar-viewer` |
 
 These packages are not on PyPI. Install from the repo:

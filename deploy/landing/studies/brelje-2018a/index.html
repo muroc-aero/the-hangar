@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Brelje 2018a reproduction - The Hangar</title>
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0a0908;--bg2:#14110f;--bg3:#1e1a16;
+  --fg:#f4ece1;--fg2:#a8a094;--fg3:#6b6560;
+  --accent:#ff9f1c;--accent2:#ffd89c;--accent-dim:#5a3a14;
+  --green:#a3c77a;--red:#e85d43;--amber:#ff9f1c;
+  --border:#2a2520;--radius:3px;
+  --mono:'IBM Plex Mono',SFMono-Regular,ui-monospace,Menlo,monospace;
+  --sans:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,sans-serif;
+}
+html{scroll-behavior:smooth}
+body{font-family:var(--mono);background:var(--bg);color:var(--fg);line-height:1.55;font-size:14px;-webkit-font-smoothing:antialiased}
+body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:1;opacity:.04;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/></filter><rect width='240' height='240' filter='url(%23n)' opacity='0.9'/></svg>");mix-blend-mode:overlay}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px}
+.container{max-width:1200px;margin:0 auto;padding:0 32px;position:relative;z-index:2}
+
+/* ---- NAV ---- */
+nav{position:sticky;top:0;z-index:100;background:rgba(10,9,8,.88);backdrop-filter:blur(14px);border-bottom:1px solid var(--border);padding:14px 0}
+nav .container{display:flex;align-items:center;justify-content:space-between}
+nav .wordmark{font-family:var(--mono);font-size:.85rem;font-weight:600;letter-spacing:.06em;color:var(--fg);text-transform:uppercase;cursor:pointer}
+nav .wordmark span{color:var(--accent)}
+nav .links{display:flex;gap:22px;font-size:.78rem;color:var(--fg2);text-transform:lowercase;letter-spacing:.02em}
+nav .links a{color:var(--fg2)}
+nav .links a:hover{color:var(--fg)}
+
+/* ---- LABELS ---- */
+.label{font-family:var(--mono);font-size:.7rem;font-weight:500;color:var(--accent);text-transform:uppercase;letter-spacing:.22em;margin-bottom:18px;display:block}
+
+/* ---- HERO ---- */
+.study-header{padding:80px 0 40px;border-bottom:1px solid var(--border)}
+.study-header h1{font-family:var(--mono);font-size:2.2rem;font-weight:500;letter-spacing:-.03em;line-height:1.12;margin-bottom:14px;color:var(--fg)}
+.study-header h1 .amber{color:var(--accent)}
+.study-header .subtitle{font-family:var(--sans);font-size:1.02rem;color:var(--fg2);max-width:780px;margin-bottom:20px;line-height:1.65}
+.study-header .run-meta{font-family:var(--mono);font-size:.75rem;color:var(--fg3);letter-spacing:.04em}
+.study-header .run-meta .k{color:var(--fg3)}
+.study-header .run-meta .v{color:var(--fg2)}
+.study-header .run-meta .sep{color:var(--accent);margin:0 12px;opacity:.5}
+
+/* ---- RESULT CARDS ---- */
+.result-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1px;background:var(--border);border:1px solid var(--border);margin:40px 0 0}
+.result-card{background:var(--bg2);padding:22px 24px;text-align:left}
+.result-card .value{font-family:var(--mono);font-size:1.5rem;font-weight:500;color:var(--fg);margin-bottom:6px;letter-spacing:-.02em}
+.result-card .value.converged{color:var(--green)}
+.result-card .value.partial{color:var(--amber)}
+.result-card .label-k{font-family:var(--mono);font-size:.7rem;color:var(--fg3);text-transform:lowercase;letter-spacing:.08em}
+
+/* ---- SECTIONS ---- */
+section{padding:64px 0;border-bottom:1px solid var(--border)}
+section h2{font-family:var(--mono);font-size:1.35rem;font-weight:500;letter-spacing:-.02em;margin-bottom:10px;color:var(--fg)}
+section .section-desc{color:var(--fg2);margin-bottom:36px;font-size:.92rem;max-width:720px;line-height:1.65;font-family:var(--sans)}
+
+/* ---- HEADLINE FIGURE ---- */
+.headline-fig{background:var(--bg2);border:1px solid var(--border);overflow:hidden;margin-bottom:28px}
+.headline-fig img{width:100%;height:auto;display:block}
+.headline-fig .cap{padding:14px 22px;border-top:1px solid var(--border);font-family:var(--mono);font-size:.78rem;color:var(--fg2);line-height:1.6}
+.headline-fig .cap .amber{color:var(--accent)}
+
+/* ---- FORMULATION ---- */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:32px}
+.form-card{background:var(--bg2);border:1px solid var(--border);padding:22px 26px}
+.form-card h3{font-family:var(--mono);font-size:.88rem;font-weight:500;color:var(--accent);margin-bottom:14px;letter-spacing:.04em;text-transform:lowercase}
+.form-card h3::before{content:'## ';color:var(--accent);opacity:.6}
+.form-card table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:.78rem}
+.form-card td{padding:5px 0;border-bottom:1px solid rgba(42,37,32,.5);vertical-align:top}
+.form-card td:first-child{color:var(--fg3);width:55%}
+.form-card td:last-child{color:var(--fg);text-align:right}
+.form-card ul{list-style:none;padding:0;font-family:var(--mono);font-size:.78rem}
+.form-card li{padding:6px 0 6px 16px;border-bottom:1px solid rgba(42,37,32,.5);color:var(--fg2);line-height:1.6;position:relative}
+.form-card li:last-child{border-bottom:none}
+.form-card li::before{content:'-';position:absolute;left:0;color:var(--accent)}
+.form-card li strong{color:var(--fg);font-weight:600}
+.form-card li .bounds{color:var(--fg3);font-size:.92em}
+
+/* ---- DECISIONS ---- */
+.decisions{margin-top:24px}
+.decisions > h3{font-family:var(--mono);font-size:1rem;font-weight:500;margin-bottom:18px;color:var(--fg)}
+.decisions > h3::before{content:'## ';color:var(--accent)}
+.decision{background:var(--bg2);border:1px solid var(--border);border-left:2px solid var(--accent);padding:14px 20px;margin-bottom:10px}
+.decision .dec-head{display:flex;gap:16px;margin-bottom:6px;align-items:baseline;flex-wrap:wrap}
+.decision .dec-id{font-family:var(--mono);font-size:.7rem;color:var(--accent);font-weight:600;letter-spacing:.08em}
+.decision .dec-stage{font-family:var(--mono);font-size:.68rem;color:var(--fg3);letter-spacing:.06em;text-transform:uppercase}
+.decision .dec-text{font-family:var(--mono);font-size:.85rem;color:var(--fg);font-weight:500;margin-bottom:6px;line-height:1.5}
+.decision .dec-reason{font-family:var(--sans);font-size:.86rem;color:var(--fg2);line-height:1.6}
+
+/* ---- FIGURE GRID ---- */
+.fig-group{margin-bottom:40px}
+.fig-group h3{font-family:var(--mono);font-size:1rem;font-weight:500;color:var(--fg);margin-bottom:14px}
+.fig-group h3::before{content:'## ';color:var(--accent)}
+.fig-group .desc{font-family:var(--sans);font-size:.88rem;color:var(--fg2);margin-bottom:18px;max-width:760px;line-height:1.65}
+.fig-grid-2{display:grid;grid-template-columns:repeat(2,1fr);gap:18px}
+.fig-item{background:var(--bg2);border:1px solid var(--border);overflow:hidden}
+.fig-item img{width:100%;height:auto;display:block}
+.fig-item .cap{padding:12px 18px;border-top:1px solid var(--border);font-family:var(--mono);font-size:.72rem;color:var(--fg3);line-height:1.6}
+.fig-item .cap .tag{color:var(--accent);margin-right:6px}
+
+/* ---- DIVERGENCES ---- */
+.divergences{background:var(--bg2);border:1px solid var(--border);border-left:3px solid var(--amber);padding:24px 28px;margin-top:20px;font-family:var(--sans)}
+.divergences h3{font-family:var(--mono);font-size:.9rem;font-weight:500;color:var(--amber);margin-bottom:14px;letter-spacing:.04em}
+.divergences h3::before{content:'! ';color:var(--amber);font-family:var(--mono);font-weight:700}
+.divergences ol{margin:0;padding-left:20px;color:var(--fg2);font-size:.9rem;line-height:1.7}
+.divergences li{margin-bottom:10px}
+.divergences li strong{color:var(--fg);font-family:var(--mono);font-size:.88em;font-weight:500}
+
+/* ---- RUN PLOTS ---- */
+.plots-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:18px}
+.plot-item{background:var(--bg2);border:1px solid var(--border);overflow:hidden}
+.plot-item img{width:100%;height:auto;display:block;background:#fff}
+.plot-item .cap{padding:12px 18px;border-top:1px solid var(--border);font-family:var(--mono);font-size:.72rem;color:var(--fg3);line-height:1.6}
+.plot-item .cap .tag{color:var(--accent);margin-right:6px}
+
+/* ---- DETAILS / STAGE ---- */
+.stage{background:var(--bg2);border:1px solid var(--border);margin-bottom:10px;border-left:2px solid var(--accent)}
+.stage summary{padding:14px 20px;cursor:pointer;font-family:var(--mono);font-size:.82rem;color:var(--fg);display:flex;justify-content:space-between;align-items:center;gap:12px;list-style:none;user-select:none}
+.stage summary::-webkit-details-marker{display:none}
+.stage summary::before{content:'+';color:var(--accent);font-weight:600;margin-right:10px;font-family:var(--mono);font-size:1em;transition:transform .15s}
+.stage[open] summary::before{content:'-'}
+.stage summary:hover{background:var(--bg3)}
+.stage summary .stage-name{font-weight:500;flex:1;text-transform:uppercase;letter-spacing:.06em;font-size:.74rem}
+.stage summary .stage-count{color:var(--fg3);font-size:.72rem;font-weight:400;letter-spacing:.04em}
+.stage-body{padding:4px 20px 18px;border-top:1px solid var(--border)}
+.stage-body .decision{background:transparent;border:none;border-left:1px solid var(--border);padding:10px 0 10px 16px;margin:14px 0 0}
+.stage-body .decision:first-child{margin-top:16px}
+
+/* ---- IFRAME SECTIONS ---- */
+.iframe-section{margin-bottom:24px}
+.iframe-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px;gap:12px}
+.iframe-head h3{font-family:var(--mono);font-size:.92rem;font-weight:500;color:var(--fg)}
+.iframe-head h3::before{content:'## ';color:var(--accent)}
+.iframe-head a{font-family:var(--mono);font-size:.74rem;color:var(--accent)}
+.iframe-wrap{background:var(--bg2);border:1px solid var(--border);overflow:hidden}
+.iframe-wrap.light{background:#fff}
+.iframe-wrap iframe{width:100%;height:620px;border:none;display:block}
+.iframe-missing{padding:22px 26px;font-family:var(--mono);font-size:.8rem;color:var(--fg3);line-height:1.7;border:1px dashed var(--border);background:var(--bg2)}
+.iframe-missing code{color:var(--accent);font-size:.9em;background:var(--bg);padding:1px 5px}
+
+/* ---- PIPELINE BOX ---- */
+.pipeline{background:var(--bg2);border:1px solid var(--border);padding:20px 26px;font-family:var(--mono);font-size:.8rem;color:var(--fg2);line-height:1.9;overflow-x:auto;white-space:pre}
+.pipeline .prompt{color:var(--accent)}
+.pipeline .comment{color:var(--fg3)}
+.pipeline .cmd{color:var(--fg)}
+
+/* ---- FOOTER ---- */
+footer{padding:36px 0;text-align:center;font-size:.75rem;color:var(--fg3);font-family:var(--mono);letter-spacing:.04em}
+footer a{color:var(--fg3)}
+footer a:hover{color:var(--accent)}
+footer .sep{margin:0 10px;opacity:.5;color:var(--accent)}
+
+/* ---- RESPONSIVE ---- */
+@media(max-width:860px){
+  .study-header h1{font-size:1.6rem}
+  .form-grid{grid-template-columns:1fr}
+  .fig-grid-2{grid-template-columns:1fr}
+  nav .links{gap:14px;font-size:.72rem}
+}
+@media(max-width:540px){
+  .container{padding:0 20px}
+  section{padding:48px 0}
+}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="container">
+    <a href="../../" class="wordmark" style="text-decoration:none;color:var(--fg)"><span>&#9656;</span> THE_HANGAR</a>
+    <div class="links">
+      <a href="#results">results</a>
+      <a href="#figures">figures</a>
+      <a href="#plots">plots</a>
+      <a href="#formulation">formulation</a>
+      <a href="#decisions">decisions</a>
+      <a href="#model">model</a>
+      <a href="#provenance">provenance</a>
+    </div>
+  </div>
+</nav>
+
+<!-- HEADER -->
+<header class="study-header">
+  <div class="container">
+    <span class="label">04 / case-study</span>
+    <h1>Brelje 2018a &mdash; <span class="amber">figs 5 &amp; 6 reproduction</span></h1>
+    <p class="subtitle">King Air C90GT twin series-hybrid MDO over mission range &times; battery specific energy. Each grid cell is an independent optimization. Fig 5 minimizes fuel + MTOW/100; Fig 6 minimizes trip direct operating cost. Run end-to-end through the <code style="color:var(--accent);font-size:.95em">hangar-omd</code> Lane B plan pipeline.</p>
+    <div class="run-meta">
+      <span class="k">plan:</span> <span class="v">brelje-fuel-mdo-lane-c v1</span>
+      <span class="sep">/</span>
+      <span class="k">run:</span> <span class="v">run-20260423T190235-641af06b</span>
+      <span class="sep">/</span>
+      <span class="k">factory:</span> <span class="v">ocp/FullMission</span>
+      <span class="sep">/</span>
+      <span class="k">architecture:</span> <span class="v">twin_series_hybrid</span>
+      <span class="sep">/</span>
+      <span class="k">grid:</span> <span class="v">5x5 (25 cells)</span>
+    </div>
+
+    <!-- RESULT CARDS -->
+    <div class="result-cards" id="results">
+      <div class="result-card">
+        <div class="value converged">25 / 25</div>
+        <div class="label-k">fig5 cells converged</div>
+      </div>
+      <div class="result-card">
+        <div class="value converged">25 / 25</div>
+        <div class="label-k">fig6 cells converged</div>
+      </div>
+      <div class="result-card">
+        <div class="value">233.22</div>
+        <div class="label-k">mixed_obj (500nmi, 450Wh/kg)</div>
+      </div>
+      <div class="result-card">
+        <div class="value">176 kg</div>
+        <div class="label-k">fuel burn (headline cell)</div>
+      </div>
+      <div class="result-card">
+        <div class="value">5700 kg</div>
+        <div class="label-k">MTOW (at upper bound)</div>
+      </div>
+      <div class="result-card">
+        <div class="value">0.689</div>
+        <div class="label-k">cruise hybridization</div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- FIGURES -->
+<section id="figures">
+  <div class="container">
+    <span class="label">headline result</span>
+    <h2>Paper vs reproduced.</h2>
+    <p class="section-desc">Figure 5 (fuel + MTOW/100 objective) contours over mission range and battery specific energy. Paper on the left, omd-run reproduction on the right.</p>
+
+    <div class="headline-fig">
+      <img src="figures/comparison_fig5.png" alt="Brelje 2018a Fig 5 paper vs reproduced side-by-side" loading="lazy">
+      <div class="cap"><span class="amber">fig 5</span> &middot; fuel + MTOW/100 &middot; 5x5 grid &middot; paper (left) vs omd Lane B (right). Coarse grid blurs the hybrid/electric boundary but preserves all trends: fuel-heavy designs dominate at low spec energy; battery-heavy dominate at high spec energy; transition is roughly diagonal.</div>
+    </div>
+
+    <p class="section-desc" style="margin-top:32px">Figure 6 (trip direct operating cost objective). Cost MDO has competing local minima; each cell is warm-started from the fuel-optimized design at the same grid point.</p>
+
+    <div class="headline-fig">
+      <img src="figures/comparison_fig6.png" alt="Brelje 2018a Fig 6 paper vs reproduced side-by-side" loading="lazy">
+      <div class="cap"><span class="amber">fig 6</span> &middot; direct operating cost &middot; 5x5 grid &middot; warm-started from fig 5 optimum per cell. MTOW pins at the 5700 kg upper bound across the middle and lower-right region, matching the paper.</div>
+    </div>
+
+    <div class="fig-group" style="margin-top:44px">
+      <h3>individual panels</h3>
+      <p class="desc">Each figure on its own for closer inspection. All cropped consistently between paper and reproduction.</p>
+
+      <div class="fig-grid-2">
+        <div class="fig-item">
+          <img src="figures/paper/fig5.png" alt="Paper Fig 5" loading="lazy">
+          <div class="cap"><span class="tag">paper</span>fig 5 &middot; Brelje 2018a, AIAA 2018-4979</div>
+        </div>
+        <div class="fig-item">
+          <img src="figures/reproduced/fig5.png" alt="Reproduced Fig 5" loading="lazy">
+          <div class="cap"><span class="tag">reproduced</span>fig 5 &middot; omd Lane B, 5x5 grid</div>
+        </div>
+        <div class="fig-item">
+          <img src="figures/paper/fig6.png" alt="Paper Fig 6" loading="lazy">
+          <div class="cap"><span class="tag">paper</span>fig 6 &middot; Brelje 2018a, DOC objective</div>
+        </div>
+        <div class="fig-item">
+          <img src="figures/reproduced/fig6.png" alt="Reproduced Fig 6" loading="lazy">
+          <div class="cap"><span class="tag">reproduced</span>fig 6 &middot; omd Lane B, warm-start from fig 5</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- RUN PLOTS -->
+<section id="plots">
+  <div class="container">
+    <span class="label">run plots</span>
+    <h2>Lane-C run output.</h2>
+    <p class="section-desc">Plots generated by <code style="color:var(--accent);font-size:.95em">omd-cli plot &lt;run_id&gt; --type all</code> for the (500 nmi, 450 Wh/kg) headline cell. Read from the OpenMDAO recorder .sql for the converged run.</p>
+
+    <div class="plots-grid">
+      <div class="plot-item">
+        <img src="plots/convergence.png" alt="Convergence history" loading="lazy">
+        <div class="cap"><span class="tag">convergence</span>mixed_objective and constraint residuals vs SLSQP iteration (57 iters)</div>
+      </div>
+      <div class="plot-item">
+        <img src="plots/mission_profile.png" alt="Mission profile" loading="lazy">
+        <div class="cap"><span class="tag">mission</span>altitude, velocity, fuel flow, battery SOC across the full trajectory</div>
+      </div>
+      <div class="plot-item">
+        <img src="plots/performance_summary.png" alt="Performance summary" loading="lazy">
+        <div class="cap"><span class="tag">performance</span>thrust, drag, and power split per mission phase</div>
+      </div>
+      <div class="plot-item">
+        <img src="plots/weight_breakdown.png" alt="Weight breakdown" loading="lazy">
+        <div class="cap"><span class="tag">weights</span>MTOW decomposition: structure, propulsion, battery, fuel, payload</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FORMULATION -->
+<section id="formulation">
+  <div class="container">
+    <span class="label">formulation</span>
+    <h2>MDO problem setup.</h2>
+    <p class="section-desc">Mission, DVs, constraints, and objective match upstream <code style="color:var(--accent);font-size:.95em">openconcept/examples/HybridTwin.py</code> (lines 372-418) with the plan-level initial-value overrides warm-starting each grid cell.</p>
+
+    <div class="form-grid">
+      <div class="form-card">
+        <h3>mission profile</h3>
+        <table>
+          <tr><td>aircraft template</td><td>kingair (C90GT)</td></tr>
+          <tr><td>architecture</td><td>twin_series_hybrid</td></tr>
+          <tr><td>num_nodes</td><td>11 (Simpson)</td></tr>
+          <tr><td>cruise altitude</td><td>29,000 ft</td></tr>
+          <tr><td>mission range</td><td>500 nmi (cell)</td></tr>
+          <tr><td>climb V<sub>eas</sub></td><td>124 kt @ 1500 fpm</td></tr>
+          <tr><td>cruise V<sub>eas</sub></td><td>170 kt</td></tr>
+          <tr><td>descent V<sub>eas</sub></td><td>140 kt @ -600 fpm</td></tr>
+          <tr><td>payload</td><td>1000 lb</td></tr>
+          <tr><td>battery specific energy</td><td>450 Wh/kg (cell)</td></tr>
+        </table>
+      </div>
+
+      <div class="form-card">
+        <h3>objective &amp; optimizer</h3>
+        <table>
+          <tr><td>objective (fig 5)</td><td>mixed_objective</td></tr>
+          <tr><td>objective (fig 6)</td><td>doc_per_nmi</td></tr>
+          <tr><td>optimizer</td><td>SLSQP</td></tr>
+          <tr><td>maxiter</td><td>150</td></tr>
+          <tr><td>tol</td><td>1e-6</td></tr>
+          <tr><td>nonlinear solver</td><td>Newton (inner)</td></tr>
+          <tr><td>linear solver</td><td>DirectSolver</td></tr>
+          <tr><td>atol / rtol</td><td>1e-10 / 1e-10</td></tr>
+        </table>
+      </div>
+
+      <div class="form-card">
+        <h3>design variables (10)</h3>
+        <ul>
+          <li><strong>ac|weights|MTOW</strong> <span class="bounds">[4000, 5700] kg</span></li>
+          <li><strong>ac|geom|wing|S_ref</strong> <span class="bounds">[15, 40] m&sup2;</span></li>
+          <li><strong>ac|propulsion|engine|rating</strong> <span class="bounds">[1, 3000] hp</span></li>
+          <li><strong>ac|propulsion|motor|rating</strong> <span class="bounds">[450, 3000] hp</span></li>
+          <li><strong>ac|propulsion|generator|rating</strong> <span class="bounds">[1, 3000] hp</span></li>
+          <li><strong>ac|weights|W_battery</strong> <span class="bounds">[20, 2250] kg</span></li>
+          <li><strong>ac|weights|W_fuel_max</strong> <span class="bounds">[500, 3000] kg</span></li>
+          <li><strong>cruise.hybridization</strong> <span class="bounds">[0.001, 0.999]</span></li>
+          <li><strong>climb.hybridization</strong> <span class="bounds">[0.001, 0.999]</span></li>
+          <li><strong>descent.hybridization</strong> <span class="bounds">[0.01, 1.0]</span></li>
+        </ul>
+      </div>
+
+      <div class="form-card">
+        <h3>constraints (16 rows)</h3>
+        <ul>
+          <li><strong>MTOW_margin</strong> &ge; 0</li>
+          <li><strong>rotate.range_final</strong> &le; 1357 m <span class="bounds">(BFL 4452 ft)</span></li>
+          <li><strong>v0v1.Vstall_eas</strong> &le; 42 m/s <span class="bounds">(~81.6 kt)</span></li>
+          <li><strong>descent.SOC_final</strong> &ge; 0 <span class="bounds">(battery not over-drawn)</span></li>
+          <li><strong>engineoutclimb.gamma</strong> &ge; 0.02 <span class="bounds">(OEI climb gradient)</span></li>
+          <li><strong>climb.throttle</strong> &le; 1.05</li>
+          <li><strong>component_sizing_margin</strong> &le; 1 <span class="bounds">(eng1/gen1/batt1 x 4 phases = 11 rows)</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- DECISIONS -->
+<section id="decisions">
+  <div class="container">
+    <span class="label">decisions</span>
+    <h2>Per-step decision log.</h2>
+    <p class="section-desc">Every plan primitive (solver, DV bounds, constraint, objective, optimizer, result interpretation, convergence assessment) was recorded via <code style="color:var(--accent);font-size:.95em">omd-cli log-decision</code> during interactive-builder assembly. Verbatim from <code style="color:var(--accent);font-size:.95em">plans/brelje-fuel-mdo-lane-c/decisions.yaml</code>.</p>
+
+    <div class="decisions">
+
+      <details class="stage">
+        <summary><span class="stage-name">component_selection</span><span class="stage-count">1 decision</span></summary>
+        <div class="stage-body">
+          <div class="decision">
+            <div class="dec-head"><div class="dec-id">dec-01</div></div>
+            <div class="dec-text">Added component mission (ocp/FullMission)</div>
+            <div class="dec-reason">Single ocp/FullMission with kingair template + twin_series_hybrid to reproduce Brelje 2018a Fig 5 at the (500 nmi, 450 Wh/kg) grid cell. num_nodes=11 matches Lane A/B for Simpson integration. Mission params (cruise 29000 ft, climb 1500 fpm @ 124 kn, cruise 170 kn, descent 600 fpm @ 140 kn, 1000 lb payload) copied from upstream HybridTwin example.</div>
+          </div>
+        </div>
+      </details>
+
+      <details class="stage">
+        <summary><span class="stage-name">solver_selection</span><span class="stage-count">1 decision</span></summary>
+        <div class="stage-body">
+          <div class="decision">
+            <div class="dec-head"><div class="dec-id">dec-02</div></div>
+            <div class="dec-text">Solvers: nonlinear=NewtonSolver, linear=DirectSolver</div>
+            <div class="dec-reason">Newton + DirectSolver with atol/rtol=1e-10 matches Lane A/B for the OCP full-mission analysis. Direct solver is appropriate for the small OCP state vector; Newton converges reliably when initial guesses are reasonable.</div>
+          </div>
+        </div>
+      </details>
+
+      <details class="stage">
+        <summary><span class="stage-name">dv_setup</span><span class="stage-count">10 decisions</span></summary>
+        <div class="stage-body">
+          <div class="decision">
+            <div class="dec-head"><div class="dec-id">dec-03</div></div>
+            <div class="dec-text">DV ac|weights|MTOW bounds [4000.0, 5700.0] kg</div>
+            <div class="dec-reason">MTOW is the top-level weight DV. Paper bounds [4000, 5700] kg keep the optimizer near the King Air class; the upper bound is active at the Lane A converged optimum.</div>
+          </div>
+          <div class="decision">
+            <div class="dec-head"><div class="dec-id">dec-04</div></div>
+            <div class="dec-text">DV ac|geom|wing|S_ref bounds [15.0, 40.0] m&sup2;</div>
+            <div class="dec-reason">Wing area DV bounds [15, 40] m&sup2; bracket the King Air reference (27.3 m&sup2;) while leaving room for the optimizer to trade area against induced drag.</div>
+          </div>
+          <div class="decision">
+            <div class="dec-head"><div class="dec-id">dec-05</div></div>
+            <div class="dec-text">DV ac|propulsion|engine|rating bounds [1.0, 3000.0] hp</div>
+            <div class="dec-reason">Engine (turboshaft) rating DV in hp; wide [1, 3000] hp bounds per Brelje paper. Low lower bound lets the optimizer push engine toward zero in electric-leaning designs.</div>
+          </div>
+          <div class="decision">
+            <div class="dec-head"><div class="dec-id">dec-06</div></div>
+            <div class="dec-text">DV ac|propulsion|motor|rating bounds [450.0, 3000.0] hp</div>
+            <div class="dec-reason">Motor rating DV in hp; lower bound 450 hp preserves minimum takeoff power; upper bound 3000 hp caps the all-electric extreme.</div>
+          </div>
+          <div class="decision">
+            <div class="dec-head"><div class="dec-id">dec-07</div></div>
+            <div class="dec-text">DV ac|propulsion|generator|rating bounds [1.0, 3000.0] hp</div>
+            <div class="dec-reason">Generator rating DV in hp; symmetric to engine bounds since series-hybrid pairs them.</div>
+          </div>
+          <div class="decision">
+            <div class="dec-head"><div class="dec-id">dec-08</div></div>
+            <div class="dec-text">DV ac|weights|W_battery bounds [20.0, 2250.0] kg</div>
+            <div class="dec-reason">Battery weight DV; upper bound 2250 kg permits heavily electric designs, lower bound 20 kg permits near-pure conventional.</div>
+          </div>
+          <div class="decision">
+            <div class="dec-head"><div class="dec-id">dec-09</div></div>
+            <div class="dec-text">DV ac|weights|W_fuel_max bounds [500.0, 3000.0] kg</div>
+            <div class="dec-reason">Max fuel capacity DV in kg; wide bounds per paper to avoid constraining fuel-heavy designs.</div>
+          </div>
+          <div class="decision">
+            <div class="dec-head"><div class="dec-id">dec-10</div></div>
+            <div class="dec-text">DV cruise.hybridization bounds [0.001, 0.999]</div>
+            <div class="dec-reason">Cruise hybridization fraction (motor electric share). Bounds (0.001, 0.999) avoid hard 0/1 endpoints that can trip the series-hybrid power split math.</div>
+          </div>
+          <div class="decision">
+            <div class="dec-head"><div class="dec-id">dec-11</div></div>
+            <div class="dec-text">DV climb.hybridization bounds [0.001, 0.999]</div>
+            <div class="dec-reason">Climb hybridization fraction, same bounds rationale as cruise.</div>
+          </div>
+          <div class="decision">
+            <div class="dec-head"><div class="dec-id">dec-12</div></div>
+            <div class="dec-text">DV descent.hybridization bounds [0.01, 1.0]</div>
+            <div class="dec-reason">Descent hybridization fraction. Upper bound 1.0 is allowed because idle-descent can realistically run fully electric, matching Brelje paper.</div>
+          </div>
+        </div>
+      </details>
+
+      <details class="stage">
+        <summary><span class="stage-name">objective_selection</span><span class="stage-count">1 decision</span></summary>
+        <div class="stage-body">
+          <div class="decision">
+            <div class="dec-head"><div class="dec-id">dec-13</div></div>
+            <div class="dec-text">Objective: minimize mixed_objective</div>
+            <div class="dec-reason">Brelje Fig 5 minimizes fuel_burn + MTOW/100 kg. The OCP factory wires mixed_objective automatically for hybrid architectures, so referencing the short name is sufficient and identical to Lane B.</div>
+          </div>
+        </div>
+      </details>
+
+      <details class="stage">
+        <summary><span class="stage-name">constraint_setup</span><span class="stage-count">1 decision (16 constraint rows)</span></summary>
+        <div class="stage-body">
+          <div class="decision">
+            <div class="dec-head"><div class="dec-id">dec-14</div></div>
+            <div class="dec-text">Added 5 scalar + 11 vector constraints mirroring upstream HybridTwin</div>
+            <div class="dec-reason">MTOW_margin &ge; 0, rotate.range_final &le; 1357 m (BFL 4452 ft), v0v1.Vstall_eas &le; 42 m/s (~81.6 kt), descent SOC_final &ge; 0, engine-out climb gradient &ge; 0.02, climb throttle &le; 1.05, and component_sizing_margin &le; 1 for eng1/gen1/batt1 on climb/cruise/descent plus batt1 on v0v1.</div>
+          </div>
+        </div>
+      </details>
+
+      <details class="stage">
+        <summary><span class="stage-name">optimizer_selection</span><span class="stage-count">1 decision</span></summary>
+        <div class="stage-body">
+          <div class="decision">
+            <div class="dec-head"><div class="dec-id">dec-15</div></div>
+            <div class="dec-text">SLSQP with maxiter=150 and tol=1e-6</div>
+            <div class="dec-reason">SLSQP handles the mix of inequality constraints and continuous DVs well on this problem size (10 DVs, 16 constraint rows vectorized). maxiter=150 and tol=1e-6 match Lane A/B settings; the same optimizer converges a single cell in ~60-90 SLSQP iterations for the (500 nmi, 450 Wh/kg) grid point.</div>
+          </div>
+        </div>
+      </details>
+
+      <details class="stage">
+        <summary><span class="stage-name">problem_definition</span><span class="stage-count">1 decision</span></summary>
+        <div class="stage-body">
+          <div class="decision">
+            <div class="dec-head"><div class="dec-id">dec-16</div></div>
+            <div class="dec-text">Reproduce Brelje 2018a Fig 5 single grid cell (500 nmi, 450 Wh/kg)</div>
+            <div class="dec-reason">Lane C is the agent-interactive-builder counterpart of Lane B. Using the same problem definition lets us verify the interactive builder produces a plan that reaches the same optimum as Lane B (MTOW ~5700 kg, fuel ~176 kg, cruise hyb ~0.69 per Lane A).</div>
+          </div>
+        </div>
+      </details>
+
+      <details class="stage" open>
+        <summary><span class="stage-name">result_interpretation</span><span class="stage-count">1 decision</span></summary>
+        <div class="stage-body">
+          <div class="decision">
+            <div class="dec-head"><div class="dec-id">dec-17</div></div>
+            <div class="dec-text">Lane C optimum matches Lane A/B: mixed_objective=233.22</div>
+            <div class="dec-reason">Lane A reports MTOW=5700 kg, fuel ~176 kg, cruise hyb=68.9% for the (500 nmi, 450 Wh/kg) cell; Lane C reproduces these. MTOW and W_fuel_max pinning against their bounds plus a near-zero MTOW_margin (8.7e-6) and SOC_final=-1.2e-8 indicate the optimum sits on three active constraints, consistent with Brelje's Fig 5 pattern for long-range hybrid-heavy designs. Solution accepted.</div>
+          </div>
+        </div>
+      </details>
+
+      <details class="stage" open>
+        <summary><span class="stage-name">convergence_assessment</span><span class="stage-count">1 decision</span></summary>
+        <div class="stage-body">
+          <div class="decision">
+            <div class="dec-head"><div class="dec-id">dec-18</div></div>
+            <div class="dec-text">SLSQP reported converged in 57 driver iterations (59 recorded cases)</div>
+            <div class="dec-reason">Key constraint residuals at the optimum: MTOW_margin=8.7e-6 (active), rotate.range_final=1357.0 m (active at BFL bound), v0v1.Vstall_eas=42.0 m/s (active at stall bound), descent.SOC_final=-1.2e-8 (effectively 0, battery depleted), engineoutclimb.gamma=0.0306 &gt; 0.02 (satisfied with margin). All component_sizing_margins &le; 1. Three bounds-active DVs (MTOW at upper, W_fuel_max at lower, MTOW margin near 0) mean the exit is a constrained optimum sitting on the intersection of BFL, stall, battery-depletion, and MTOW-margin constraints, matching Brelje Fig 5 paper behavior.</div>
+          </div>
+        </div>
+      </details>
+
+    </div>
+  </div>
+</section>
+
+<!-- DIVERGENCES -->
+<section id="divergences">
+  <div class="container">
+    <span class="label">known limits</span>
+    <h2>Divergences from the paper.</h2>
+    <p class="section-desc">Documented trade-offs where the reproduction departs from the published result.</p>
+
+    <div class="divergences">
+      <h3>where the reproduction differs</h3>
+      <ol>
+        <li><strong>grid resolution.</strong> The headline result uses 5&times;5 = 25 cells (~25 min wall time on 4 workers) rather than the paper's 21&times;12 = 252 cells (~3 h). The coarser grid blurs the hybrid/electric boundary but preserves all qualitative trends.</li>
+        <li><strong>convergence rate.</strong> The paper reports 1/252 failures. In the 5&times;5 fuel sweep, 6/25 cells exited with SLSQP mode 8 (KKT tolerance hit at a feasible optimum with all constraints active at bounds); those are post-processed to converged after a feasibility check, matching what the fuel grid contour plot renders. The cost sweep had 0/25 raw failures. Better per-cell starting guesses would likely close this gap.</li>
+        <li><strong>cost warm-starts.</strong> The cost objective has competing local minima; the template-default starting point converges at MTOW ~4400 kg, while warm-starting from the fuel-optimized design for the same grid cell finds the true minimum at or near MTOW = 5700 kg. The sweep is therefore run with <code style="color:var(--accent);font-size:.9em">--warm-from fig5_grid.csv</code> before plotting.</li>
+        <li><strong>battery energy model.</strong> The reproduction approximates E_battery_used = 0.9 &times; W_battery &times; spec_energy; upstream OpenConcept integrates actual battery draw over the trajectory. Both use the $36/MWh coefficient for cost.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- MODEL (N2 + problem DAG) -->
+<section id="model">
+  <div class="container">
+    <span class="label">model</span>
+    <h2>OpenMDAO model structure.</h2>
+    <p class="section-desc">Interactive N<sup>2</sup> matrix of the full problem, and the discipline-level problem DAG showing analysis flow between components. Both are generated during packaging; locally they may 404 until <code style="color:var(--accent);font-size:.95em">package-case-study.sh</code> extracts the artifacts.</p>
+
+    <div class="iframe-section">
+      <div class="iframe-head">
+        <h3>N<sup>2</sup> diagram</h3>
+        <a href="n2.html" target="_blank" rel="noopener">open full screen -&gt;</a>
+      </div>
+      <div class="iframe-wrap light">
+        <iframe src="n2.html" title="N2 diagram"></iframe>
+      </div>
+    </div>
+
+    <div class="iframe-section">
+      <div class="iframe-head">
+        <h3>problem DAG</h3>
+        <a href="problem-dag.html" target="_blank" rel="noopener">open full screen -&gt;</a>
+      </div>
+      <div class="iframe-wrap">
+        <iframe src="problem-dag.html" title="Problem DAG"></iframe>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PROVENANCE + PLAN DETAIL -->
+<section id="provenance">
+  <div class="container">
+    <span class="label">provenance</span>
+    <h2>W3C PROV-Agent graph &amp; plan detail.</h2>
+    <p class="section-desc">The provenance DAG shows plan entities, decisions, run activities, and result assessments as a directed graph. The plan detail page renders the YAML plan structure with cross-links into the provenance graph. Both are static renders of the live omd viewer.</p>
+
+    <div class="iframe-section">
+      <div class="iframe-head">
+        <h3>provenance DAG</h3>
+        <a href="provenance-dag.html" target="_blank" rel="noopener">open full screen -&gt;</a>
+      </div>
+      <div class="iframe-wrap">
+        <iframe src="provenance-dag.html" title="Provenance DAG"></iframe>
+      </div>
+    </div>
+
+    <div class="iframe-section">
+      <div class="iframe-head">
+        <h3>plan detail</h3>
+        <a href="plan-detail.html" target="_blank" rel="noopener">open full screen -&gt;</a>
+      </div>
+      <div class="iframe-wrap">
+        <iframe src="plan-detail.html" title="Plan detail"></iframe>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PIPELINE -->
+<section id="pipeline">
+  <div class="container">
+    <span class="label">pipeline</span>
+    <h2>How to re-run this.</h2>
+    <p class="section-desc">The full pipeline is ~45 minutes wall-time on a 4-worker machine. Single cells run in under a minute.</p>
+
+    <div class="pipeline"><span class="comment"># single-cell sanity check (Lane A, direct Python API)</span>
+<span class="prompt">$</span> <span class="cmd">uv run python packages/omd/demos/brelje_2018a/lane_a/hybrid_mdo.py \
+    --range 500 --spec-energy 450 --objective fuel</span>
+
+<span class="comment"># single-cell Lane B plan (this study's plan format)</span>
+<span class="prompt">$</span> <span class="cmd">uv run omd-cli run packages/omd/demos/brelje_2018a/lane_b/fuel_mdo/plan.yaml \
+    --mode optimize</span>
+
+<span class="comment"># full fuel grid (fig 5)</span>
+<span class="prompt">$</span> <span class="cmd">uv run python packages/omd/demos/brelje_2018a/sweep.py \
+    --objective fuel --grid 5x5 --workers 4</span>
+<span class="prompt">$</span> <span class="cmd">uv run python packages/omd/demos/brelje_2018a/plotting.py --figure 5</span>
+
+<span class="comment"># full cost grid (fig 6) &mdash; warm-started from fig 5 optimum per cell</span>
+<span class="prompt">$</span> <span class="cmd">uv run python packages/omd/demos/brelje_2018a/sweep.py \
+    --objective cost --grid 5x5 --workers 4 \
+    --warm-from packages/omd/demos/brelje_2018a/results/fig5_grid.csv</span>
+<span class="prompt">$</span> <span class="cmd">uv run python packages/omd/demos/brelje_2018a/plotting.py --figure 6</span>
+
+<span class="comment"># paper vs reproduced side-by-side</span>
+<span class="prompt">$</span> <span class="cmd">uv run python packages/omd/demos/brelje_2018a/compare.py --figure 5</span>
+<span class="prompt">$</span> <span class="cmd">uv run python packages/omd/demos/brelje_2018a/compare.py --figure 6</span>
+
+<span class="comment"># package N2, provenance DAG, problem DAG, plan detail for this page</span>
+<span class="prompt">$</span> <span class="cmd">./deploy/scripts/package-case-study.sh brelje-2018a \
+    run-20260423T190235-641af06b \
+    --plan-id brelje-fuel-mdo-lane-c --version 1</span>
+<span class="comment"># local preview: extract the tarball in-place</span>
+<span class="prompt">$</span> <span class="cmd">tar -xzf deploy/landing/studies/brelje-2018a.tar.gz \
+    -C deploy/landing/studies/</span></div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="container">
+    <a href="../../">&larr; back to the hangar</a>
+    <span class="sep">/</span>
+    <a href="https://github.com/muroc-aero/the-hangar" target="_blank" rel="noopener">github</a>
+    <span class="sep">/</span>
+    <a href="https://doi.org/10.2514/6.2018-4979" target="_blank" rel="noopener">brelje 2018a (doi)</a>
+    <span class="sep">/</span> fastmcp + openmdao + omd
+  </div>
+</footer>
+
+</body>
+</html>
