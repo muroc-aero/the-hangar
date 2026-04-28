@@ -72,7 +72,8 @@ adler_2022a/
 ### What is broken or stubbed (root issues)
 
 These are the reasons no figure has been reproduced. They are listed
-in the order they bite:
+in the order they bite. Status confirmed by Phase 0 inspection
+(`STATUS.md`, 2026-04-28).
 
 1. **`oas/AerostructFixedPoint` has no plot provider.**
    `registry.py:228` calls `register_factory(...)` without a
@@ -105,20 +106,49 @@ in the order they bite:
    `climb_fuel_kg` / `cruise_fuel_kg` / `descent_fuel_kg` from the
    sweep CSV but `sweep.py` extracts those values from the recorder
    into `values` (sweep.py:76-77) and never writes them to the row
-   (sweep.py:242-255). The extraction list also still needs the
-   correct paths verified for mission_based runs.
+   (sweep.py:242-255). Path verified via the recorder for a prior
+   mission_based run: `climb.fuel_used_final`,
+   `cruise.fuel_used_final`, `descent.fuel_used_final` all exist as
+   top-level outputs.
 
-5. **`plotting.py:fig11` is a placeholder.** Lines 178-202 render a
-   text box reading "this requires panel-wise wing_sec_forces from the
-   recorder; not implemented." No code reads
-   `cruise_0.aerostruct.aero_states.wing_sec_forces` (or
-   maneuver-equivalent), no JSON dump in sweep.py captures it.
+5. **`plotting.py:fig11` is a placeholder, AND the original plan in
+   §1.3 below cannot work as written.** Lines 178-202 render a text
+   box. The TODO previously suggested reading
+   `cruise_0.drag.aero_analysis.aerostruct_point.aero_states.wing_sec_forces` —
+   that path does not exist. The Bréguet variants compute cruise drag
+   via `AerostructDragPolar`, a Kriging surrogate over precomputed VLM
+   evaluations; the surrogate does not expose per-panel forces at any
+   point. Only the 2.5 g maneuver group (which uses direct VLM+struct
+   coupling) emits
+   `maneuver.aerostructural_maneuver.aerostruct_point.coupled.aero_states.wing_sec_forces`.
+   Phase 1.3 has been revised accordingly.
 
-6. **`plotting.py:fig13` has dead-branch indirection.** Lines 234-238
-   call `fig7(...)._with_suffix(...)` inside an `if False else (...)`
-   that always falls through to `_render_fig7_with_methods`. The
-   `if False` was a debug remnant. The function works but the
-   structure is wrong.
+6. **`plotting.py:fig13` is unreachable dead code AND has a typo
+   bug.** Lines 229-238 contain
+   `fig7(...)._with_suffix(".png") if False else _render_fig7_with_methods(...)`.
+   `Path` has no method `_with_suffix` (typo for `with_suffix`); that
+   branch would raise `AttributeError` on call. The `main()` dispatcher
+   (plotting.py:309-310) bypasses `fig13()` entirely and calls
+   `_render_fig7_with_methods` directly, so the PNG renders correctly
+   today — but anyone importing and calling `fig13()` will crash.
+   Phase 1.6 should just delete the function.
+
+7. **The existing `results/sweep_coarse.csv` is misleading, not just
+   sparse.** The 12-row CSV checked in to disk has every cell marked
+   `converged=True` with wall_time ~120 s. All 12 rows have AR=9.45,
+   taper=0.159, c4sweep=25.0, W_wing=5518.51 — those are the factory's
+   default IVC values. SLSQP exited without moving any DV. The
+   per-design JSON dumps under `results/per_design/` likewise contain
+   default geometry, not optima. Treat the existing artifacts as
+   anti-pattern output to be regenerated, not a partial result to
+   build on.
+
+8. **`sweep.py --warm-from` is partial.** Only the three scalar DVs
+   (AR, taper, c4sweep_deg) are propagated through `_WARM_FIELDS`
+   (sweep.py:111-115). The 11 vector DV elements (twist_cp,
+   toverc_cp, skin, spar) are not warm-started even though those are
+   the most expensive to discover from scratch. The fix is small and
+   should land alongside Phase 1.4 SLSQP retuning.
 
 ### Key paper data for validation
 
@@ -169,6 +199,15 @@ burn objective.
 ---
 
 ## Phase 0 — Configuration review and capability checklist
+
+**Status: complete (2026-04-28).** See `STATUS.md` for the full
+capability matrix and discrepancies found vs the Background section
+above. The Background "What is broken or stubbed" list has been
+updated to reflect Phase 0 findings (items 5-8 are new or revised).
+Phase 1.3 (fig11) has been rewritten because the original plan does
+not work — see that section for details.
+
+Original instructions (kept for reference):
 
 Before changing anything, read the current code and produce an
 honest capability matrix. The "What is wired and verified" / "What
@@ -359,29 +398,70 @@ In `packages/omd/demos/adler_2022a/sweep.py`:
 
 ### 1.3 Implement fig11 panel-wise lift extraction
 
+**Revised after Phase 0**: the original plan (read
+`cruise_0.drag.aero_analysis.aerostruct_point.aero_states.wing_sec_forces`)
+will not work. That path does not exist. For the Bréguet variants
+the cruise drag is computed by `AerostructDragPolar` — a Kriging
+surrogate trained on a precomputed VLM grid — and there is no
+per-panel force exposure anywhere downstream of the surrogate. Only
+the 2.5 g maneuver path emits `wing_sec_forces`.
+
+For the `mission_based` plan the surrogate is wrapped further inside
+the OCP slot infrastructure (`oas/aerostruct` drag slot) so cruise
+panel forces are even less accessible.
+
+Three options, in order of preference:
+
+- **(a) Maneuver-only fig11.** Just plot the 2.5 g maneuver lift
+  distribution for both methods and rename the figure (or annotate
+  it). The paper's fig11 shows cruise + maneuver overlaid — losing
+  cruise costs us one panel of comparison but the more interesting
+  trend (maneuver-driven structural sizing differing between methods)
+  is preserved. This is the cheapest path and is what we should ship
+  for the first reproduction pass.
+- **(b) Reconstruct cruise lift from the surrogate's training data.**
+  `AerostructDragPolar` keeps the underlying VLM problem accessible
+  via its training subgroup. The cruise CL is known
+  (`cruise_0.cl_passthrough.fltcond_CL`). We could re-evaluate the
+  underlying VLM at the converged geometry and that CL post hoc to
+  get cruise panel forces. This is real engineering work, ~1 day.
+- **(c) Switch the cruise drag computation to a direct-VLM coupled
+  group** (drop `AerostructDragPolar` for one variant). Massive
+  scope change, do not pursue for the reproduction.
+
+Implement (a) first. Concrete steps:
+
 In `packages/omd/demos/adler_2022a/sweep.py`:
 
 - Add to `_OUTPUT_KEYS` (line 60):
-  - `cruise_0.drag.aero_analysis.aerostruct_point.aero_states.wing_sec_forces`
-    (verify exact path against the live recorder; OAS path varies by
-    surface name and OAS version)
-  - The maneuver equivalent under `maneuver_aerostruct.`
-- In `_persist_per_design` (line 192), capture both arrays as
-  `lift_dist_cruise_N` and `lift_dist_maneuver_N` lists.
+  `maneuver.aerostructural_maneuver.aerostruct_point.coupled.aero_states.wing_sec_forces`
+  (verified against live recorder run-20260428T090219-0ac31ea9 in Phase 0).
+- In `_persist_per_design` (line 192), capture the array as
+  `lift_dist_maneuver_N` (a list-of-lists since `wing_sec_forces` is
+  shape `(nx-1, ny-1, 3)`).
 
 In `packages/omd/demos/adler_2022a/plotting.py`, replace the
 placeholder `fig11()` (lines 178-202):
 
-- Read `lift_dist_cruise_N` / `lift_dist_maneuver_N` from
-  `results/per_design/{rng}/{method}.json` for `single_point` and
-  `mission_based`.
-- `wing_sec_forces` is shape `(nx-1, ny-1, 3)`. Sum along nx and take
-  the z-component to get spanwise lift per panel.
-- Normalise by cruise_L_total (so peak ≈ 1.3 like the paper).
+- Read `lift_dist_maneuver_N` from
+  `results/per_design/{rng}/{method}.json` for the three Bréguet
+  variants (and `mission_based` once that path is also wired).
+- The array is shape `(nx-1, ny-1, 3)`. Sum along the chord axis
+  (axis=0) and take the z-component (`...[:, 2]`) to get spanwise
+  lift per panel (length ny-1).
+- Normalise by total maneuver lift (so the curve integrates to ~1).
 - Mirror to full span using
   `hangar.omd.plotting._common.mirror_half_wing`.
-- Plot cruise on the left half (negative span), maneuver on the right
-  half, both methods overlaid in their METHOD_COLORS.
+- Plot all available methods overlaid on the full normalised span,
+  one curve per method in the METHOD_COLORS palette.
+- Update the figure title to "2.5 g maneuver lift distribution"
+  (note in the docstring that cruise is unavailable due to
+  surrogate-based drag; document option (b) for a future revisit).
+
+If option (b) is later required, the entry point is OAS's
+`compute_training_data` in `AerostructDragPolar`; the simplest
+approach is to instantiate a single VLMGeometry/AeroPoint at the
+converged geometry and converged cruise CL outside the recorder.
 
 ### 1.4 Fix SLSQP convergence settings
 
@@ -422,10 +502,37 @@ created, set `OMP_NUM_THREADS=1` and either:
 
 After this fix, `--workers 2` should be safe on an 8-core box.
 
-### 1.6 Fix `plotting.py:fig13` dead-branch
+### 1.6 Delete dead `plotting.py:fig13`
 
-Trivial cleanup. Replace the `if False else (...)` indirection with
-a direct call to `_render_fig7_with_methods(df, "fig13")`.
+The `fig13()` function is unreachable: `main()` calls
+`_render_fig7_with_methods(df, "fig13")` directly. Worse, the dead
+branch has a typo (`._with_suffix(".png")`; `Path` has no such
+method) so calling `fig13()` raises `AttributeError`. Just delete
+the function. No replacement needed; `main()` already works.
+
+### 1.8 Make `--warm-from` seed all DVs
+
+Currently `_WARM_FIELDS` (sweep.py:111-115) covers only AR, taper,
+and c4sweep_deg. Extend it (and `_warm_for`,
+`retry_failed.py:53-57`) to also seed the four vector DVs:
+`twist_cp`, `toverc_cp`, `skin_thickness_cp`, `spar_thickness_cp`.
+The values come back from the recorder as JSON-serialised lists in
+the per-design dump, so:
+
+- Add the four vector DVs to a new `_WARM_VECTOR_FIELDS` list and
+  read them out of the corresponding `results/per_design/{rng}/{method}.json`
+  in `_warm_for` (since the sweep CSV is scalar-only by design).
+- In `_patch_plan` (sweep.py:153-157), accept list-valued `initial`
+  on the four vector DVs and write them into the plan's
+  `design_variables[].initial` field. The plan schema already
+  accepts list `initial` (plan_schema.py:358-363); no schema work.
+- Confirm via a small unit test that `omd-cli run` actually applies
+  the seed values at setup time (the materializer sets DV initial
+  via `prob.set_val` after setup).
+
+This is a precondition for Phase 4's coarse sweep: warm-starting
+only the three scalar DVs is not enough to rescue an SLSQP failure
+on a wing whose t/c shape was the actual issue.
 
 ### 1.7 (Optional but recommended) write `paper_data.py`
 
@@ -582,6 +689,12 @@ deliverable.
 
 After Phase 3.2 succeeds. Goal: full coarse sweep producing all
 six paper figures.
+
+**Before starting**: delete `results/sweep_coarse.csv` and the
+`results/per_design/*` JSON files. The artifacts checked in to disk
+today have every cell at default IVC geometry (see Background
+item 7); leaving them in place will silently provide misleading
+"converged" warm-starts to Phase 4.1.
 
 ### 4.1 Bréguet-trio coarse sweep first
 

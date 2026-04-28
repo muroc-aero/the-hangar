@@ -1,14 +1,13 @@
 metadata:
-  id: adler-multipoint
-  name: Adler 2022a multipoint Breguet (B738 aerostruct wing)
+  id: adler-single-point-paperspec
+  name: Adler 2022a single-point Breguet (B738 aerostruct wing) - paper-spec mesh
   version: 1
   description: >
-    Reproduces the multipoint optimization method from Adler & Martins
-    (2022a) Section IV / Table 4. Minimizes the average of five
-    Breguet-equation fuel-burn estimates at five cruise conditions
-    (M=0.78 nominal +/- Mach 0.01 and altitude +/- 1000 ft) over the
-    same 14 wingbox design variables, subject to a 2.5 g maneuver KS
-    failure constraint. Mission range parameterised (1500 nmi default).
+    Phase 2.2 paper-specification configuration of
+    lane_b/single_point/plan.yaml. Mesh num_x=3, num_y=27 at 300 nmi
+    matches Adler & Martins (2022a) Table 5 single_point row. Expected
+    SLSQP wall time 4-12 h on an 8-core box. Run only after Phase 2.1
+    smoke (num_y=5) shows directionally-correct convergence.
 
 operating_points: {}
 
@@ -16,21 +15,20 @@ components:
 - id: design
   type: oas/AerostructBreguet
   config:
-    mode: averaged_cruise_breguet
-    mission_range_nmi: 1500.0
+    mode: single_cruise_breguet
+    mission_range_nmi: 300.0
     MTOW_kg: 79002.0
     tsfc_g_per_kN_s: 17.76
     orig_W_wing_kg: 6561.57
     payload_kg: 17260.0
     flight_points:
-    - {mach: 0.78, altitude_ft: 35000.0, weight_fraction: 0.5, gamma_deg: 0.0}
-    - {mach: 0.79, altitude_ft: 35000.0, weight_fraction: 0.5, gamma_deg: 0.0}
-    - {mach: 0.77, altitude_ft: 35000.0, weight_fraction: 0.5, gamma_deg: 0.0}
-    - {mach: 0.78, altitude_ft: 34000.0, weight_fraction: 0.5, gamma_deg: 0.0}
-    - {mach: 0.78, altitude_ft: 36000.0, weight_fraction: 0.5, gamma_deg: 0.0}
+    - mach: 0.78
+      altitude_ft: 35000.0
+      weight_fraction: 0.5
+      gamma_deg: 0.0
     surface_grid:
       num_x: 3
-      num_y: 7
+      num_y: 27
       num_twist: 4
       num_toverc: 4
       num_skin: 4
@@ -40,7 +38,7 @@ components:
       mach: 0.78
       altitude_ft: 20000.0
       num_x: 3
-      num_y: 7
+      num_y: 27
       num_twist: 4
       num_toverc: 4
       num_skin: 4
@@ -70,5 +68,5 @@ objective:
 optimizer:
   type: SLSQP
   options:
-    maxiter: 150
-    tol: 1.0e-4
+    maxiter: 200
+    tol: 1.0e-5

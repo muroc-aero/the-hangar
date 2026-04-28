@@ -25,14 +25,22 @@ Four plans, all under `lane_b/<method>/plan.yaml`:
      coupling).
    - Objective: `descent.fuel_used_final`.
    - Constraint: `failure_maneuver <= 0`.
-2. **single_point**: `oas/AerostructFixedPoint` with `mode:
-   single_point`, one cruise flight point at (M=0.78, 35,000 ft,
-   weight_fraction=0.5).
-3. **multipoint**: same component, `mode: multipoint`, five flight
-   points (Mach 0.78 +/- 0.01, altitude 35000 +/- 1000 ft).
+2. **single_point**: `oas/AerostructBreguet` with `mode:
+   single_cruise_breguet`, one cruise flight point at (M=0.78,
+   35,000 ft, weight_fraction=0.5). Supply `MTOW_kg`,
+   `tsfc_g_per_kN_s`, `orig_W_wing_kg`, `payload_kg`, and the
+   `maneuver` block explicitly (the factory has no aircraft
+   defaults).
+3. **multipoint**: same component, `mode: averaged_cruise_breguet`,
+   five flight points (Mach 0.78 +/- 0.01, altitude 35000 +/- 1000 ft).
 4. **single_point_plus_climb**: same component, `mode:
-   single_point_plus_climb`, two flight points (climb halfway around
+   cruise_plus_climb_breguet`, two flight points (climb halfway around
    M=0.55 / 17,500 ft / gamma=3 deg, cruise at M=0.78 / 35,000 ft).
+
+The paper's three "method" names map to the three Bréguet modes:
+``single_point`` -> ``single_cruise_breguet``,
+``multipoint`` -> ``averaged_cruise_breguet``,
+``single_point_plus_climb`` -> ``cruise_plus_climb_breguet``.
 
 All four share 14 wingbox DVs (AR <= 10.4, sweep, taper, twist 4 cps
 with tip locked, t/c 4 cps >= 0.03, skin/spar 4 cps each >= 3 mm) and

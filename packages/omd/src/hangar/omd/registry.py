@@ -217,20 +217,22 @@ def _register_builtins() -> None:
     except ImportError:
         logger.info("OpenAeroStruct not available, OAS factories not registered")
 
-    # OAS aerostructural fixed-flight-point factory: requires both
+    # OAS aerostructural Bréguet fuel-burn factory: requires both
     # openaerostruct and openconcept (uses AerostructDragPolar +
     # _OasManeuverGroup).
     try:
-        from hangar.omd.factories.oas_aerostruct_fixed import (
-            build_oas_aerostruct_fixed,
+        from hangar.omd.factories.oas_aerostruct_breguet import (
+            build_oas_aerostruct_breguet,
         )
+        from hangar.omd.plotting.oas import OAS_AEROSTRUCT_BREGUET_PLOTS
         register_factory(
-            "oas/AerostructFixedPoint", build_oas_aerostruct_fixed,
+            "oas/AerostructBreguet", build_oas_aerostruct_breguet,
+            plot_provider=OAS_AEROSTRUCT_BREGUET_PLOTS,
         )
     except ImportError:
         logger.info(
             "openconcept/openaerostruct not available, "
-            "oas/AerostructFixedPoint factory not registered"
+            "oas/AerostructBreguet factory not registered"
         )
 
     # OCP factories: optional, require openconcept

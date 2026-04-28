@@ -17,6 +17,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from hangar.omd.plotting._common import mirror_spanwise
+
 DEMO_DIR = Path(__file__).resolve().parent
 RESULTS_DIR = DEMO_DIR / "results"
 PER_DESIGN_DIR = RESULTS_DIR / "per_design"
@@ -176,25 +178,61 @@ def fig10(rng: float = 300.0) -> Path:
 
 
 def fig11(rng: float = 300.0) -> Path:
-    """Spanwise normalised lift at cruise vs 2.5 g maneuver for
-    mission_based vs single_point at the given range. Pulled from the
-    recorder via the per-design JSON (limited; the JSON does not yet
-    carry per-panel forces). Falls back to a placeholder figure with a
-    note pointing the reader to the maneuver recorder data.
+    """2.5 g maneuver spanwise lift distribution, all available methods overlaid.
+
+    Cruise lift distribution is unavailable in the Bréguet variants because
+    cruise drag is computed via a Kriging surrogate (AerostructDragPolar)
+    which does not expose per-panel forces. Only the maneuver group's direct
+    VLM+struct coupling emits wing_sec_forces. The paper's fig11 overlays
+    cruise + maneuver; we ship maneuver-only as the cheapest path that still
+    captures the structural-sizing trend across methods.
+
+    Each curve is normalised so the integral over full span = 1, mirrored
+    from half-span via _common.mirror_spanwise.
     """
     fig, ax = plt.subplots(figsize=(7, 4))
-    ax.text(
-        0.5, 0.5,
-        "Spanwise lift at cruise / 2.5 g maneuver requires panel-wise\n"
-        "wing_sec_forces from the recorder. Extend sweep.py's\n"
-        "_OUTPUT_KEYS with the maneuver and cruise lift arrays, then\n"
-        "extract via OAS plot helper `_common.py:get_span_eta` /\n"
-        "`mirror_half_wing` to render this figure.",
-        ha="center", va="center", transform=ax.transAxes,
-    )
-    ax.set_xlabel("Normalised span")
-    ax.set_ylabel("Normalised lift")
-    ax.set_title(f"Fig 11: Lift distribution at {int(rng)} nmi  (placeholder)")
+    rng_dir = PER_DESIGN_DIR / f"{int(rng)}"
+    methods_plotted = []
+    for m in ("single_point", "multipoint", "mission_based",
+              "single_point_plus_climb"):
+        path = rng_dir / f"{m}.json"
+        if not path.exists():
+            continue
+        with open(path) as f:
+            d = json.load(f)
+        forces = d.get("lift_dist_maneuver_N")
+        if forces is None:
+            continue
+        arr = np.asarray(forces)  # shape (nx-1, ny-1, 3)
+        if arr.ndim != 3 or arr.shape[2] != 3:
+            continue
+        spanwise_L = arr[:, :, 2].sum(axis=0)  # length ny-1
+        n_half = len(spanwise_L)
+        eta_half = (np.arange(n_half) + 0.5) / n_half * 0.5  # 0..0.5
+        full_eta, full_L = mirror_spanwise(eta_half, spanwise_L)
+        # Normalise so integral over the full span = 1
+        area = np.trapz(np.abs(full_L), full_eta)
+        if area > 0:
+            full_L = full_L / area
+        ax.plot(full_eta, full_L, "o-",
+                label=METHOD_LABELS.get(m, m),
+                color=METHOD_COLORS.get(m), markersize=4)
+        methods_plotted.append(m)
+
+    if not methods_plotted:
+        ax.text(
+            0.5, 0.5,
+            "No per-design lift_dist_maneuver_N arrays found.\n"
+            "Re-run sweep.py after extending _OUTPUT_KEYS with the\n"
+            "maneuver wing_sec_forces path.",
+            ha="center", va="center", transform=ax.transAxes,
+        )
+    else:
+        ax.legend(loc="best", fontsize=8)
+        ax.grid(alpha=0.3)
+    ax.set_xlabel("Normalised span (-0.5 = port tip, 0 = root, 0.5 = stbd tip)")
+    ax.set_ylabel("Normalised spanwise lift (1/span)")
+    ax.set_title(f"Fig 11: 2.5 g maneuver lift distribution at {int(rng)} nmi")
     out = FIG_DIR / "fig11.png"
     fig.tight_layout()
     fig.savefig(out, dpi=150)
@@ -224,18 +262,6 @@ def fig12(df: pd.DataFrame, methods: list[str]) -> Path:
     fig.savefig(out, dpi=150)
     plt.close(fig)
     return out
-
-
-def fig13(df: pd.DataFrame) -> Path:
-    """Same as Fig 7 but with the single_point_plus_climb method
-    overlaid."""
-    return fig7(
-        df,
-        methods=["single_point", "multipoint", "mission_based", "single_point_plus_climb"],
-    )._with_suffix(".png") if False else (
-        # Render under a different filename
-        _render_fig7_with_methods(df, "fig13")
-    )
 
 
 def _render_fig7_with_methods(df: pd.DataFrame, name: str) -> Path:

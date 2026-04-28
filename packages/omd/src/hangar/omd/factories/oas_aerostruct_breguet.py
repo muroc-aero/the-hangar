@@ -1,19 +1,23 @@
-"""Aerostructural fixed-flight-point factory.
+"""Aerostructural Bréguet fuel-burn factory.
 
 Builds a standalone OpenMDAO problem that performs N aerostructural
 analyses at fixed flight conditions plus a 2.5 g maneuver sizing,
 then computes a fuel-burn objective using the Bréguet range equation
-(or Adler 2022a Eq. 2 for climb segments).
+(or a modified Bréguet form with a climb-angle term for climb segments).
 
-Used by the Adler 2022a reproduction demo for the three Bréguet-style
-methods (single_point / multipoint / single_point_plus_climb) that
-are not implemented in upstream OpenConcept. The mission-based
-variant uses the OCP factory directly (full mission integration).
+The factory is aircraft-agnostic. The caller must supply MTOW, TSFC,
+payload, original wing weight estimate, and a maneuver flight
+condition in ``component_config``. Three modes are exposed:
+
+  * ``single_cruise_breguet`` -- one cruise point, one Bréguet eval.
+  * ``averaged_cruise_breguet`` -- N cruise points, mean of N Bréguet
+    evals (typical multipoint formulation).
+  * ``cruise_plus_climb_breguet`` -- one climb point + one cruise
+    point, modified Bréguet for climb plus standard Bréguet for cruise.
 
 Design references:
   - upstream/openconcept/openconcept/examples/B738_aerostructural.py
     (lines 263-318: maneuver group + alpha balance pattern)
-  - Adler & Martins (2022a) Section IV (TSFC, mission-range eq.)
 """
 
 from __future__ import annotations
@@ -24,17 +28,59 @@ import numpy as np
 import openmdao.api as om
 
 from hangar.omd.factory_metadata import FactoryMetadata
+from hangar.sdk.errors import UserInputError
 
 
-# Paper Section IV: constant TSFC for the Bréguet methods
-_DEFAULT_TSFC_G_PER_KN_S = 17.76
-# B738 reference values (paper Table 1 / OCP b738 template)
-_DEFAULT_MTOW_KG = 79002.0
-# Raymer wing-weight estimate from upstream B738_aerostructural.py:240-249
-_DEFAULT_ORIG_W_WING_KG = 6561.57
-_DEFAULT_PAYLOAD_KG = 17260.0  # roughly 174 pax + bags
+# OAS aerostruct coupled NLBGS defaults to maxiter=100 with
+# err_on_non_converge=True. SLSQP probing the Bréguet objective with
+# finite differences occasionally lands on poorly-conditioned wings where
+# 100 NLBGS iterations are not enough; the AnalysisError then propagates
+# up and kills the optimizer on first failure. Bump to 500 for any
+# Problem whose model exposes the aerostructural coupled path. Triggers
+# only on OAS topology, no effect on unrelated Problems in the process.
+_NLBGS_MAXITER_OVERRIDE = 500
+_AEROSTRUCT_PATCH_APPLIED = False
 
-# Default surface mesh (kept coarse for tractable wall time)
+
+def _bump_aerostruct_nlbgs(system) -> None:
+    """Walk the system tree, raising NLBGS maxiter on any subsystem named
+    ``coupled`` whose nonlinear solver is the OAS aerostructural NLBGS."""
+    for sub in system.system_iter(recurse=True, include_self=False):
+        if sub.name != "coupled":
+            continue
+        solver = getattr(sub, "nonlinear_solver", None)
+        if solver is None:
+            continue
+        try:
+            solver.options["maxiter"] = _NLBGS_MAXITER_OVERRIDE
+        except (KeyError, TypeError):
+            pass
+
+
+def _apply_aerostruct_solver_patch() -> None:
+    global _AEROSTRUCT_PATCH_APPLIED
+    if _AEROSTRUCT_PATCH_APPLIED:
+        return
+    original_setup = om.Problem.setup
+
+    def _patched_setup(self, *args, **kwargs):
+        result = original_setup(self, *args, **kwargs)
+        try:
+            _bump_aerostruct_nlbgs(self.model)
+        except Exception:
+            pass
+        return result
+
+    om.Problem.setup = _patched_setup
+    _AEROSTRUCT_PATCH_APPLIED = True
+
+
+_apply_aerostruct_solver_patch()
+
+
+# Default surface mesh (kept coarse for tractable wall time). Mesh is
+# the only optional config block; aircraft-specific values must be
+# supplied explicitly.
 _DEFAULT_SURFACE_GRID: dict[str, int] = {
     "num_x": 3,
     "num_y": 7,
@@ -44,12 +90,11 @@ _DEFAULT_SURFACE_GRID: dict[str, int] = {
     "num_spar": 4,
 }
 
-# Default 2.5 g maneuver flight condition (paper Section IV)
-_DEFAULT_MANEUVER: dict[str, float] = {
-    "load_factor": 2.5,
-    "mach": 0.78,
-    "altitude_ft": 20000.0,
-}
+_VALID_MODES = (
+    "single_cruise_breguet",
+    "averaged_cruise_breguet",
+    "cruise_plus_climb_breguet",
+)
 
 
 def _isa_speed_of_sound(altitude_ft: float) -> float:
@@ -92,6 +137,7 @@ class _FixedAerostructPoint(om.Group):
         self.options.declare("mach", types=float)
         self.options.declare("altitude_ft", types=float)
         self.options.declare("gamma_deg", types=float, default=0.0)
+        self.options.declare("MTOW_kg", types=float)
         self.options.declare(
             "weight_fraction", types=float, default=0.5,
             desc="Fraction of fuel burned at this point. Per-point lift "
@@ -153,7 +199,7 @@ class _FixedAerostructPoint(om.Group):
             om.ExecComp(
                 "L_target = MTOW * weight_factor * 9.807 * cos_gamma",
                 L_target={"units": "N", "shape": (nn,)},
-                MTOW={"units": "kg", "shape": (nn,), "val": _DEFAULT_MTOW_KG},
+                MTOW={"units": "kg", "shape": (nn,), "val": self.options["MTOW_kg"]},
                 weight_factor={"shape": (nn,), "val": weight_const_factor},
                 cos_gamma={"shape": (nn,), "val": float(np.cos(gamma_rad))},
             ),
@@ -238,43 +284,46 @@ class _FixedAerostructPoint(om.Group):
         self.connect("drag", "lift_over_drag.drag")
 
 
-def _build_breguet_objective(mode: str, n_cruise: int) -> om.ExecComp:
+def _build_breguet_objective(
+    mode: str, n_cruise: int, MTOW_kg: float, tsfc_per_s: float,
+) -> om.ExecComp:
     """Construct the fuel-burn ExecComp.
 
-    For ``single_point`` and ``multipoint`` modes it evaluates the
-    Bréguet range equation at each cruise point and averages. For
-    ``single_point_plus_climb`` it evaluates Adler Eq. 2 at the climb
-    point + Bréguet at the cruise point.
+    For ``single_cruise_breguet`` and ``averaged_cruise_breguet`` modes
+    the Bréguet range equation is evaluated at each cruise point and
+    averaged. For ``cruise_plus_climb_breguet`` a modified Bréguet
+    (with a climb-angle term) is evaluated at the climb point and
+    summed with a standard Bréguet at the cruise point.
 
     Inputs (all scalar except where noted):
       L_over_D_i  : L/D at point i              (n_cruise of these)
       W_initial   : kg, initial weight for the segment
       R_m         : m, range used in the equation
       V_ms        : m/s, true airspeed at the point (or representative)
-      TSFC        : 1/s, paper-spec 17.76e-6 (g/kN/s = 1e-6 / s)
+      TSFC        : 1/s
       gamma       : rad, flight-path angle (climb only)
 
     Output:
       fuel_burn_kg : kg
     """
     g = 9.807
-    if mode == "single_point":
+    if mode == "single_cruise_breguet":
         return om.ExecComp(
             "fuel_burn_kg = W_initial_0 * (1.0 - exp(-R_0 * TSFC * g / (V_0 * L_over_D_0)))",
             fuel_burn_kg={"units": "kg"},
-            W_initial_0={"units": "kg", "val": _DEFAULT_MTOW_KG},
+            W_initial_0={"units": "kg", "val": MTOW_kg},
             R_0={"units": "m", "val": 1500.0 * 1852.0},
             V_0={"units": "m/s", "val": 230.0},
-            TSFC={"val": _DEFAULT_TSFC_G_PER_KN_S * 1.0e-6 / 1.0},
+            TSFC={"val": tsfc_per_s},
             L_over_D_0={"val": 18.0},
             g={"val": g},
         )
-    if mode == "multipoint":
+    if mode == "averaged_cruise_breguet":
         # average of n Bréguet evaluations
         terms = []
         kw: dict[str, Any] = {
             "fuel_burn_kg": {"units": "kg"},
-            "TSFC": {"val": _DEFAULT_TSFC_G_PER_KN_S * 1.0e-6},
+            "TSFC": {"val": tsfc_per_s},
             "g": {"val": g},
         }
         for i in range(n_cruise):
@@ -282,17 +331,17 @@ def _build_breguet_objective(mode: str, n_cruise: int) -> om.ExecComp:
                 f"W_initial_{i} * (1.0 - exp(-R_{i} * TSFC * g / "
                 f"(V_{i} * L_over_D_{i})))"
             )
-            kw[f"W_initial_{i}"] = {"units": "kg", "val": _DEFAULT_MTOW_KG}
+            kw[f"W_initial_{i}"] = {"units": "kg", "val": MTOW_kg}
             kw[f"R_{i}"] = {"units": "m", "val": 1500.0 * 1852.0}
             kw[f"V_{i}"] = {"units": "m/s", "val": 230.0}
             kw[f"L_over_D_{i}"] = {"val": 18.0}
         expr = "fuel_burn_kg = (" + " + ".join(terms) + f") / {float(n_cruise)}"
         return om.ExecComp(expr, **kw)
-    if mode == "single_point_plus_climb":
-        # Adler Eq. 2 for climb (one segment) + Bréguet for cruise
-        # (one segment). Single-line formula avoids ExecComp's chained-
-        # output issue: ExecComp wants every name to be either purely
-        # an input or purely an output, never both.
+    if mode == "cruise_plus_climb_breguet":
+        # Modified Bréguet for climb (one segment) + standard Bréguet
+        # for cruise (one segment). Single-line formula avoids
+        # ExecComp's chained-output issue: ExecComp wants every name to
+        # be either purely an input or purely an output, never both.
         # NOTE: W_initial_cruise should equal MTOW - fuel_climb if
         # we wanted strict accounting, but for the simple Bréguet
         # estimator we use MTOW - 0.5 * 0.10 * MTOW as a starting
@@ -304,8 +353,8 @@ def _build_breguet_objective(mode: str, n_cruise: int) -> om.ExecComp:
             "+ W_initial_cruise * (1.0 - exp(-R_cruise * TSFC * g "
             "/ (V_cruise * L_over_D_cruise)))",
             fuel_burn_kg={"units": "kg"},
-            W_initial_climb={"units": "kg", "val": _DEFAULT_MTOW_KG},
-            W_initial_cruise={"units": "kg", "val": _DEFAULT_MTOW_KG},
+            W_initial_climb={"units": "kg", "val": MTOW_kg},
+            W_initial_cruise={"units": "kg", "val": MTOW_kg},
             L_over_D_climb={"val": 12.0},
             L_over_D_cruise={"val": 18.0},
             R_climb={"units": "m", "val": 100.0 * 1852.0},
@@ -313,81 +362,131 @@ def _build_breguet_objective(mode: str, n_cruise: int) -> om.ExecComp:
             V_climb={"units": "m/s", "val": 180.0},
             V_cruise={"units": "m/s", "val": 230.0},
             gamma_climb={"val": float(np.deg2rad(3.0))},
-            TSFC={"val": _DEFAULT_TSFC_G_PER_KN_S * 1.0e-6},
+            TSFC={"val": tsfc_per_s},
             g={"val": g},
         )
     raise ValueError(f"Unknown mode: {mode!r}")
 
 
-def build_oas_aerostruct_fixed(
+def _require_config(component_config: dict, key: str, kind: str) -> Any:
+    """Fetch a required key from ``component_config`` or raise UserInputError."""
+    if key not in component_config:
+        raise UserInputError(
+            f"oas/AerostructBreguet: required {kind} '{key}' missing from "
+            "component_config. The factory is aircraft-agnostic; supply this "
+            "value in the plan's component config (no module-level default).",
+            details={"missing_key": key, "kind": kind},
+        )
+    return component_config[key]
+
+
+def build_oas_aerostruct_breguet(
     component_config: dict,
     operating_points: dict,
 ) -> tuple[om.Problem, FactoryMetadata]:
     """Build a standalone aerostructural optimization with a Bréguet
-    objective.
+    fuel-burn objective.
 
-    See module docstring for paper context.
-
-    component_config keys:
-      mode: 'single_point' | 'multipoint' | 'single_point_plus_climb'
+    Required component_config keys:
+      mode: 'single_cruise_breguet' | 'averaged_cruise_breguet'
+            | 'cruise_plus_climb_breguet'
       flight_points: list of {mach, altitude_ft, weight_fraction,
                               gamma_deg, range_fraction (sp+climb only)}
         weight_fraction: fraction of MTOW used as W_initial for this
           segment's Bréguet eval (e.g. 0.5 means MTOW - 0.5 * fuel_burn,
           the standard "half-fuel" assumption)
-        range_fraction: fraction of mission range covered by this
-          segment (climb is usually small, ~0.07 for a 1500 nmi mission
-          at typical climb profiles). Only meaningful for
-          single_point_plus_climb mode.
-      tsfc_g_per_kN_s: paper Section IV uses 17.76 (default)
-      mission_range_nmi: 1500 (default; sweep overrides)
-      MTOW_kg: 79002 (B738 default)
-      payload_kg: 17260 (default; needed for OEW residual)
+      mission_range_nmi: full mission range in nautical miles
+      MTOW_kg: maximum takeoff weight, kg
+      tsfc_g_per_kN_s: thrust-specific fuel consumption (g/(kN·s))
+      orig_W_wing_kg: initial wing-weight estimate, kg (used by the
+        maneuver sizing group's W_wing self-feedback loop)
+      payload_kg: payload weight, kg (used downstream for OEW residual)
+      maneuver: {load_factor, mach, altitude_ft, num_x?, num_y?, ...}
+
+    Optional component_config keys:
       surface_grid: {num_x, num_y, num_twist, num_toverc, num_skin,
-                     num_spar, surf_options}
-      maneuver: {load_factor, mach, altitude_ft, num_x, num_y, ...}
-        (defaults match paper Section IV: 2.5 g, M0.78, 20000 ft)
+                     num_spar, surf_options} -- defaults to a coarse mesh
+      fuel_fraction_estimate: float, defaults to 0.10
+      climb_range_nmi: float, only used for cruise_plus_climb_breguet
+        (defaults to 100.0)
     """
     # Local import keeps OCP optional at registry time.
     from hangar.omd.slots import _OasManeuverGroup
 
-    mode = component_config.get("mode", "single_point")
-    if mode not in ("single_point", "multipoint", "single_point_plus_climb"):
-        raise ValueError(
-            f"Unknown mode {mode!r}; expected 'single_point', 'multipoint', "
-            "or 'single_point_plus_climb'"
+    mode = _require_config(component_config, "mode", "config key")
+    if mode not in _VALID_MODES:
+        raise UserInputError(
+            f"oas/AerostructBreguet: unknown mode {mode!r}; expected one of "
+            f"{_VALID_MODES}",
+            details={"mode": mode, "valid_modes": list(_VALID_MODES)},
         )
 
-    grid = {**_DEFAULT_SURFACE_GRID, **(component_config.get("surface_grid") or {})}
-    maneuver_cfg = {**_DEFAULT_MANEUVER, **(component_config.get("maneuver") or {})}
-    surf_options = grid.get("surf_options", {})
-    mission_range_nmi = float(component_config.get("mission_range_nmi", 1500.0))
-    mission_range_m = mission_range_nmi * 1852.0
-    MTOW = float(component_config.get("MTOW_kg", _DEFAULT_MTOW_KG))
-    orig_W_wing = float(
-        component_config.get("orig_W_wing_kg", _DEFAULT_ORIG_W_WING_KG)
-    )
+    # Required aircraft / engine config -- no defaults.
+    MTOW = float(_require_config(component_config, "MTOW_kg", "aircraft config"))
     tsfc_units = float(
-        component_config.get("tsfc_g_per_kN_s", _DEFAULT_TSFC_G_PER_KN_S)
+        _require_config(component_config, "tsfc_g_per_kN_s", "engine config")
     ) * 1.0e-6  # g/kN/s -> 1/s
+    orig_W_wing = float(
+        _require_config(component_config, "orig_W_wing_kg", "aircraft config")
+    )
+    # payload_kg currently only validates that the caller supplied it; it
+    # is reserved for OEW-residual downstream consumers.
+    _require_config(component_config, "payload_kg", "aircraft config")
+    mission_range_nmi = float(
+        _require_config(component_config, "mission_range_nmi", "mission config")
+    )
+    mission_range_m = mission_range_nmi * 1852.0
+
+    maneuver_cfg_in = _require_config(component_config, "maneuver", "config block")
+    if not isinstance(maneuver_cfg_in, dict):
+        raise UserInputError(
+            "oas/AerostructBreguet: 'maneuver' must be a dict with at least "
+            "load_factor, mach, altitude_ft.",
+            details={"maneuver": maneuver_cfg_in},
+        )
+    for required_key in ("load_factor", "mach", "altitude_ft"):
+        if required_key not in maneuver_cfg_in:
+            raise UserInputError(
+                f"oas/AerostructBreguet: maneuver block missing required key "
+                f"{required_key!r}.",
+                details={"missing_key": required_key,
+                         "supplied_maneuver": maneuver_cfg_in},
+            )
+    maneuver_cfg = dict(maneuver_cfg_in)
+
+    grid = {**_DEFAULT_SURFACE_GRID, **(component_config.get("surface_grid") or {})}
+    surf_options = grid.get("surf_options", {})
 
     flight_points = component_config.get("flight_points") or []
     if not flight_points:
-        raise ValueError("component_config['flight_points'] must be non-empty")
+        raise UserInputError(
+            "oas/AerostructBreguet: component_config['flight_points'] must be "
+            "non-empty.",
+            details={"flight_points": flight_points},
+        )
 
     # Categorise points: climb segments use gamma_deg > 0; everything
-    # else is treated as cruise. For single_point_plus_climb expect
+    # else is treated as cruise. For cruise_plus_climb_breguet expect
     # exactly one of each.
     climb_points = [fp for fp in flight_points if float(fp.get("gamma_deg", 0.0)) > 1e-6]
     cruise_points = [fp for fp in flight_points if float(fp.get("gamma_deg", 0.0)) <= 1e-6]
     n_cruise = len(cruise_points)
-    if mode == "single_point" and n_cruise != 1:
-        raise ValueError("single_point mode requires exactly 1 cruise flight point")
-    if mode == "multipoint" and n_cruise < 2:
-        raise ValueError("multipoint mode requires at least 2 cruise flight points")
-    if mode == "single_point_plus_climb" and (len(climb_points) != 1 or n_cruise != 1):
-        raise ValueError(
-            "single_point_plus_climb mode requires exactly 1 climb point and 1 cruise point"
+    if mode == "single_cruise_breguet" and n_cruise != 1:
+        raise UserInputError(
+            "single_cruise_breguet mode requires exactly 1 cruise flight point",
+            details={"n_cruise": n_cruise},
+        )
+    if mode == "averaged_cruise_breguet" and n_cruise < 2:
+        raise UserInputError(
+            "averaged_cruise_breguet mode requires at least 2 cruise flight points",
+            details={"n_cruise": n_cruise},
+        )
+    if mode == "cruise_plus_climb_breguet" and (
+        len(climb_points) != 1 or n_cruise != 1
+    ):
+        raise UserInputError(
+            "cruise_plus_climb_breguet mode requires exactly 1 climb point and 1 cruise point",
+            details={"n_climb": len(climb_points), "n_cruise": n_cruise},
         )
 
     prob = om.Problem(reports=False)
@@ -433,6 +532,7 @@ def build_oas_aerostruct_fixed(
             mach=float(fp["mach"]),
             altitude_ft=float(fp["altitude_ft"]),
             gamma_deg=float(fp.get("gamma_deg", 0.0)),
+            MTOW_kg=MTOW,
             weight_fraction=float(fp.get("weight_fraction", 0.5)),
             fuel_fraction_estimate=fuel_frac_est,
             num_x=grid["num_x"],
@@ -470,7 +570,7 @@ def build_oas_aerostruct_fixed(
         climb_subsys_name = "climb_pt"
         climb_v_ms = _add_aerostruct_point(climb_subsys_name, climb_points[0])
 
-    # 2.5 g maneuver (paper Section IV.A). Self-feedback W_wing so the
+    # 2.5 g maneuver sizing group. Self-feedback W_wing so the
     # maneuver's own structural weight feeds the lift-balance.
     maneuver = _OasManeuverGroup(
         num_x=int(maneuver_cfg.get("num_x", grid["num_x"])),
@@ -500,20 +600,17 @@ def build_oas_aerostruct_fixed(
         ],
     )
 
-    # Bréguet / Adler-Eq.2 fuel-burn objective.
-    # Build per-segment weight-at-point ExecComps and feed the
-    # objective component.
-    obj = _build_breguet_objective(mode, n_cruise)
+    # Bréguet fuel-burn objective.
+    obj = _build_breguet_objective(mode, n_cruise, MTOW, tsfc_units)
     model.add_subsystem("breguet", obj)
 
     # Per-cruise-point L/D wiring into the objective component.
-    # Each cruise-point Bréguet eval uses the FULL mission range
-    # (paper: "averages fuel burn estimates from five flight
-    # conditions"; each estimate is for the whole mission).
+    # Each cruise-point Bréguet eval uses the FULL mission range (each
+    # estimate is an estimate for the entire mission).
     for i, fp in enumerate(cruise_points):
         wf = float(fp.get("weight_fraction", 0.5))
         weight_const = MTOW * (1.0 - wf * fuel_frac_est)
-        if mode == "single_point":
+        if mode == "single_cruise_breguet":
             model.connect(
                 f"{cruise_subsys_names[i]}.lift_over_drag.L_over_D",
                 "breguet.L_over_D_0",
@@ -522,7 +619,7 @@ def build_oas_aerostruct_fixed(
             model.set_input_defaults("breguet.W_initial_0", val=weight_const, units="kg")
             model.set_input_defaults("breguet.R_0", val=mission_range_m, units="m")
             model.set_input_defaults("breguet.V_0", val=cruise_velocities_ms[i], units="m/s")
-        elif mode == "multipoint":
+        elif mode == "averaged_cruise_breguet":
             model.connect(
                 f"{cruise_subsys_names[i]}.lift_over_drag.L_over_D",
                 f"breguet.L_over_D_{i}",
@@ -537,24 +634,22 @@ def build_oas_aerostruct_fixed(
             model.set_input_defaults(
                 f"breguet.V_{i}", val=cruise_velocities_ms[i], units="m/s",
             )
-        elif mode == "single_point_plus_climb":
+        elif mode == "cruise_plus_climb_breguet":
             model.connect(
                 f"{cruise_subsys_names[i]}.lift_over_drag.L_over_D",
                 "breguet.L_over_D_cruise",
                 src_indices=[0],
             )
 
-    if mode == "single_point_plus_climb":
+    if mode == "cruise_plus_climb_breguet":
         # Climb point connection
         model.connect(
             f"{climb_subsys_name}.lift_over_drag.L_over_D",
             "breguet.L_over_D_climb",
             src_indices=[0],
         )
-        # Heuristic: climb segment is ~7% of mission range below 1500
-        # nmi, asymptoting down for longer missions. Use a fixed
-        # 100 nmi climb segment by default; sweep can override via
-        # config.
+        # Heuristic: use a fixed 100 nmi climb segment by default;
+        # the plan can override via climb_range_nmi.
         climb_range_m = float(component_config.get("climb_range_nmi", 100.0)) * 1852.0
         cruise_range_m = max(0.0, mission_range_m - climb_range_m)
         # Initial weights: climb starts at MTOW; cruise starts at
@@ -621,7 +716,7 @@ def build_oas_aerostruct_fixed(
             "ac|geom|wing|taper",
             "ac|geom|wing|c4sweep",
         ],
-        "component_family": "oas_aerostruct_fixed",
+        "component_family": "oas_aerostruct_breguet",
     }
 
     return prob, metadata

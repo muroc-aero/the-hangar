@@ -5,7 +5,8 @@ Two paths:
                               upstream/openconcept/openconcept/examples/B738_aerostructural.py
                               with the mission_range parameterized.
   --method single_point   -> builds the standalone problem the same way the
-                              `oas/AerostructFixedPoint` factory does.
+                              `oas/AerostructBreguet` factory does
+                              (single_cruise_breguet mode).
 
 This script is the parity reference for Lane B. Run it and compare the
 converged fuel_burn / W_wing / AR / taper / sweep against
@@ -34,14 +35,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 def _run_single_point(mission_range: float) -> dict:
     """Use the omd factory directly to build + optimize a single-point
     Bréguet problem at the given mission range."""
-    from hangar.omd.factories.oas_aerostruct_fixed import (
-        build_oas_aerostruct_fixed,
+    from hangar.omd.factories.oas_aerostruct_breguet import (
+        build_oas_aerostruct_breguet,
     )
     config = {
-        "mode": "single_point",
+        "mode": "single_cruise_breguet",
         "mission_range_nmi": float(mission_range),
         "MTOW_kg": 79002.0,
         "tsfc_g_per_kN_s": 17.76,
+        "orig_W_wing_kg": 6561.57,
+        "payload_kg": 17260.0,
         "flight_points": [
             {"mach": 0.78, "altitude_ft": 35000.0, "weight_fraction": 0.5,
              "gamma_deg": 0.0},
@@ -52,7 +55,7 @@ def _run_single_point(mission_range: float) -> dict:
                          num_x=3, num_y=7, num_twist=4, num_toverc=4,
                          num_skin=4, num_spar=4),
     }
-    prob, meta = build_oas_aerostruct_fixed(config, {})
+    prob, meta = build_oas_aerostruct_breguet(config, {})
     prob.driver = om.ScipyOptimizeDriver()
     prob.driver.options["optimizer"] = "SLSQP"
     prob.driver.options["maxiter"] = 150

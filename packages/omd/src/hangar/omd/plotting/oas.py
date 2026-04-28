@@ -1351,3 +1351,20 @@ OAS_AEROSTRUCT_PLOTS: dict[str, callable] = {
     "t_over_c": plot_t_over_c,
     "multipoint_comparison": plot_multipoint_comparison,
 }
+
+
+# Geometry-only subset for the oas/AerostructBreguet factory. The
+# factory's per-point namespace is `cruise_0`, `cruise_1`, ...,
+# `maneuver_aerostruct` rather than the standard `aero_point_0` /
+# `AS_point_0` used elsewhere; helpers that read DV / geometry top-
+# level promoted paths work unchanged, but flight-point-namespaced
+# plots (struct, vonmises, failure, lift, multipoint_comparison) need
+# follow-up work to accept a point_name kwarg and are deferred.
+OAS_AEROSTRUCT_BREGUET_PLOTS: dict[str, callable] = {
+    "planform": plot_planform,
+    "twist": plot_twist,
+    "mesh_3d": plot_mesh_3d,
+    "thickness": plot_thickness,
+    "skin_spar": plot_skin_spar,
+    "t_over_c": plot_t_over_c,
+}

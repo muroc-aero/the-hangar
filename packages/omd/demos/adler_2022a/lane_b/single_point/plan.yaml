@@ -16,12 +16,14 @@ operating_points: {}
 
 components:
 - id: design
-  type: oas/AerostructFixedPoint
+  type: oas/AerostructBreguet
   config:
-    mode: single_point
+    mode: single_cruise_breguet
     mission_range_nmi: 1500.0
     MTOW_kg: 79002.0
     tsfc_g_per_kN_s: 17.76
+    orig_W_wing_kg: 6561.57
+    payload_kg: 17260.0
     flight_points:
     - mach: 0.78
       altitude_ft: 35000.0
@@ -64,10 +66,10 @@ constraints:
 
 objective:
   name: fuel_burn_kg
-  scaler: 1.0e-3
+  scaler: 1.0e-4
 
 optimizer:
   type: SLSQP
   options:
     maxiter: 150
-    tol: 1.0e-6
+    tol: 1.0e-4

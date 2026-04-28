@@ -23,7 +23,10 @@ example `upstream/openconcept/openconcept/examples/B738_aerostructural.py`,
 which is the canonical implementation of the paper's mission-based
 method. The three Bréguet-style variants are not in upstream
 OpenConcept; this demo provides them via a new omd factory
-`oas/AerostructFixedPoint`.
+`oas/AerostructBreguet` (modes ``single_cruise_breguet``,
+``averaged_cruise_breguet``, and ``cruise_plus_climb_breguet``
+correspond to the paper's three Bréguet-style methods, in the same
+order as listed above).
 
 ## Mesh resolution callout
 
@@ -109,8 +112,9 @@ uv run python packages/omd/demos/adler_2022a/sweep.py --grid coarse \
 
 ## Status
 
-- [x] Stage 1: `oas/AerostructFixedPoint` factory (single_point /
-      multipoint / single_point_plus_climb modes), registered.
+- [x] Stage 1: `oas/AerostructBreguet` factory (single_cruise_breguet /
+      averaged_cruise_breguet / cruise_plus_climb_breguet modes),
+      registered.
 - [x] Stage 2: shared.py (DV bounds + constraint list).
 - [x] Stage 3: lane_b plans for all four methods (mission_based,
       single_point, multipoint, single_point_plus_climb).

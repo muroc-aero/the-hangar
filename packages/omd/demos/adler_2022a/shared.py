@@ -7,7 +7,7 @@ single point + climb.
 
 The wingbox DV count is 14 in all variants (taper / sweep / aspect
 ratio + 3 free twist cps + 4 t/c + 4 skin + 4 spar). Per-method extras
-are angles of attack — but the AerostructFixedPoint factory does not
+are angles of attack — but the AerostructBreguet factory does not
 take alpha as a free DV (it solves CL = W/(qS) directly), so the
 Bréguet-variant lane_b plans share the same 14 DVs as mission_based.
 The paper's extra alpha DVs are an artefact of its different lift-

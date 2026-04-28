@@ -13,13 +13,15 @@ operating_points: {}
 
 components:
 - id: design
-  type: oas/AerostructFixedPoint
+  type: oas/AerostructBreguet
   config:
-    mode: single_point_plus_climb
+    mode: cruise_plus_climb_breguet
     mission_range_nmi: 1500.0
     climb_range_nmi: 100.0
     MTOW_kg: 79002.0
     tsfc_g_per_kN_s: 17.76
+    orig_W_wing_kg: 6561.57
+    payload_kg: 17260.0
     flight_points:
     # Climb halfway: roughly 17,500 ft, M ~ 0.55, gamma 3 deg
     - {mach: 0.55, altitude_ft: 17500.0, weight_fraction: 0.25, gamma_deg: 3.0}
@@ -62,10 +64,10 @@ constraints:
 
 objective:
   name: fuel_burn_kg
-  scaler: 1.0e-3
+  scaler: 1.0e-4
 
 optimizer:
   type: SLSQP
   options:
     maxiter: 150
-    tol: 1.0e-6
+    tol: 1.0e-4

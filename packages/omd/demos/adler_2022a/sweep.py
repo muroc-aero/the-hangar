@@ -50,6 +50,9 @@ COLUMNS = [
     "fuel_burn_kg",          # Bréguet objective (Bréguet methods) or
                              # mission-integrated descent.fuel_used_final
                              # (mission-based)
+    "climb_fuel_kg",         # mission_based only; NaN for Bréguet methods
+    "cruise_fuel_kg",        # mission_based only
+    "descent_fuel_kg",       # mission_based only
     "W_wing_maneuver_kg",
     "AR", "taper", "c4sweep_deg",
     "wall_time_s", "error",
@@ -79,6 +82,10 @@ _OUTPUT_KEYS = [
     # between Bréguet and mission_based variants; pull all that exist)
     "cruise_0.drag.aero_surrogate.CL",
     "cruise_0.drag.aero_surrogate.CD",
+    # 2.5 g maneuver panel forces for Fig 11. Shape (nx-1, ny-1, 3);
+    # only this path emits real per-panel lift (cruise drag goes through
+    # the AerostructDragPolar Kriging surrogate, which does not).
+    "maneuver.aerostructural_maneuver.aerostruct_point.coupled.aero_states.wing_sec_forces",
 ]
 
 # Paper coarse: 4 representative ranges from Tables 5-7
@@ -107,12 +114,45 @@ def _nan_row(rng: float, method: str, error: str, wall: float) -> dict:
     return row
 
 
-# warm-start fields: (csv column, DV name in plan)
+# Scalar warm-start fields: (csv column, DV name in plan).
 _WARM_FIELDS = [
     ("AR",          "ac|geom|wing|AR"),
     ("taper",       "ac|geom|wing|taper"),
     ("c4sweep_deg", "ac|geom|wing|c4sweep"),
 ]
+
+# Vector warm-start fields: (per-design JSON key, DV name in plan).
+# Read from results/per_design/{rng}/{method}.json (the sweep CSV is
+# scalar-only by design). The 11 vector DV elements are the most
+# expensive to discover from scratch and most worth warm-starting.
+_WARM_VECTOR_FIELDS = [
+    ("twist_cp_deg", "ac|geom|wing|twist"),
+    ("toverc_cp",    "ac|geom|wing|toverc"),
+    ("skin_cp_m",    "ac|geom|wing|skin_thickness"),
+    ("spar_cp_m",    "ac|geom|wing|spar_thickness"),
+]
+
+
+def _read_warm_vectors(mission_range: float, method: str) -> dict:
+    """Pull vector DV warm-starts from the nearest converged neighbour's
+    per-design JSON dump. Returns a dict of {dv_name: list_of_floats}
+    for each vector DV that has a non-null entry in the JSON. Caller is
+    responsible for selecting the neighbour range.
+    """
+    path = PER_DESIGN_DIR / f"{int(mission_range)}" / f"{method}.json"
+    if not path.exists():
+        return {}
+    try:
+        with open(path) as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return {}
+    out: dict = {}
+    for json_key, dv_name in _WARM_VECTOR_FIELDS:
+        v = data.get(json_key)
+        if isinstance(v, list) and len(v) > 0:
+            out[json_key] = v
+    return out
 
 
 def _patch_plan(
@@ -130,7 +170,7 @@ def _patch_plan(
         ctype = comp.get("type", "")
         if ctype == "ocp/BasicMission":
             cfg.setdefault("mission_params", {})["mission_range_NM"] = float(mission_range)
-        elif ctype == "oas/AerostructFixedPoint":
+        elif ctype == "oas/AerostructBreguet":
             cfg["mission_range_nmi"] = float(mission_range)
         # Fine-mesh override
         if fine_mesh:
@@ -155,6 +195,12 @@ def _patch_plan(
             for col, name in _WARM_FIELDS:
                 if dv["name"] == name and col in warm_dvs and not isinstance(dv.get("initial"), list):
                     dv["initial"] = float(warm_dvs[col])
+            # Vector DV warm-starts come keyed by the per-design JSON key.
+            for json_key, name in _WARM_VECTOR_FIELDS:
+                if dv["name"] == name and json_key in warm_dvs:
+                    val = warm_dvs[json_key]
+                    if isinstance(val, list) and len(val) > 0:
+                        dv["initial"] = [float(x) for x in val]
     p.setdefault("metadata", {})
     p["metadata"]["id"] = (
         f"{p['metadata'].get('id', 'adler')}-r{int(mission_range)}-{method}"
@@ -207,9 +253,42 @@ def _persist_per_design(
         "skin_cp_m": values.get("ac|geom|wing|skin_thickness"),
         "spar_cp_m": values.get("ac|geom|wing|spar_thickness"),
         "W_wing_kg": values.get("W_wing_maneuver"),
+        # 2.5 g maneuver wing_sec_forces, shape (nx-1, ny-1, 3); list-of-list-of-list
+        # for JSON. Used by plotting.py:fig11.
+        "lift_dist_maneuver_N": values.get(
+            "maneuver.aerostructural_maneuver.aerostruct_point.coupled."
+            "aero_states.wing_sec_forces"
+        ),
     }
     with open(rng_dir / f"{method}.json", "w") as f:
         json.dump(payload, f, indent=2)
+
+
+def _worker_init() -> None:
+    """Worker init for the outer mp.Pool: cap each worker's BLAS thread
+    count to 1 and shim multiprocessing.Pool so that anything inside the
+    worker (notably OAS's AerostructDragPolar.compute_training_data) that
+    calls `multiprocessing.Pool()` with no args defaults to 1 process
+    instead of os.cpu_count(). Without this, an N-worker outer sweep
+    fans out to N x cpu_count processes and silently dies.
+    """
+    import multiprocessing
+    import multiprocessing.pool as _mp_pool
+
+    os.environ.setdefault("OMP_NUM_THREADS", "1")
+    os.environ.setdefault("MKL_NUM_THREADS", "1")
+    os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+
+    _OriginalPool = _mp_pool.Pool
+
+    class _SingleProcessPool(_OriginalPool):
+        def __init__(self, processes=None, *args, **kwargs):
+            if processes is None:
+                processes = 1
+            super().__init__(processes, *args, **kwargs)
+
+    multiprocessing.Pool = _SingleProcessPool
+    _mp_pool.Pool = _SingleProcessPool
 
 
 def _run_one(args: tuple) -> dict:
@@ -246,6 +325,11 @@ def _run_one(args: tuple) -> dict:
             "converged": bool(converged),
             "run_id": run_id,
             "fuel_burn_kg": fuel,
+            # Per-phase fuel for fig9. Only mission_based produces these
+            # paths; Bréguet methods carry NaN.
+            "climb_fuel_kg": values.get("climb.fuel_used_final", np.nan),
+            "cruise_fuel_kg": values.get("cruise.fuel_used_final", np.nan),
+            "descent_fuel_kg": values.get("descent.fuel_used_final", np.nan),
             "W_wing_maneuver_kg": values.get("W_wing_maneuver", np.nan),
             "AR": values.get("ac|geom|wing|AR", np.nan),
             "taper": values.get("ac|geom|wing|taper", np.nan),
@@ -298,7 +382,12 @@ def _warm_for(
     mission_range: float,
     method: str,
 ) -> dict | None:
-    """Return the closest converged neighbour's DVs for warm-starting."""
+    """Return the closest converged neighbour's DVs for warm-starting.
+
+    Mixes scalars (from the sweep CSV) and vectors (from the matching
+    per-design JSON). Falls back silently to the factory IVC for any
+    individual DV that is absent.
+    """
     if warm_df is None:
         return None
     ok = warm_df[warm_df["converged"].astype(str).str.lower() == "true"]
@@ -307,7 +396,9 @@ def _warm_for(
         return None
     d = np.abs(same_method["mission_range_nmi"].to_numpy() - mission_range)
     closest = same_method.iloc[int(np.argmin(d))]
-    return {col: float(closest[col]) for col, _ in _WARM_FIELDS if col in closest}
+    out: dict = {col: float(closest[col]) for col, _ in _WARM_FIELDS if col in closest}
+    out.update(_read_warm_vectors(float(closest["mission_range_nmi"]), method))
+    return out
 
 
 def main() -> int:
@@ -359,7 +450,7 @@ def main() -> int:
     if args.workers == 1:
         iterator = map(_run_one, work)
     else:
-        pool = mp.Pool(args.workers)
+        pool = mp.Pool(args.workers, initializer=_worker_init)
         iterator = pool.imap_unordered(_run_one, work)
     for i, row in enumerate(iterator, 1):
         _append_row(ckpt, row)

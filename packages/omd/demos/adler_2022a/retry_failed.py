@@ -17,6 +17,7 @@ import pandas as pd
 from sweep import (
     METHOD_PLANS, METHODS, _read_final_values, _run_one,
     _checkpoint_path, _append_row, _patch_plan, RESULTS_DIR,
+    _read_warm_vectors,
 )
 
 
@@ -55,6 +56,7 @@ def main() -> int:
             "taper": float(near["taper"]),
             "c4sweep_deg": float(near["c4sweep_deg"]),
         }
+        warm.update(_read_warm_vectors(float(near["mission_range_nmi"]), mth))
         work.append((rng, mth, False, warm))
 
     if not work:

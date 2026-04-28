@@ -99,4 +99,4 @@ optimizer:
   type: SLSQP
   options:
     maxiter: 150
-    tol: 1.0e-6
+    tol: 1.0e-4
