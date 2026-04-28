@@ -1,0 +1,72 @@
+metadata:
+  id: adler-multipoint
+  name: Adler 2022a multipoint Breguet (B738 aerostruct wing)
+  version: 1
+  description: >
+    Reproduces the multipoint optimization method from Adler & Martins
+    (2022a) Section IV / Table 4. Minimizes the average of five
+    Breguet-equation fuel-burn estimates at five cruise conditions
+    (M=0.78 nominal +/- Mach 0.01 and altitude +/- 1000 ft) over the
+    same 14 wingbox design variables, subject to a 2.5 g maneuver KS
+    failure constraint. Mission range parameterised (1500 nmi default).
+
+operating_points: {}
+
+components:
+- id: design
+  type: oas/AerostructFixedPoint
+  config:
+    mode: multipoint
+    mission_range_nmi: 1500.0
+    MTOW_kg: 79002.0
+    tsfc_g_per_kN_s: 17.76
+    flight_points:
+    - {mach: 0.78, altitude_ft: 35000.0, weight_fraction: 0.5, gamma_deg: 0.0}
+    - {mach: 0.79, altitude_ft: 35000.0, weight_fraction: 0.5, gamma_deg: 0.0}
+    - {mach: 0.77, altitude_ft: 35000.0, weight_fraction: 0.5, gamma_deg: 0.0}
+    - {mach: 0.78, altitude_ft: 34000.0, weight_fraction: 0.5, gamma_deg: 0.0}
+    - {mach: 0.78, altitude_ft: 36000.0, weight_fraction: 0.5, gamma_deg: 0.0}
+    surface_grid:
+      num_x: 3
+      num_y: 7
+      num_twist: 4
+      num_toverc: 4
+      num_skin: 4
+      num_spar: 4
+    maneuver:
+      load_factor: 2.5
+      mach: 0.78
+      altitude_ft: 20000.0
+      num_x: 3
+      num_y: 7
+      num_twist: 4
+      num_toverc: 4
+      num_skin: 4
+      num_spar: 4
+
+design_variables:
+- {name: "ac|geom|wing|AR",              lower: 5.0,   upper: 10.4}
+- {name: "ac|geom|wing|c4sweep",         lower: 0.0,   upper: 35.0,  units: "deg"}
+- {name: "ac|geom|wing|taper",           lower: 0.01,  upper: 0.35,  scaler: 10.0}
+- name: "ac|geom|wing|twist"
+  lower: [0.0, -10.0, -10.0, -10.0]
+  upper: [0.0, 10.0, 10.0, 10.0]
+  units: "deg"
+- name: "ac|geom|wing|toverc"
+  lower: [0.030, 0.053, 0.077, 0.10]
+  upper: 0.25
+- {name: "ac|geom|wing|skin_thickness",  lower: 0.003, upper: 0.10,  units: "m", scaler: 100.0}
+- {name: "ac|geom|wing|spar_thickness",  lower: 0.003, upper: 0.10,  units: "m", scaler: 100.0}
+
+constraints:
+- {name: "2_5g_KS_failure", upper: 0.0}
+
+objective:
+  name: fuel_burn_kg
+  scaler: 1.0e-3
+
+optimizer:
+  type: SLSQP
+  options:
+    maxiter: 150
+    tol: 1.0e-6

@@ -339,8 +339,18 @@ PLAN_SCHEMA: dict[str, Any] = {
                 "additionalProperties": False,
                 "properties": {
                     "name": {"type": "string", "minLength": 1},
-                    "lower": {"type": "number"},
-                    "upper": {"type": "number"},
+                    "lower": {
+                        "oneOf": [
+                            {"type": "number"},
+                            {"type": "array", "items": {"type": "number"}},
+                        ],
+                    },
+                    "upper": {
+                        "oneOf": [
+                            {"type": "number"},
+                            {"type": "array", "items": {"type": "number"}},
+                        ],
+                    },
                     "units": {"type": "string"},
                     "scaler": {"type": "number"},
                     "ref": {"type": "number"},

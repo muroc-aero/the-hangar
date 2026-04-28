@@ -1,0 +1,7 @@
+# Sweep + figure artifacts from local runs.
+# Currently uncommitted because no run has produced trustworthy data
+# yet (see TODO.md Phase 0 / Anti-patterns). Re-evaluate after
+# Phase 4 produces a converged sweep.
+results/
+figures/reproduced/
+figures/comparison_fig*.png

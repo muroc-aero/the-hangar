@@ -217,6 +217,22 @@ def _register_builtins() -> None:
     except ImportError:
         logger.info("OpenAeroStruct not available, OAS factories not registered")
 
+    # OAS aerostructural fixed-flight-point factory: requires both
+    # openaerostruct and openconcept (uses AerostructDragPolar +
+    # _OasManeuverGroup).
+    try:
+        from hangar.omd.factories.oas_aerostruct_fixed import (
+            build_oas_aerostruct_fixed,
+        )
+        register_factory(
+            "oas/AerostructFixedPoint", build_oas_aerostruct_fixed,
+        )
+    except ImportError:
+        logger.info(
+            "openconcept/openaerostruct not available, "
+            "oas/AerostructFixedPoint factory not registered"
+        )
+
     # OCP factories: optional, require openconcept
     try:
         from hangar.omd.factories.ocp import (

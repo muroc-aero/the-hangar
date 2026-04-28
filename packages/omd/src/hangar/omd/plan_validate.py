@@ -41,8 +41,13 @@ _GENERIC_PROMOTED = {
 _OAS_COMMON = {
     "twist_cp", "thickness_cp", "chord_cp",
     "spar_thickness_cp", "skin_thickness_cp", "t_over_c_cp",
+    "toverc_cp",
     "CL", "CD", "CDi", "CDv", "CDw", "CM",
     "failure", "tsaiwu_sr", "S_ref",
+    # oas/AerostructFixedPoint exposes these promoted scalars.
+    "aspect_ratio", "taper", "c4sweep",
+    "fuel_burn_kg", "failure_maneuver", "W_wing_maneuver",
+    "2_5g_KS_failure",
 }
 
 _OCP_COMMON = {

@@ -1,0 +1,102 @@
+metadata:
+  id: adler-mission-based
+  name: Adler 2022a mission-based MDO (B738 aerostruct + HBTF + maneuver)
+  version: 1
+  description: >
+    Reproduces the mission-based optimization method from Adler &
+    Martins (2022a) Section IV. Minimizes the mission-integrated
+    fuel burn (descent.fuel_used_final from OpenConcept's BasicMission)
+    of a B738 with OAS aerostructural surrogate drag, pyCycle HBTF
+    propulsion surrogate, and a 2.5 g maneuver structural sizing
+    constraint. 14 wingbox DVs.
+    Mirrors upstream B738_aerostructural.py (the canonical paper
+    implementation).
+
+components:
+- id: mission
+  type: ocp/BasicMission
+  config:
+    aircraft_template: b738
+    architecture: twin_turbofan
+    num_nodes: 3
+    solver_settings:
+      solver_type: nlbgs
+      maxiter: 200
+      atol: 1.0e-8
+      rtol: 1.0e-8
+    mission_params:
+      cruise_altitude_ft: 35000
+      mission_range_NM: 1500
+      climb_vs_ftmin: 2000
+      climb_Ueas_kn: 250
+      cruise_Ueas_kn: 460
+      descent_vs_ftmin: 1500
+      descent_Ueas_kn: 250
+    slots:
+      drag:
+        provider: oas/aerostruct
+        config:
+          num_x: 3
+          num_y: 7
+          num_twist: 4
+          num_toverc: 4
+          num_skin: 4
+          num_spar: 4
+      propulsion:
+        provider: pyc/surrogate
+        config:
+          archetype: hbtf
+          design_alt: 35000
+          design_MN: 0.78
+          design_Fn: 5900
+          design_T4: 2857
+          engine_params:
+            thermo_method: TABULAR
+      weight:
+        provider: ocp/parametric-weight
+        config:
+          use_wing_weight: true
+          W_engine: 2370.0
+          W_systems: 11000.0
+          W_payload_equip: 17260.0
+      maneuver:
+        provider: oas/maneuver
+        config:
+          load_factor: 2.5
+          mach: 0.78
+          altitude_ft: 20000.0
+          num_x: 3
+          num_y: 7
+          num_twist: 4
+          num_toverc: 4
+          num_skin: 4
+          num_spar: 4
+
+operating_points: {}
+
+design_variables:
+- {name: "ac|geom|wing|AR",              lower: 5.0,   upper: 10.4}
+- {name: "ac|geom|wing|c4sweep",         lower: 0.0,   upper: 35.0,  units: "deg"}
+- {name: "ac|geom|wing|taper",           lower: 0.01,  upper: 0.35,  scaler: 10.0}
+- name: "ac|geom|wing|twist"
+  lower: [0.0, -10.0, -10.0, -10.0]
+  upper: [0.0, 10.0, 10.0, 10.0]
+  units: "deg"
+- name: "ac|geom|wing|toverc"
+  lower: [0.030, 0.053, 0.077, 0.10]
+  upper: 0.25
+- {name: "ac|geom|wing|skin_thickness",  lower: 0.003, upper: 0.10,  units: "m", scaler: 100.0}
+- {name: "ac|geom|wing|spar_thickness",  lower: 0.003, upper: 0.10,  units: "m", scaler: 100.0}
+
+constraints:
+- {name: "failure_maneuver", upper: 0.0}
+
+objective:
+  name: descent.fuel_used_final
+  scaler: 1.0e-4
+
+optimizer:
+  type: SLSQP
+  options:
+    maxiter: 150
+    tol: 1.0e-6
