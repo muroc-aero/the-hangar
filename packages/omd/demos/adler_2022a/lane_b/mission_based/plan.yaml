@@ -81,6 +81,7 @@ design_variables:
 - name: "ac|geom|wing|twist"
   lower: [0.0, -10.0, -10.0, -10.0]
   upper: [0.0, 10.0, 10.0, 10.0]
+  initial: [0.0, -0.6666666666666667, 0.6666666666666666, 2.0]
   units: "deg"
 - name: "ac|geom|wing|toverc"
   lower: [0.030, 0.053, 0.077, 0.10]
@@ -89,7 +90,7 @@ design_variables:
 - {name: "ac|geom|wing|spar_thickness",  lower: 0.003, upper: 0.10,  units: "m", scaler: 100.0}
 
 constraints:
-- {name: "failure_maneuver", upper: 0.0}
+- {name: "failure_maneuver", upper: 0.0, scaler: 100.0}
 
 objective:
   name: descent.fuel_used_final

@@ -1,13 +1,13 @@
 metadata:
-  id: adler-single-point-paperspec
-  name: Adler 2022a single-point Breguet (B738 aerostruct wing) - paper-spec mesh
+  id: adler-single-point-smoke11
+  name: Adler 2022a single-point Breguet (B738 aerostruct wing) - mesh-sensitivity probe
   version: 1
   description: >
-    Phase 2.2 paper-specification configuration of
-    lane_b/single_point/plan.yaml. Mesh num_x=3, num_y=27 at 300 nmi
-    matches Adler & Martins (2022a) Table 5 single_point row. Expected
-    SLSQP wall time 4-12 h on an 8-core box. Run only after Phase 2.1
-    smoke (num_y=5) shows directionally-correct convergence.
+    Phase 2.1 mesh-sensitivity probe at num_y=11 (vs the smoke num_y=5 and
+    paper-spec num_y=27). 300 nmi mission, tol=1e-4. Used to test whether
+    the AR-goes-down outcome at smoke is a coarse-mesh artifact (in which
+    case AR should now move toward the upper bound) or a model-level issue
+    (AR stays low). Expected wall time 45-90 min.
 
 operating_points: {}
 
@@ -28,7 +28,7 @@ components:
       gamma_deg: 0.0
     surface_grid:
       num_x: 3
-      num_y: 27
+      num_y: 11
       num_twist: 4
       num_toverc: 4
       num_skin: 4
@@ -38,7 +38,7 @@ components:
       mach: 0.78
       altitude_ft: 20000.0
       num_x: 3
-      num_y: 27
+      num_y: 11
       num_twist: 4
       num_toverc: 4
       num_skin: 4
@@ -69,5 +69,5 @@ objective:
 optimizer:
   type: SLSQP
   options:
-    maxiter: 200
-    tol: 1.0e-5
+    maxiter: 150
+    tol: 1.0e-4

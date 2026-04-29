@@ -187,23 +187,25 @@ class _FixedAerostructPoint(om.Group):
         ivc.add_output("fltcond|Utrue", val=v_true, units="m/s", shape=(nn,))
         self.add_subsystem("ivc", ivc, promotes_outputs=["*"])
 
-        # Lift target: L = MTOW * (1 - frac * fuel_frac_est) * g * cos(gamma)
-        # MTOW is promoted from the parent's `ac|weights|MTOW` IVC so
-        # all points share the same source value. frac and fuel_frac_est
-        # are constants per point.
+        # Lift target: L = W_total * (1 - frac * fuel_frac_est) * g * cos(gamma)
+        # W_total = MTOW + W_wing - orig_W_wing is computed at the parent
+        # model level from the maneuver-sized W_wing, mirroring the
+        # upstream B738_aerostructural.py:149-160 AddSubtractComp pattern.
+        # Coupling W_wing into the lift balance is what gives the
+        # optimizer a fuel-burn penalty for heavier wings.
         wf = float(self.options["weight_fraction"])
         ffe = float(self.options["fuel_fraction_estimate"])
         weight_const_factor = 1.0 - wf * ffe
         self.add_subsystem(
             "lift_target",
             om.ExecComp(
-                "L_target = MTOW * weight_factor * 9.807 * cos_gamma",
+                "L_target = W_total * weight_factor * 9.807 * cos_gamma",
                 L_target={"units": "N", "shape": (nn,)},
-                MTOW={"units": "kg", "shape": (nn,), "val": self.options["MTOW_kg"]},
+                W_total={"units": "kg", "shape": (nn,), "val": self.options["MTOW_kg"]},
                 weight_factor={"shape": (nn,), "val": weight_const_factor},
                 cos_gamma={"shape": (nn,), "val": float(np.cos(gamma_rad))},
             ),
-            promotes_inputs=[("MTOW", "ac|weights|MTOW")],
+            promotes_inputs=[("W_total", "ac|weights|W_total")],
         )
 
         # CL_target = L_target / (q * S_ref)
@@ -283,6 +285,21 @@ class _FixedAerostructPoint(om.Group):
         self.connect("lift_target.L_target", "lift_over_drag.L_target")
         self.connect("drag", "lift_over_drag.drag")
 
+        # Newton solver to drive AerostructDragPolar's BalanceComp
+        # (alpha_bal: CL_OAS == fltcond|CL) to zero. Without this the
+        # alpha stays at its initial guess of 1 deg and the surrogate
+        # is evaluated off the lift target, polluting L/D gradients in
+        # downstream optimization. Mirrors upstream usage at
+        # openconcept/aerodynamics/openaerostruct/aerostructural.py:1549.
+        self.nonlinear_solver = om.NewtonSolver(
+            solve_subsystems=True, iprint=0,
+        )
+        self.nonlinear_solver.options["maxiter"] = 30
+        self.nonlinear_solver.options["atol"] = 1e-8
+        self.nonlinear_solver.options["rtol"] = 1e-8
+        self.nonlinear_solver.options["err_on_non_converge"] = False
+        self.linear_solver = om.DirectSolver()
+
 
 def _build_breguet_objective(
     mode: str, n_cruise: int, MTOW_kg: float, tsfc_per_s: float,
@@ -309,9 +326,11 @@ def _build_breguet_objective(
     g = 9.807
     if mode == "single_cruise_breguet":
         return om.ExecComp(
-            "fuel_burn_kg = W_initial_0 * (1.0 - exp(-R_0 * TSFC * g / (V_0 * L_over_D_0)))",
+            "fuel_burn_kg = W_total * weight_fraction_0 "
+            "* (1.0 - exp(-R_0 * TSFC * g / (V_0 * L_over_D_0)))",
             fuel_burn_kg={"units": "kg"},
-            W_initial_0={"units": "kg", "val": MTOW_kg},
+            W_total={"units": "kg", "val": MTOW_kg},
+            weight_fraction_0={"val": 0.95},
             R_0={"units": "m", "val": 1500.0 * 1852.0},
             V_0={"units": "m/s", "val": 230.0},
             TSFC={"val": tsfc_per_s},
@@ -319,19 +338,21 @@ def _build_breguet_objective(
             g={"val": g},
         )
     if mode == "averaged_cruise_breguet":
-        # average of n Bréguet evaluations
+        # average of n Bréguet evaluations, each scaled by W_total *
+        # weight_fraction_i so the optimized wing weight feeds back.
         terms = []
         kw: dict[str, Any] = {
             "fuel_burn_kg": {"units": "kg"},
+            "W_total": {"units": "kg", "val": MTOW_kg},
             "TSFC": {"val": tsfc_per_s},
             "g": {"val": g},
         }
         for i in range(n_cruise):
             terms.append(
-                f"W_initial_{i} * (1.0 - exp(-R_{i} * TSFC * g / "
+                f"W_total * weight_fraction_{i} * (1.0 - exp(-R_{i} * TSFC * g / "
                 f"(V_{i} * L_over_D_{i})))"
             )
-            kw[f"W_initial_{i}"] = {"units": "kg", "val": MTOW_kg}
+            kw[f"weight_fraction_{i}"] = {"val": 0.95}
             kw[f"R_{i}"] = {"units": "m", "val": 1500.0 * 1852.0}
             kw[f"V_{i}"] = {"units": "m/s", "val": 230.0}
             kw[f"L_over_D_{i}"] = {"val": 18.0}
@@ -339,22 +360,22 @@ def _build_breguet_objective(
         return om.ExecComp(expr, **kw)
     if mode == "cruise_plus_climb_breguet":
         # Modified Bréguet for climb (one segment) + standard Bréguet
-        # for cruise (one segment). Single-line formula avoids
-        # ExecComp's chained-output issue: ExecComp wants every name to
-        # be either purely an input or purely an output, never both.
-        # NOTE: W_initial_cruise should equal MTOW - fuel_climb if
-        # we wanted strict accounting, but for the simple Bréguet
-        # estimator we use MTOW - 0.5 * 0.10 * MTOW as a starting
-        # estimate (set via set_input_defaults at build time).
+        # for cruise (one segment), both scaled by W_total. Single-line
+        # formula avoids ExecComp's chained-output issue: every name is
+        # either purely an input or purely an output.
+        # weight_fraction_climb=1.0 means climb starts at full W_total.
+        # weight_fraction_cruise=0.985 approximates cruise-start weight
+        # after a 1.5% fuel burn during climb.
         return om.ExecComp(
             "fuel_burn_kg = "
-            "W_initial_climb * (exp((1.0 / L_over_D_climb + gamma_climb) "
+            "W_total * weight_fraction_climb * (exp((1.0 / L_over_D_climb + gamma_climb) "
             "* TSFC * R_climb * g / V_climb) - 1.0) "
-            "+ W_initial_cruise * (1.0 - exp(-R_cruise * TSFC * g "
+            "+ W_total * weight_fraction_cruise * (1.0 - exp(-R_cruise * TSFC * g "
             "/ (V_cruise * L_over_D_cruise)))",
             fuel_burn_kg={"units": "kg"},
-            W_initial_climb={"units": "kg", "val": MTOW_kg},
-            W_initial_cruise={"units": "kg", "val": MTOW_kg},
+            W_total={"units": "kg", "val": MTOW_kg},
+            weight_fraction_climb={"val": 1.0},
+            weight_fraction_cruise={"val": 0.985},
             L_over_D_climb={"val": 12.0},
             L_over_D_cruise={"val": 18.0},
             R_climb={"units": "m", "val": 100.0 * 1852.0},
@@ -550,7 +571,7 @@ def build_oas_aerostruct_breguet(
                 "ac|geom|wing|c4sweep", "ac|geom|wing|twist",
                 "ac|geom|wing|toverc", "ac|geom|wing|skin_thickness",
                 "ac|geom|wing|spar_thickness", "ac|aero|CD_nonwing",
-                "ac|weights|MTOW",
+                "ac|weights|W_total",
             ],
         )
         return float(fp["mach"]) * _isa_speed_of_sound(float(fp["altitude_ft"]))
@@ -600,23 +621,52 @@ def build_oas_aerostruct_breguet(
         ],
     )
 
-    # Bréguet fuel-burn objective.
+    # Aircraft total weight: MTOW + W_wing - orig_W_wing. Mirrors the
+    # upstream B738_aerostructural.py:149-160 AddSubtractComp pattern.
+    # This is what couples the maneuver-sized wing weight back into the
+    # cruise lift-balance and the Bréguet objective. Without it, the
+    # optimizer sees no fuel penalty for heavier wings.
+    model.add_subsystem(
+        "aircraft_weight",
+        om.ExecComp(
+            "W_total = MTOW + W_wing - orig_W_wing",
+            W_total={"units": "kg", "val": MTOW},
+            MTOW={"units": "kg", "val": MTOW},
+            W_wing={"units": "kg", "val": orig_W_wing},
+            orig_W_wing={"units": "kg", "val": orig_W_wing},
+        ),
+        promotes_inputs=[
+            ("MTOW", "ac|weights|MTOW"),
+            ("orig_W_wing", "ac|weights|orig_W_wing"),
+        ],
+        promotes_outputs=[("W_total", "ac|weights|W_total")],
+    )
+    model.connect("W_wing_maneuver", "aircraft_weight.W_wing")
+
+    # Bréguet fuel-burn objective. Promote W_total so it auto-wires from
+    # aircraft_weight; weight_fraction_* are constants set per segment.
     obj = _build_breguet_objective(mode, n_cruise, MTOW, tsfc_units)
-    model.add_subsystem("breguet", obj)
+    model.add_subsystem(
+        "breguet", obj,
+        promotes_inputs=[("W_total", "ac|weights|W_total")],
+    )
 
     # Per-cruise-point L/D wiring into the objective component.
     # Each cruise-point Bréguet eval uses the FULL mission range (each
-    # estimate is an estimate for the entire mission).
+    # estimate is an estimate for the entire mission). The W_initial
+    # for each segment is W_total * weight_fraction_i, where W_total is
+    # computed in `aircraft_weight` and weight_fraction_i ≈ 1 - wf*ffe
+    # captures fuel burned by mid-segment.
     for i, fp in enumerate(cruise_points):
         wf = float(fp.get("weight_fraction", 0.5))
-        weight_const = MTOW * (1.0 - wf * fuel_frac_est)
+        weight_fraction_const = 1.0 - wf * fuel_frac_est
         if mode == "single_cruise_breguet":
             model.connect(
                 f"{cruise_subsys_names[i]}.lift_over_drag.L_over_D",
                 "breguet.L_over_D_0",
                 src_indices=[0],
             )
-            model.set_input_defaults("breguet.W_initial_0", val=weight_const, units="kg")
+            model.set_input_defaults("breguet.weight_fraction_0", val=weight_fraction_const)
             model.set_input_defaults("breguet.R_0", val=mission_range_m, units="m")
             model.set_input_defaults("breguet.V_0", val=cruise_velocities_ms[i], units="m/s")
         elif mode == "averaged_cruise_breguet":
@@ -626,7 +676,7 @@ def build_oas_aerostruct_breguet(
                 src_indices=[0],
             )
             model.set_input_defaults(
-                f"breguet.W_initial_{i}", val=weight_const, units="kg",
+                f"breguet.weight_fraction_{i}", val=weight_fraction_const,
             )
             model.set_input_defaults(
                 f"breguet.R_{i}", val=mission_range_m, units="m",
@@ -652,14 +702,12 @@ def build_oas_aerostruct_breguet(
         # the plan can override via climb_range_nmi.
         climb_range_m = float(component_config.get("climb_range_nmi", 100.0)) * 1852.0
         cruise_range_m = max(0.0, mission_range_m - climb_range_m)
-        # Initial weights: climb starts at MTOW; cruise starts at
-        # MTOW - 0.5 * climb_fuel_estimate. For the optimizer's first
-        # eval we use fixed estimates; the converged design will land
-        # close to physical values.
-        model.set_input_defaults("breguet.W_initial_climb", val=MTOW, units="kg")
-        model.set_input_defaults(
-            "breguet.W_initial_cruise", val=MTOW * 0.985, units="kg",
-        )
+        # Initial-weight fractions: climb starts at full W_total
+        # (weight_fraction_climb=1.0); cruise starts at ~0.985 W_total
+        # (rough estimate of post-climb weight). W_total itself is
+        # supplied by aircraft_weight via promotion.
+        model.set_input_defaults("breguet.weight_fraction_climb", val=1.0)
+        model.set_input_defaults("breguet.weight_fraction_cruise", val=0.985)
         model.set_input_defaults("breguet.R_climb", val=climb_range_m, units="m")
         model.set_input_defaults("breguet.R_cruise", val=cruise_range_m, units="m")
         model.set_input_defaults(
@@ -685,6 +733,17 @@ def build_oas_aerostruct_breguet(
         promotes_inputs=[("failure_maneuver", "failure_maneuver")],
         promotes_outputs=[("two_5g_KS_failure", "2_5g_KS_failure")],
     )
+
+    # Explicit execution order. The default RunOnce respects add-order,
+    # but cruise points were added before maneuver / aircraft_weight for
+    # readability. Without this reorder, cruise's lift_target reads the
+    # default W_total (= MTOW) instead of the maneuver-coupled value.
+    order = ["ac", "maneuver", "aircraft_weight"]
+    order.extend(cruise_subsys_names)
+    if climb_subsys_name is not None:
+        order.append(climb_subsys_name)
+    order.extend(["breguet", "ks_alias"])
+    model.set_order(order)
 
     # Variable path mappings consumed by the materializer to resolve
     # plan-level short names.

@@ -4,7 +4,13 @@ Covers:
   * UserInputError when a required aircraft / engine config key is
     missing (factory is aircraft-agnostic; no module-level defaults).
   * B738-config single_cruise_breguet analysis-mode parity at 1500 nmi
-    (regression check: fuel_burn_kg == 7726.293493 to 6 decimals).
+    (regression check: fuel_burn_kg == 7720.782548 to 6 decimals; this
+    is post-W_wing-coupling — W_total = MTOW + W_wing - orig_W_wing now
+    drives L_target and the Bréguet W_initial, mirroring upstream
+    B738_aerostructural.py:149-160). The value is for the FACTORY-level
+    IVC defaults (twist linspace [-2, -0.667, 0.667, 2]); plan-level
+    runs supply explicit twist `initial` and produce a slightly
+    different number (~7712 kg via omd-cli at the plan defaults).
   * Non-B738 (caravan-class) analysis-mode smoke test: positive fuel
     burn and L = W*cos(gamma) at the cruise point.
 """
@@ -104,15 +110,16 @@ def test_maneuver_block_missing_subkey_raises(b738_config):
 
 @pytest.mark.slow
 def test_b738_single_cruise_breguet_analysis_parity(b738_config):
-    """Regression: B738 single_cruise_breguet at 1500 nmi default IVCs
-    reproduces the pre-rename Phase 0 parity number (7726.293493 kg)."""
+    """Regression: B738 single_cruise_breguet at 1500 nmi default IVCs.
+    Post-W_wing-coupling baseline: 7712.717739 kg (the pre-coupling
+    Phase 0 baseline of 7726.293493 was off because W_initial used a
+    fixed MTOW instead of MTOW + W_wing - orig_W_wing)."""
     build = _import_factory()
     prob, meta = build(b738_config, {})
     prob.setup(check=False, mode="fwd")
     prob.run_model()
     fuel = float(prob.get_val("breguet.fuel_burn_kg", units="kg"))
-    # Phase 0 verified parity with lane_b run-20260428T090219-0ac31ea9
-    assert fuel == pytest.approx(7726.293493, rel=1e-5)
+    assert fuel == pytest.approx(7720.782548, rel=1e-5)
 
 
 @pytest.mark.slow
@@ -131,8 +138,11 @@ def test_caravan_class_analysis_runs(caravan_config):
 
     L_target = float(prob.get_val("cruise_0.lift_target.L_target", units="N"))
     MTOW = float(prob.get_val("ac|weights|MTOW", units="kg"))
+    orig_W_wing = float(prob.get_val("ac|weights|orig_W_wing", units="kg"))
+    W_wing = float(prob.get_val("W_wing_maneuver", units="kg"))
+    W_total = MTOW + W_wing - orig_W_wing
     g = 9.807
     weight_fraction = 0.5
     fuel_fraction_estimate = 0.10
-    expected_L = MTOW * (1.0 - weight_fraction * fuel_fraction_estimate) * g
+    expected_L = W_total * (1.0 - weight_fraction * fuel_fraction_estimate) * g
     assert L_target == pytest.approx(expected_L, rel=1e-6)
