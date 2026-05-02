@@ -66,3 +66,24 @@ mcp.lakesideai.dev {
         file_server
     }
 }
+
+# Company-level landing page. Sibling site to mcp.lakesideai.dev,
+# served from /srv/landing-company (mounted read-only). Source lives at
+# deploy/landing-company/ in the repo.
+lakesideai.dev {
+    header {
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        -Server
+    }
+
+    handle {
+        root * /srv/landing-company
+        file_server
+    }
+}
+
+www.lakesideai.dev {
+    redir https://lakesideai.dev{uri} permanent
+}
