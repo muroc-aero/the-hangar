@@ -37,7 +37,7 @@ End-to-end engineering workflows executed through The Hangar. Each study ships w
 
 ![Brelje 2018a Fig 5 paper vs reproduced](packages/omd/demos/brelje_2018a/figures/comparison_fig5.png)
 
-*Brelje 2018a Fig 5 (fuel + MTOW/100 objective): paper (left) vs omd Lane B reproduction (right), 5x5 grid.*
+*Brelje 2018a Fig 5 (fuel + MTOW/100 objective): paper (left) vs omd Lane B reproduction (right), 11x12 paper-correct grid (132/132 converged). Mixed-objective agreement under 2 % at all three published Table 4 reference cells.*
 
 ## Local setup
 

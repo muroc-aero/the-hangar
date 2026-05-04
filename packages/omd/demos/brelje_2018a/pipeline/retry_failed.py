@@ -30,7 +30,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-DEMO_DIR = Path(__file__).resolve().parent
+DEMO_DIR = Path(__file__).resolve().parent.parent
 RESULTS_DIR = DEMO_DIR / "results"
 
 sys.path.insert(0, str(DEMO_DIR))

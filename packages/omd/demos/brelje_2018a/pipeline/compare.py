@@ -1,12 +1,17 @@
 """Side-by-side paper vs. reproduced PNG generator.
 
 Pastes the paper's Fig 5 or 6 crop on the left and our reproduced
-figure on the right.  Expects:
+figure on the right.  Defaults to the paper-style pcolormesh render
+(figures/reproduced/fig{5,6}_paper.png) so the two sides use the same
+visual encoding.  Pass --style contour for the contourf render.
+
+Expects:
     figures/paper/fig{5,6}.png
-    figures/reproduced/fig{5,6}.png
+    figures/reproduced/fig{5,6}_paper.png   (or fig{5,6}.png with --style contour)
 
 Usage:
     uv run python packages/omd/demos/brelje_2018a/compare.py --figure 5
+    uv run python packages/omd/demos/brelje_2018a/compare.py --figure 5 --style contour
 """
 
 from __future__ import annotations
@@ -20,18 +25,20 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 
-DEMO_DIR = Path(__file__).resolve().parent
+DEMO_DIR = Path(__file__).resolve().parent.parent
 OUT_DIR = DEMO_DIR / "figures"
 
 
-def compare(figure_num: int) -> Path:
+def compare(figure_num: int, style: str = "paper") -> Path:
     paper_path = OUT_DIR / "paper" / f"fig{figure_num}.png"
-    repro_path = OUT_DIR / "reproduced" / f"fig{figure_num}.png"
+    repro_name = f"fig{figure_num}_paper.png" if style == "paper" else f"fig{figure_num}.png"
+    repro_path = OUT_DIR / "reproduced" / repro_name
     out_path = OUT_DIR / f"comparison_fig{figure_num}.png"
 
     if not repro_path.exists():
         raise FileNotFoundError(
-            f"Missing reproduced figure {repro_path}. Run plotting.py first."
+            f"Missing reproduced figure {repro_path}. Run plotting.py "
+            f"--figure {figure_num} --style {style} first."
         )
 
     fig, axes = plt.subplots(1, 2, figsize=(18, 9))
@@ -65,8 +72,11 @@ def compare(figure_num: int) -> Path:
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--figure", type=int, choices=[5, 6], default=5)
+    p.add_argument("--style", choices=["paper", "contour"], default="paper",
+                   help="Which reproduced render to paste alongside the paper "
+                        "crop (default: paper-style pcolormesh).")
     args = p.parse_args()
-    path = compare(args.figure)
+    path = compare(args.figure, style=args.style)
     print(f"Wrote -> {path}")
     return 0
 
