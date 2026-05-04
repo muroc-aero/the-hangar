@@ -1,0 +1,78 @@
+# Reference cells for Lane C one-by-one reproduction.
+#
+# Each entry is a (design_range_NM, battery_specific_energy_Wh_per_kg)
+# pair from the Brelje 2018a paper or the omd 11x12 sweep, with the
+# expected converged values that a Lane C run must match.
+#
+# Format:
+#   id:        short slug used in output filenames
+#   range_nm:  mission range in nautical miles
+#   spec_e:    battery pack specific energy in Wh/kg
+#   objective: fuel | cost
+#   source:    paper-table-4  (Brelje 2018a Table 4 ref) or
+#              omd-sweep      (taken from results/fig{5,6}_grid.csv)
+#   expect:    target values; whichever are present are checked
+#              with the tolerance in `tol_pct` (default 5).
+
+cells:
+  # ---- Brelje Table 4 published reference points (in-grid only) ----
+  - id: paper-fuel-500-250
+    range_nm: 500
+    spec_e:   250
+    objective: fuel
+    source: paper-table-4
+    tol_pct: 5
+    expect:
+      mixed_objective: 382.4   # fuel + MTOW/100 in kg
+      MTOW_lb: 8912.8
+      fuel_lb: 754.0
+      W_battery_lb: 330.3
+      Sref_ft2: 259.8
+
+  - id: paper-fuel-500-500
+    range_nm: 500
+    spec_e:   500
+    objective: fuel
+    source: paper-table-4
+    tol_pct: 5
+    expect:
+      mixed_objective: 292.9
+      MTOW_lb: 12564.6
+      fuel_lb: 218.5
+      W_battery_lb: 1944.4
+      Sref_ft2: 273.1
+
+  - id: paper-fuel-500-750
+    range_nm: 500
+    spec_e:   750
+    objective: fuel
+    source: paper-table-4
+    tol_pct: 8     # higher tolerance: fully-electric, S_ref free
+    expect:
+      mixed_objective: 56.7
+      MTOW_lb: 12505.4
+      W_battery_lb: 8627.0
+
+  # ---- Easy mid-grid sanity check ----
+  - id: omd-fuel-450-450
+    range_nm: 450
+    spec_e:   450
+    objective: fuel
+    source: omd-sweep
+    tol_pct: 3
+
+  # ---- Boundary / hard cell (post-rescue) ----
+  - id: omd-fuel-700-450
+    range_nm: 700
+    spec_e:   450
+    objective: fuel
+    source: omd-sweep
+    tol_pct: 3
+
+  # ---- Cost objective sanity check ----
+  - id: omd-cost-500-450
+    range_nm: 500
+    spec_e:   450
+    objective: cost
+    source: omd-sweep
+    tol_pct: 3

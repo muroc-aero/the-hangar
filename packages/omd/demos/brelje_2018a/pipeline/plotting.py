@@ -25,7 +25,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-DEMO_DIR = Path(__file__).resolve().parent
+DEMO_DIR = Path(__file__).resolve().parent.parent
 RESULTS_DIR = DEMO_DIR / "results"
 OUT_DIR = DEMO_DIR / "figures" / "reproduced"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -60,29 +60,71 @@ def _pivot_grid(df: pd.DataFrame, column: str) -> tuple[np.ndarray, np.ndarray, 
     return piv.columns.to_numpy(), piv.index.to_numpy(), piv.to_numpy()
 
 
-def _plot_panel(ax, x, y, z, spec: dict, paper_fig: int) -> None:
+def _cell_edges(centers: np.ndarray) -> np.ndarray:
+    """Convert N cell-center coordinates to N+1 cell-edge coordinates so
+    pcolormesh draws each grid cell as a rectangle centered on its (x, y).
+    Edges are placed at midpoints with end-cell extrapolation."""
+    if len(centers) < 2:
+        d = 1.0
+        return np.array([centers[0] - d / 2, centers[0] + d / 2])
+    mids = 0.5 * (centers[:-1] + centers[1:])
+    first = centers[0] - (mids[0] - centers[0])
+    last = centers[-1] + (centers[-1] - mids[-1])
+    return np.concatenate([[first], mids, [last]])
+
+
+def _plot_panel(ax, x, y, z, spec: dict, paper_fig: int,
+                style: str = "contour", overlay_contours: bool = False) -> None:
+    """Render one of the four panels.
+
+    style="contour": filled contourf (legacy/smooth look).
+    style="paper":   pcolormesh per-cell rectangles, matching the paper
+                     figures.  When overlay_contours=True, draw thin
+                     contour lines on top (top-left fuel-mileage panel
+                     in the paper has this).
+    """
     vmin = spec["vmin"]
     vmax = spec["vmax"]
-    levels = np.linspace(vmin, vmax, 11)
-    # Mask any cells that failed to converge
     zmasked = np.ma.masked_invalid(z)
     if zmasked.count() == 0:
         ax.set_facecolor("#eeeeee")
         ax.text(0.5, 0.5, "no converged cells", ha="center", va="center",
                 transform=ax.transAxes, color="#888888")
+    elif style == "paper":
+        xe = _cell_edges(np.asarray(x, dtype=float))
+        ye = _cell_edges(np.asarray(y, dtype=float))
+        pm = ax.pcolormesh(xe, ye, zmasked, cmap="viridis",
+                           vmin=vmin, vmax=vmax, shading="flat")
+        cbar = plt.colorbar(pm, ax=ax, pad=0.02)
+        cbar.set_label(spec["label"])
+        if overlay_contours:
+            n_lines = 18
+            levels = np.linspace(vmin, vmax, n_lines)
+            ax.contour(x, y, zmasked, levels=levels, colors="white",
+                       linewidths=0.4, alpha=0.85)
     else:
+        levels = np.linspace(vmin, vmax, 11)
         cf = ax.contourf(x, y, zmasked, levels=levels, cmap="viridis",
                          extend="both")
         cbar = plt.colorbar(cf, ax=ax, pad=0.02)
         cbar.set_label(spec["label"])
     ax.set_xlabel("Design range (nmi)")
     ax.set_ylabel("Specific energy (Whr/kg)")
-    ax.set_xlim(300, 800)
-    ax.set_ylim(300, 800)
+    if style == "paper":
+        # Tight axis limits matching the cell-edge grid (no whitespace
+        # around the painted cells, like the paper figures).
+        xe = _cell_edges(np.asarray(x, dtype=float))
+        ye = _cell_edges(np.asarray(y, dtype=float))
+        ax.set_xlim(xe[0], xe[-1])
+        ax.set_ylim(ye[0], ye[-1])
+    else:
+        ax.set_xlim(300, 800)
+        ax.set_ylim(300, 800)
 
 
 def plot_figure(figure_num: int, csv_path: Path | None = None,
-                out_path: Path | None = None) -> Path:
+                out_path: Path | None = None,
+                style: str = "contour") -> Path:
     if figure_num not in (5, 6):
         raise ValueError(f"figure must be 5 or 6, got {figure_num}")
     if csv_path is None:
@@ -124,28 +166,32 @@ def plot_figure(figure_num: int, csv_path: Path | None = None,
            ["fuel_mileage_lb_per_nmi", "doc_per_nmi",
             "electric_percent", "MTOW_lb"]] = np.nan
 
-    fig, axes = plt.subplots(2, 2, figsize=(12, 9))
+    # figsize chosen to match the Brelje 2018a paper crop aspect (~1.16:1).
+    fig, axes = plt.subplots(2, 2, figsize=(10.5, 9))
     specs = _PANEL_SPECS[figure_num]
     panels = [
-        ("fuel_mileage_lb_per_nmi", axes[0, 0]),
-        ("doc_per_nmi",             axes[0, 1]),
-        ("electric_percent",        axes[1, 0]),
-        ("MTOW_lb",                 axes[1, 1]),
+        ("fuel_mileage_lb_per_nmi", axes[0, 0], True),   # overlay contours
+        ("doc_per_nmi",             axes[0, 1], False),
+        ("electric_percent",        axes[1, 0], False),
+        ("MTOW_lb",                 axes[1, 1], False),
     ]
-    for col, ax in panels:
+    for col, ax, overlay in panels:
         x, y, z = _pivot_grid(df, col)
-        _plot_panel(ax, x, y, z, specs[col], figure_num)
+        _plot_panel(ax, x, y, z, specs[col], figure_num,
+                    style=style, overlay_contours=overlay)
 
     objective_label = "Minimum fuel burn MDO results" if figure_num == 5 else "Minimum cost MDO results"
+    style_tag = " (paper style)" if style == "paper" else ""
     fig.suptitle(
-        f"Fig {figure_num} reproduction -- {objective_label} "
+        f"Fig {figure_num} reproduction{style_tag} -- {objective_label} "
         f"({df['converged'].astype(str).str.lower().eq('true').sum()}/{len(df)} converged)",
         fontsize=12,
     )
     fig.tight_layout(rect=(0, 0, 1, 0.97))
 
     if out_path is None:
-        out_path = OUT_DIR / f"fig{figure_num}.png"
+        suffix = "_paper" if style == "paper" else ""
+        out_path = OUT_DIR / f"fig{figure_num}{suffix}.png"
     fig.savefig(out_path, dpi=150)
     plt.close(fig)
     return out_path
@@ -156,11 +202,16 @@ def main() -> int:
     p.add_argument("--figure", type=int, choices=[5, 6], default=5)
     p.add_argument("--csv", type=str, default=None)
     p.add_argument("--out", type=str, default=None)
+    p.add_argument("--style", choices=["contour", "paper"], default="contour",
+                   help="contour: smooth contourf (default); paper: pcolormesh "
+                        "per-cell rectangles + overlaid contour lines on the "
+                        "fuel-mileage panel, matching the Brelje 2018a figures.")
     args = p.parse_args()
 
     csv_path = Path(args.csv) if args.csv else None
     out_path = Path(args.out) if args.out else None
-    path = plot_figure(args.figure, csv_path=csv_path, out_path=out_path)
+    path = plot_figure(args.figure, csv_path=csv_path, out_path=out_path,
+                       style=args.style)
     print(f"Wrote -> {path}")
     return 0
 

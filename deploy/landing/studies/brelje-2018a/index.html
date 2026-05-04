@@ -195,33 +195,31 @@ footer .sep{margin:0 10px;opacity:.5;color:var(--accent)}
     <h1>Brelje 2018a &mdash; <span class="amber">figs 5 &amp; 6 reproduction</span></h1>
     <p class="subtitle">King Air C90GT twin series-hybrid MDO over mission range &times; battery specific energy. Each grid cell is an independent optimization. Fig 5 minimizes fuel + MTOW/100; Fig 6 minimizes trip direct operating cost. Run end-to-end through the <code style="color:var(--accent);font-size:.95em">hangar-omd</code> Lane B plan pipeline.</p>
     <div class="run-meta">
-      <span class="k">plan:</span> <span class="v">brelje-fuel-mdo-lane-c v1</span>
-      <span class="sep">/</span>
-      <span class="k">run:</span> <span class="v">run-20260423T190235-641af06b</span>
+      <span class="k">plan:</span> <span class="v">brelje-fuel-mdo v1</span>
       <span class="sep">/</span>
       <span class="k">factory:</span> <span class="v">ocp/FullMission</span>
       <span class="sep">/</span>
       <span class="k">architecture:</span> <span class="v">twin_series_hybrid</span>
       <span class="sep">/</span>
-      <span class="k">grid:</span> <span class="v">5x5 (25 cells)</span>
+      <span class="k">grid:</span> <span class="v">11x12 (132 cells/figure, paper-correct axes)</span>
     </div>
 
     <!-- RESULT CARDS -->
     <div class="result-cards" id="results">
       <div class="result-card">
-        <div class="value converged">25 / 25</div>
+        <div class="value converged">132 / 132</div>
         <div class="label-k">fig5 cells converged</div>
       </div>
       <div class="result-card">
-        <div class="value converged">25 / 25</div>
+        <div class="value converged">132 / 132</div>
         <div class="label-k">fig6 cells converged</div>
       </div>
       <div class="result-card">
-        <div class="value">233.22</div>
+        <div class="value">324.9</div>
         <div class="label-k">mixed_obj (500nmi, 450Wh/kg)</div>
       </div>
       <div class="result-card">
-        <div class="value">176 kg</div>
+        <div class="value">268 kg</div>
         <div class="label-k">fuel burn (headline cell)</div>
       </div>
       <div class="result-card">
@@ -229,7 +227,7 @@ footer .sep{margin:0 10px;opacity:.5;color:var(--accent)}
         <div class="label-k">MTOW (at upper bound)</div>
       </div>
       <div class="result-card">
-        <div class="value">0.689</div>
+        <div class="value">0.506</div>
         <div class="label-k">cruise hybridization</div>
       </div>
     </div>
@@ -245,14 +243,14 @@ footer .sep{margin:0 10px;opacity:.5;color:var(--accent)}
 
     <div class="headline-fig">
       <img src="figures/comparison_fig5.png" alt="Brelje 2018a Fig 5 paper vs reproduced side-by-side" loading="lazy">
-      <div class="cap"><span class="amber">fig 5</span> &middot; fuel + MTOW/100 &middot; 5x5 grid &middot; paper (left) vs omd Lane B (right). Coarse grid blurs the hybrid/electric boundary but preserves all trends: fuel-heavy designs dominate at low spec energy; battery-heavy dominate at high spec energy; transition is roughly diagonal.</div>
+      <div class="cap"><span class="amber">fig 5</span> &middot; fuel + MTOW/100 &middot; 11x12 paper-correct grid (132 cells, all converged) &middot; paper (left) vs omd Lane B (right). The hybridized King Air physics overrides (structural_fudge=2.0, propeller_diameter=2.2 m, engine_initial=1117.2 hp) bring objective agreement to <2% on the published Table 4 reference cells.</div>
     </div>
 
     <p class="section-desc" style="margin-top:32px">Figure 6 (trip direct operating cost objective). Cost MDO has competing local minima; each cell is warm-started from the fuel-optimized design at the same grid point.</p>
 
     <div class="headline-fig">
       <img src="figures/comparison_fig6.png" alt="Brelje 2018a Fig 6 paper vs reproduced side-by-side" loading="lazy">
-      <div class="cap"><span class="amber">fig 6</span> &middot; direct operating cost &middot; 5x5 grid &middot; warm-started from fig 5 optimum per cell. MTOW pins at the 5700 kg upper bound across the middle and lower-right region, matching the paper.</div>
+      <div class="cap"><span class="amber">fig 6</span> &middot; direct operating cost &middot; 11x12 grid (132/132 converged) &middot; warm-started from fig 5 optimum per cell. MTOW pins at the 5700 kg upper bound across the middle and lower-right region, matching the paper.</div>
     </div>
 
     <div class="fig-group" style="margin-top:44px">
@@ -266,7 +264,7 @@ footer .sep{margin:0 10px;opacity:.5;color:var(--accent)}
         </div>
         <div class="fig-item">
           <img src="figures/reproduced/fig5.png" alt="Reproduced Fig 5" loading="lazy">
-          <div class="cap"><span class="tag">reproduced</span>fig 5 &middot; omd Lane B, 5x5 grid</div>
+          <div class="cap"><span class="tag">reproduced</span>fig 5 &middot; omd Lane B, 11x12 grid (132/132)</div>
         </div>
         <div class="fig-item">
           <img src="figures/paper/fig6.png" alt="Paper Fig 6" loading="lazy">
@@ -274,7 +272,7 @@ footer .sep{margin:0 10px;opacity:.5;color:var(--accent)}
         </div>
         <div class="fig-item">
           <img src="figures/reproduced/fig6.png" alt="Reproduced Fig 6" loading="lazy">
-          <div class="cap"><span class="tag">reproduced</span>fig 6 &middot; omd Lane B, warm-start from fig 5</div>
+          <div class="cap"><span class="tag">reproduced</span>fig 6 &middot; omd Lane B, 11x12 grid, warm-start from fig 5 (132/132)</div>
         </div>
       </div>
     </div>
@@ -662,6 +660,9 @@ footer .sep{margin:0 10px;opacity:.5;color:var(--accent)}
     <span class="sep">/</span>
     <a href="https://doi.org/10.2514/6.2018-4979" target="_blank" rel="noopener">brelje 2018a (doi)</a>
     <span class="sep">/</span> fastmcp + openmdao + omd
+  </div>
+  <div class="container" style="margin-top:10px">
+    &copy; 2026 Lakeside AI. All rights reserved.
   </div>
 </footer>
 
