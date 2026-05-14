@@ -74,7 +74,8 @@ def _cell_edges(centers: np.ndarray) -> np.ndarray:
 
 
 def _plot_panel(ax, x, y, z, spec: dict, paper_fig: int,
-                style: str = "contour", overlay_contours: bool = False) -> None:
+                style: str = "contour", overlay_contours: bool = False,
+                label_fontsize: float | None = None) -> None:
     """Render one of the four panels.
 
     style="contour": filled contourf (legacy/smooth look).
@@ -96,7 +97,11 @@ def _plot_panel(ax, x, y, z, spec: dict, paper_fig: int,
         pm = ax.pcolormesh(xe, ye, zmasked, cmap="viridis",
                            vmin=vmin, vmax=vmax, shading="flat")
         cbar = plt.colorbar(pm, ax=ax, pad=0.02)
-        cbar.set_label(spec["label"])
+        if label_fontsize is not None:
+            cbar.set_label(spec["label"], fontsize=label_fontsize)
+            cbar.ax.tick_params(labelsize=label_fontsize)
+        else:
+            cbar.set_label(spec["label"])
         if overlay_contours:
             n_lines = 18
             levels = np.linspace(vmin, vmax, n_lines)
@@ -108,8 +113,13 @@ def _plot_panel(ax, x, y, z, spec: dict, paper_fig: int,
                          extend="both")
         cbar = plt.colorbar(cf, ax=ax, pad=0.02)
         cbar.set_label(spec["label"])
-    ax.set_xlabel("Design range (nmi)")
-    ax.set_ylabel("Specific energy (Whr/kg)")
+    if label_fontsize is not None:
+        ax.set_xlabel("Design range (nmi)", fontsize=label_fontsize)
+        ax.set_ylabel("Specific energy (Whr/kg)", fontsize=label_fontsize)
+        ax.tick_params(axis="both", labelsize=label_fontsize)
+    else:
+        ax.set_xlabel("Design range (nmi)")
+        ax.set_ylabel("Specific energy (Whr/kg)")
     if style == "paper":
         # Tight axis limits matching the cell-edge grid (no whitespace
         # around the painted cells, like the paper figures).
@@ -124,7 +134,8 @@ def _plot_panel(ax, x, y, z, spec: dict, paper_fig: int,
 
 def plot_figure(figure_num: int, csv_path: Path | None = None,
                 out_path: Path | None = None,
-                style: str = "contour") -> Path:
+                style: str = "contour",
+                pub: bool = False) -> Path:
     if figure_num not in (5, 6):
         raise ValueError(f"figure must be 5 or 6, got {figure_num}")
     if csv_path is None:
@@ -167,8 +178,28 @@ def plot_figure(figure_num: int, csv_path: Path | None = None,
             "electric_percent", "MTOW_lb"]] = np.nan
 
     # figsize chosen to match the Brelje 2018a paper crop aspect (~1.16:1).
-    fig, axes = plt.subplots(2, 2, figsize=(10.5, 9))
+    # Publication preset: keep paper-style aspect but bump fonts so when
+    # two figures are placed side by side and reduced ~2x for printing,
+    # axis text renders near 8pt.
+    if pub:
+        fig, axes = plt.subplots(2, 2, figsize=(11.0, 9.0),
+                                 constrained_layout=True)
+        label_fs = 18.0
+        suptitle_fs = 20.0
+    else:
+        fig, axes = plt.subplots(2, 2, figsize=(10.5, 9))
+        label_fs = None
+        suptitle_fs = 12.0
     specs = _PANEL_SPECS[figure_num]
+    if pub:
+        # Shorter colorbar labels avoid overflow into the neighboring panel.
+        _SHORT = {
+            "fuel_mileage_lb_per_nmi": "Fuel mileage (lb/nmi)",
+            "doc_per_nmi":             "Trip DOC (USD/nmi)",
+            "electric_percent":        "Hybridization (% electric)",
+            "MTOW_lb":                 "MTOW (lb)",
+        }
+        specs = {k: {**v, "label": _SHORT[k]} for k, v in specs.items()}
     panels = [
         ("fuel_mileage_lb_per_nmi", axes[0, 0], True),   # overlay contours
         ("doc_per_nmi",             axes[0, 1], False),
@@ -178,19 +209,30 @@ def plot_figure(figure_num: int, csv_path: Path | None = None,
     for col, ax, overlay in panels:
         x, y, z = _pivot_grid(df, col)
         _plot_panel(ax, x, y, z, specs[col], figure_num,
-                    style=style, overlay_contours=overlay)
+                    style=style, overlay_contours=overlay,
+                    label_fontsize=label_fs)
 
     objective_label = "Minimum fuel burn MDO results" if figure_num == 5 else "Minimum cost MDO results"
-    style_tag = " (paper style)" if style == "paper" else ""
-    fig.suptitle(
-        f"Fig {figure_num} reproduction{style_tag} -- {objective_label} "
-        f"({df['converged'].astype(str).str.lower().eq('true').sum()}/{len(df)} converged)",
-        fontsize=12,
-    )
-    fig.tight_layout(rect=(0, 0, 1, 0.97))
+    if pub:
+        fig.suptitle(
+            f"Fig {figure_num}: {objective_label}",
+            fontsize=suptitle_fs,
+        )
+    else:
+        style_tag = " (paper style)" if style == "paper" else ""
+        fig.suptitle(
+            f"Fig {figure_num} reproduction{style_tag} -- {objective_label} "
+            f"({df['converged'].astype(str).str.lower().eq('true').sum()}/{len(df)} converged)",
+            fontsize=suptitle_fs,
+        )
+    if not pub:
+        fig.tight_layout(rect=(0, 0, 1, 0.96))
 
     if out_path is None:
-        suffix = "_paper" if style == "paper" else ""
+        if pub:
+            suffix = "_paper_pub" if style == "paper" else "_pub"
+        else:
+            suffix = "_paper" if style == "paper" else ""
         out_path = OUT_DIR / f"fig{figure_num}{suffix}.png"
     fig.savefig(out_path, dpi=150)
     plt.close(fig)
@@ -206,12 +248,16 @@ def main() -> int:
                    help="contour: smooth contourf (default); paper: pcolormesh "
                         "per-cell rectangles + overlaid contour lines on the "
                         "fuel-mileage panel, matching the Brelje 2018a figures.")
+    p.add_argument("--pub", action="store_true",
+                   help="Publication preset: smaller figure size with larger "
+                        "axis/colorbar/title fonts so two figures side by side "
+                        "print at ~8pt text.")
     args = p.parse_args()
 
     csv_path = Path(args.csv) if args.csv else None
     out_path = Path(args.out) if args.out else None
     path = plot_figure(args.figure, csv_path=csv_path, out_path=out_path,
-                       style=args.style)
+                       style=args.style, pub=args.pub)
     print(f"Wrote -> {path}")
     return 0
 
