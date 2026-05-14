@@ -16,6 +16,12 @@ description: >
 full access to all OAS tools (create_surface, run_aero_analysis, etc.)
 without needing an MCP connection.
 
+If instead the user wants to drive the OAS tools through an MCP
+connection (e.g. `mcp__OpenAeroStruct__create_surface`), see the
+`hangar-mcp-guide` skill - the tool surface and parameters are
+identical between MCP and CLI; only the invocation shape and the
+session lifecycle differ.
+
 **Supporting reference files** (read when you need deeper detail):
 - `modes.md` — interactive, one-shot, and script mode protocols
 - `commands.md` — all tools and convenience commands with parameters
