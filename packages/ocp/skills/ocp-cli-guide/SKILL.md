@@ -16,6 +16,12 @@ description: >
 you full access to all OCP tools (load_aircraft_template, run_mission_analysis,
 run_parameter_sweep, run_optimization, etc.) without needing an MCP connection.
 
+If instead the user wants to drive the OCP tools through an MCP
+connection (e.g. `mcp__OpenConcept__run_mission_analysis`), see the
+`hangar-mcp-guide` skill - the tool surface and parameters are
+identical between MCP and CLI; only the invocation shape and the
+session lifecycle differ.
+
 **Supporting reference files** (read when you need deeper detail):
 - `modes.md` — interactive, one-shot, and script mode protocols
 - `commands.md` — all tools and convenience commands with parameters
