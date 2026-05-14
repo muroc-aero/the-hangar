@@ -17,7 +17,7 @@ import os
 from mcp.server.fastmcp import FastMCP
 
 from hangar.sdk.auth.oidc import build_auth_settings, build_token_verifier
-from hangar.sdk.provenance.middleware import capture_tool, _prov_session_id
+from hangar.sdk.provenance.middleware import capture_tool
 from hangar.pyc.tools import session as _prov_tools
 
 # ---------------------------------------------------------------------------
@@ -220,12 +220,15 @@ def main():
     args = parser.parse_args()
 
     # Provenance setup
-    from hangar.sdk.provenance.middleware import set_tool_name
+    from hangar.sdk.provenance.middleware import set_tool_name, set_server_session_id
     set_tool_name("pyc")
     _prov_init_db()
     import uuid as _uuid
     _auto_sid = f"auto-{_uuid.uuid4().hex[:8]}"
-    _prov_session_id.set(_auto_sid)
+    # Seed the module-level default so unstarted tool calls land somewhere.
+    # The ContextVar is reserved for test isolation; setting it here would
+    # shadow any later start_session() in the main asyncio task.
+    set_server_session_id(_auto_sid)
     _prov_record_session(_auto_sid, notes="Auto-created on pyCycle server startup")
 
     if args.transport == "stdio":

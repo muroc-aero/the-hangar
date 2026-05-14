@@ -24,6 +24,7 @@ from hangar.sdk.provenance.middleware import (
     _prov_session_id,
     _safe_json,
     capture_tool,
+    set_server_session_id,
 )
 from hangar.sdk.provenance.db import (
     _next_seq,
@@ -281,6 +282,48 @@ async def test_capture_decorator_injects_provenance(tmp_path):
         assert result["_provenance"]["session_id"] == sid
     finally:
         _prov_session_id.reset(token)
+
+
+@pytest.mark.asyncio
+async def test_start_session_overrides_startup_seeded_default(tmp_path):
+    """start_session must win over a module-level default seeded at server startup.
+
+    Regression: the OAS/OCP/pyc servers used to seed _prov_session_id (ContextVar)
+    at startup with an "auto-XXXX" session.  Because the ContextVar has priority
+    over the module-level _server_session_id, every later tool call in the main
+    asyncio task wrote to the auto session even after start_session(). Servers
+    now seed via set_server_session_id() so start_session() can override.
+    """
+    import sqlite3
+
+    init_db(tmp_path / "prov.db")
+    # Simulate server startup: seed only the module-level default.
+    set_server_session_id("auto-deadbeef")
+    record_session("auto-deadbeef")
+
+    # User starts a real session.
+    started = await start_session(notes="real session")
+    user_sid = started["session_id"]
+
+    # A tool call after start_session must land in the user's session.
+    @capture_tool
+    async def my_tool(x: int) -> dict:
+        return {"result": x * 2}
+
+    await my_tool(x=3)
+
+    conn = sqlite3.connect(str(tmp_path / "prov.db"))
+    user_rows = conn.execute(
+        "SELECT 1 FROM tool_calls WHERE session_id=? AND tool_name='my_tool'",
+        (user_sid,),
+    ).fetchall()
+    auto_rows = conn.execute(
+        "SELECT 1 FROM tool_calls WHERE session_id='auto-deadbeef' AND tool_name='my_tool'"
+    ).fetchall()
+    conn.close()
+
+    assert len(user_rows) == 1, "tool call should land in the user's started session"
+    assert len(auto_rows) == 0, "tool call must NOT leak into the startup-seeded auto session"
 
 
 def test_safe_json_handles_numpy():
