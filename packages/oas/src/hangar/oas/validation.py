@@ -421,18 +421,60 @@ def validate_optimization(results: dict, context: dict | None = None) -> list[Va
         ),
     ))
 
-    # Run aero/aerostruct checks on final results
+    # Run aero/aerostruct checks on final results.
+    # Multipoint runs nest results under flight-point keys (e.g. "cruise",
+    # "maneuver"); _iter_flight_points yields (label, sub_results) for both
+    # single-point and multipoint shapes.
     final = results.get("final_results", {})
-    if final:
-        # Minimal checks on final design
-        CD = final.get("CD", 0.0)
-        findings.append(_check_cd_positive(CD))
-        findings.append(_check_cd_not_too_large(CD))
+    for label, sub in _iter_flight_points(final):
+        suffix = f".{label}" if label else ""
+        CD = sub.get("CD", 0.0)
+        findings.append(_with_id_suffix(_check_cd_positive(CD), suffix))
+        findings.append(_with_id_suffix(_check_cd_not_too_large(CD), suffix))
 
     # --- Convergence diagnostics (especially useful when success=False) ---
     findings.extend(_diagnose_optimization(results, ctx))
 
     return findings
+
+
+def _iter_flight_points(final: dict):
+    """Yield (label, sub_results) pairs, transparently handling multipoint.
+
+    Single-point: yields ("", final).
+    Multipoint:   yields (point_name, final[point_name]) for each named point.
+
+    Detection: a dict is treated as multipoint if it contains no top-level "CD"
+    key but contains at least one dict child that does.
+    """
+    if not final:
+        return
+    if "CD" in final:
+        yield "", final
+        return
+    sub_points = [
+        (k, v) for k, v in final.items()
+        if isinstance(v, dict) and "CD" in v
+    ]
+    if sub_points:
+        for name, sub in sub_points:
+            yield name, sub
+    else:
+        yield "", final
+
+
+def _with_id_suffix(finding: ValidationFinding, suffix: str) -> ValidationFinding:
+    if not suffix:
+        return finding
+    return ValidationFinding(
+        check_id=finding.check_id + suffix,
+        category=finding.category,
+        severity=finding.severity,
+        confidence=finding.confidence,
+        passed=finding.passed,
+        message=finding.message,
+        remediation=finding.remediation,
+    )
 
 
 def _diagnose_optimization(
@@ -489,27 +531,30 @@ def _diagnose_optimization(
                 ),
             ))
 
-    # 3. Constraint violations at termination
-    for surf_name, surf_res in final.get("surfaces", {}).items():
-        failure = surf_res.get("failure")
-        if failure is not None and failure > 1e-6:
-            findings.append(ValidationFinding(
-                check_id=f"constraints.failure_violated.{surf_name}",
-                category="constraints",
-                severity="error",
-                confidence="high",
-                passed=False,
-                message=(
-                    f"Surface '{surf_name}': failure = {failure:.4f} > 0 "
-                    f"(max stress exceeds allowable by {failure * 100:.1f}%)"
-                ),
-                remediation=(
-                    "The structural failure constraint is violated at the optimum. "
-                    "This usually means the optimizer could not find a feasible design. "
-                    "Try: thicker initial thickness_cp, wider thickness bounds, "
-                    "or add objective_scaler/DV scaler to improve convergence."
-                ),
-            ))
+    # 3. Constraint violations at termination (per-surface, per-flight-point)
+    for point_label, point_sub in _iter_flight_points(final):
+        for surf_name, surf_res in point_sub.get("surfaces", {}).items():
+            failure = surf_res.get("failure")
+            if failure is not None and failure > 1e-6:
+                point_suffix = f".{point_label}" if point_label else ""
+                point_qual = f" @ {point_label}" if point_label else ""
+                findings.append(ValidationFinding(
+                    check_id=f"constraints.failure_violated.{surf_name}{point_suffix}",
+                    category="constraints",
+                    severity="error",
+                    confidence="high",
+                    passed=False,
+                    message=(
+                        f"Surface '{surf_name}'{point_qual}: failure = {failure:.4f} > 0 "
+                        f"(max stress exceeds allowable by {failure * 100:.1f}%)"
+                    ),
+                    remediation=(
+                        "The structural failure constraint is violated at the optimum. "
+                        "This usually means the optimizer could not find a feasible design. "
+                        "Try: thicker initial thickness_cp, wider thickness bounds, "
+                        "or add objective_scaler/DV scaler to improve convergence."
+                    ),
+                ))
 
     # 4. Design variables pinned at bounds
     dv_history = history.get("dv_history", {})

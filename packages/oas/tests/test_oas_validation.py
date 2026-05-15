@@ -204,3 +204,38 @@ class TestValidateOptimization:
         findings = validate_optimization(results)
         failed = [f for f in findings if not f.passed and f.severity == "error"]
         assert any("optimizer_converged" in f.check_id for f in failed)
+
+    def test_multipoint_cd_checks_per_flight_point(self):
+        """Multipoint runs nest CD under flight-point keys; the CD checks
+        should iterate over each point instead of reading top-level CD=0."""
+        results = {
+            "success": True,
+            "final_results": {
+                "cruise": {"CL": 0.5, "CD": 0.0142, "surfaces": {"wing": {"failure": -0.7}}},
+                "maneuver": {"CL": 1.25, "CD": 0.0371, "surfaces": {"wing": {"failure": -0.4}}},
+            },
+            "optimized_design_variables": {},
+        }
+        findings = validate_optimization(results)
+        cd_pos = [f for f in findings if f.check_id.startswith("physics.cd_positive")]
+        assert {f.check_id for f in cd_pos} == {
+            "physics.cd_positive.cruise",
+            "physics.cd_positive.maneuver",
+        }
+        assert all(f.passed for f in cd_pos), "All multipoint CDs are positive"
+
+    def test_multipoint_failure_violation_per_point(self):
+        """Per-surface failure violations should be reported with their
+        flight-point label so cruise vs maneuver violations are distinguishable."""
+        results = {
+            "success": True,
+            "final_results": {
+                "cruise": {"CL": 0.5, "CD": 0.02, "surfaces": {"wing": {"failure": -0.5}}},
+                "maneuver": {"CL": 1.25, "CD": 0.04, "surfaces": {"wing": {"failure": 0.15}}},
+            },
+            "optimized_design_variables": {},
+        }
+        findings = validate_optimization(results)
+        violations = [f for f in findings if "failure_violated" in f.check_id and not f.passed]
+        assert len(violations) == 1
+        assert violations[0].check_id == "constraints.failure_violated.wing.maneuver"
