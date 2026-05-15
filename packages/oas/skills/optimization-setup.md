@@ -179,12 +179,22 @@ DV scalers by magnitude:
 | Min fuel burn | fuelburn | twist, thickness, alpha | L_equals_W=0, failure<=0, thickness_intersects<=0 |
 | Min structural mass | structural_mass | twist, thickness, alpha | L_equals_W=0, failure<=0, thickness_intersects<=0 |
 
+Structural DVs (`thickness`, `spar_thickness`, `skin_thickness`) only get sized
+when the objective includes mass. With objective=`CD`, thickness has only weak
+aeroelastic sensitivity — SLSQP leaves it near its initial value. Pick
+`fuelburn` or `structural_mass` if you want the spar sized.
+
 ## Valid design variable names
 
 `twist`, `thickness`, `chord`, `sweep`, `taper`, `alpha`,
-`spar_thickness`, `skin_thickness` (wingbox only)
+`spar_thickness`, `skin_thickness` (wingbox only),
+`alpha_maneuver` (multipoint only)
 
 OAS silently ignores unrecognized DV names. Always validate against this list.
+
+For multipoint optimizations, each loaded flight point needs its own `CL`
+constraint with the appropriate `point` index — otherwise that point's alpha
+pins at a bound and the case decouples from the design.
 
 ## Valid constraint names
 
