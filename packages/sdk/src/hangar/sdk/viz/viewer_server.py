@@ -87,6 +87,37 @@ def register_plot_generator(
         _PLOT_GENERATORS[pt] = generator_fn
 
 
+def _shape_optimization_results(final_results: dict) -> dict:
+    """Flatten optimization ``final_results`` into a plot-ready ``results`` dict.
+
+    Single-point opts store ``final_results`` flat (``CL``, ``CD``, ``surfaces``,
+    ...).  Multipoint opts store it keyed by role (``cruise``, ``maneuver``,
+    ...), each value being a per-point results dict.  Plot functions that
+    expect single-point structure (lift_distribution, stress_distribution,
+    deflection_profile, ...) read ``results["surfaces"]`` directly.
+    Multipoint-aware plots (``plot_multipoint_comparison``) read
+    ``results["final_results"]``.
+
+    For single-point, return ``final_results`` unchanged.  For multipoint,
+    expose the primary role (``cruise`` if present, else the first key) at
+    top level *and* preserve the full ``final_results`` dict so both
+    families of plots find what they need.
+    """
+    if not final_results:
+        return {}
+    # Multipoint detection: no top-level "surfaces" AND values are all dicts.
+    is_multipoint = (
+        "surfaces" not in final_results
+        and all(isinstance(v, dict) for v in final_results.values())
+    )
+    if not is_multipoint:
+        return dict(final_results)
+    primary_role = "cruise" if "cruise" in final_results else next(iter(final_results))
+    plot_results = dict(final_results[primary_role])
+    plot_results["final_results"] = final_results
+    return plot_results
+
+
 def generate_plot_png(run_id: str, plot_type: str, *, user: str | None = None) -> bytes | None:
     """Load an artifact by run_id and return a rendered PNG as bytes.
 
@@ -119,9 +150,8 @@ def generate_plot_png(run_id: str, plot_type: str, *, user: str | None = None) -
     results = artifact.get("results", {})
     artifact_type = artifact.get("metadata", {}).get("analysis_type", "aero")
 
-    # For optimization runs, aero results live inside final_results
     if artifact_type == "optimization":
-        plot_results = dict(results.get("final_results", {}))
+        plot_results = _shape_optimization_results(results.get("final_results", {}))
     else:
         plot_results = dict(results)
 
@@ -385,6 +415,14 @@ class _ProvHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path
         qs = parse_qs(parsed.query)
+
+        # In production, Caddy `handle_path /viewer/*` strips the prefix before
+        # proxying (so `/viewer/sessions` arrives here as `/sessions`). The
+        # viewer JS computes BASE_URL with a `/viewer` suffix, so without Caddy
+        # it would request `/viewer/sessions` and 404. Mirror Caddy here so
+        # local dev (omd-cli viewer / oas-cli viewer) works the same way.
+        if path.startswith("/viewer/") and path != "/viewer/":
+            path = path[len("/viewer"):]
 
         if path in ("/viewer", "/viewer/"):
             self._serve_file(VIEWER_HTML, "text/html; charset=utf-8")
