@@ -34,7 +34,28 @@ async def _finalize_analysis(
     if session.requirements:
         req_report = check_requirements(session.requirements, results)
         for outcome in req_report.get("results", []):
-            if not outcome.get("passed"):
+            if outcome.get("passed"):
+                continue
+            err = outcome.get("error", "")
+            path_missing = err.startswith("Path ") and "not found" in err
+            if path_missing:
+                findings.append(ValidationFinding(
+                    check_id=f"requirements.{outcome['label']}",
+                    category="constraints",
+                    severity="warning",
+                    confidence="high",
+                    passed=False,
+                    message=(
+                        f"Requirement '{outcome['label']}' skipped: path "
+                        f"'{outcome['path']}' is not present in this run's results"
+                    ),
+                    remediation=(
+                        "This requirement targets a value the current tool/surface "
+                        "does not produce. Scope the requirement to runs that include "
+                        "this path, or remove it from the session config."
+                    ),
+                ))
+            else:
                 findings.append(ValidationFinding(
                     check_id=f"requirements.{outcome['label']}",
                     category="constraints",
