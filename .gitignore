@@ -241,3 +241,7 @@ deploy/landing/studies/*/provenance-dag.html
 deploy/landing/studies/*/problem-dag.html
 deploy/landing/studies/*/plan-detail.html
 deploy/landing/studies/*.tar.gz
+
+# Landing-company media (manually scp'd to VPS, too large to commit)
+deploy/landing-company/*.mp4
+deploy/landing-company/*_poster.*

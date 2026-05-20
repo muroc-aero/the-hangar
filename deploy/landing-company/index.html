@@ -79,6 +79,7 @@ section .subtitle{color:var(--fg2);margin-bottom:48px;font-size:.92rem;max-width
 .video-frame{position:relative;width:100%;aspect-ratio:16/9;background:var(--bg3);overflow:hidden}
 .video-el{position:absolute;inset:0;width:100%;height:100%;display:none;background:#000}
 .video-el.loaded{display:block}
+.video-el.loaded ~ .video-placeholder{display:none}
 .video-placeholder{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:var(--mono);font-size:.78rem;color:var(--fg3);letter-spacing:.04em;text-align:center;padding:24px}
 .video-placeholder .ascii{display:block;color:var(--fg3);font-size:.7rem;line-height:1.4;margin-bottom:12px;white-space:pre}
 .video-placeholder .ascii .amber{color:var(--accent)}
@@ -193,7 +194,7 @@ footer .sep{margin:0 10px;opacity:.5;color:var(--accent)}
       </div>
       <div class="video-frame">
         <!-- TODO: drop video file path into data-src; bootstrap below promotes it to src on load -->
-        <video class="video-el" data-src="" poster="" preload="none" controls playsinline></video>
+        <video class="video-el" data-src="lakeside_demo.mp4" poster="lakeside_demo_poster.jpg" preload="none" controls playsinline></video>
         <div class="video-placeholder">
           <span class="ascii">[ <span class="amber">video</span> &middot; 16:9 placeholder ]</span>
           90 second walkthrough &middot; coming soon
