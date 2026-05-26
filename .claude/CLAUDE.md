@@ -151,27 +151,32 @@ A sync script populates `.claude/skills/` from the git-tracked copies.
 Use the `/new-tool` skill for the full guided process, or see
 `skills/new-tool/SKILL.md`.
 
-## Deploying case studies
+## Deployment
 
-Case studies are static pages served alongside the landing page under
-`deploy/landing/studies/<study-id>/`. The HTML template is committed to git;
-binary artifacts (plots, N2, provenance DAG) are gitignored and deployed
-via tarball.
+Deployment configuration and static sites live in two **private** sibling
+repos (not in this repo):
 
-Workflow:
-1. Run the study locally with `omd-cli run`.
-2. Run `./deploy/scripts/package-case-study.sh` on the dev machine.
-   This generates the provenance DAG for the specific plan, patches its JS
-   for static serving (API calls rewritten to relative paths via
-   `patch-dag-static.py`), pre-generates problem DAG and plan detail HTML,
-   and bundles everything into a tarball.
-3. `scp` the tarball to the VPS.
-4. On the VPS: `git pull`, then `./deploy/scripts/unpack-case-study.sh <tarball>`.
-   Caddy serves the new files immediately (no restart).
+- `lakesideai-sites` -- static landing pages (lakesideai.dev,
+  mcp.lakesideai.dev) and case studies. Tarballs land here too.
+- `lakesideai-infra` -- docker-compose, Caddyfile, .env template, ops
+  docs, deploy scripts (package-case-study.sh, unpack-case-study.sh,
+  patch-dag-static.py).
 
-Key files:
-- `deploy/landing/studies/<id>/index.html` -- case study page (git-tracked)
-- `deploy/scripts/package-case-study.sh` -- builds the tarball on dev machine
-- `deploy/scripts/unpack-case-study.sh` -- extracts tarball on VPS
-- `deploy/scripts/patch-dag-static.py` -- rewrites `/omd-*` endpoints to relative paths
-- `deploy/Caddyfile.example` -- uses `SAMEORIGIN` for X-Frame-Options (iframes need this)
+Expected local layout when working on deployment:
+
+```
+~/coding/the-hangar/        (this repo, public)
+~/coding/lakesideai-sites/  (private)
+~/coding/lakesideai-infra/  (private)
+```
+
+The packaging script (`lakesideai-infra/scripts/package-case-study.sh`)
+finds `the-hangar` via the `HANGAR_REPO` env var (default: sibling
+`../the-hangar`) and writes tarballs into
+`lakesideai-sites/mcp.lakesideai.dev/studies/`. See
+`lakesideai-infra/README.md` for the full workflow.
+
+Case-study HTML templates and tarballs are committed in
+`lakesideai-sites/mcp.lakesideai.dev/studies/<study-id>/`. The omd plan
+that produces a study still lives here, under
+`packages/omd/demos/<study-id>/`.
