@@ -245,3 +245,6 @@ deploy/landing/studies/*.tar.gz
 # Landing-company media (manually scp'd to VPS, too large to commit)
 deploy/landing-company/*.mp4
 deploy/landing-company/*_poster.*
+
+# Personal scratch: reference PDFs, draft design docs, prototype HTML
+notes/
