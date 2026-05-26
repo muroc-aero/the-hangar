@@ -391,7 +391,7 @@ _CONSTRAINT_PATH_MAP_AEROSTRUCT: dict[str, str] = {
     "CL": "{point}.{name}_perf.CL",
     "CD": "{point}.{name}_perf.CD",
     "CM": "{point}.CM",
-    "S_ref": "{point}.{name}.S_ref",
+    "S_ref": "{point}.coupled.{name}.S_ref",
     "failure": "{point}.{name}_perf.failure",
     "thickness_intersects": "{point}.{name}_perf.thickness_intersects",
     "L_equals_W": "{point}.L_equals_W",
@@ -450,6 +450,8 @@ def make_om_path(
             )
         if canonical in _SCALAR_DVS:
             return template
+        if canonical == "chord" and analysis_type == "aerostruct":
+            return f"{surface_name}.geometry.chord_cp"
         return template.format(name=surface_name, point=point_name)
 
     if kind == PathKind.CONSTRAINT:
@@ -657,6 +659,7 @@ def _add_dvs_constraints_objective(
         path = make_om_path(
             PathKind.DV, dv_name,
             surface_name=primary_name, point_name=point_name,
+            analysis_type=analysis_type,
         )
         kwargs: dict = {}
         if "lower" in dv:
@@ -1045,6 +1048,7 @@ def _add_multipoint_dvs_constraints_objective(
         path = make_om_path(
             PathKind.DV, dv_name,
             surface_name=primary_name, point_name=point_names[0],
+            analysis_type="aerostruct",
         )
         kwargs: dict = {}
         if "lower" in dv:
