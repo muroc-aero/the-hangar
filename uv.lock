@@ -762,6 +762,7 @@ dependencies = [
     { name = "hangar-sdk", extra = ["all"] },
     { name = "jsonschema" },
     { name = "pyyaml" },
+    { name = "starlette" },
 ]
 
 [package.metadata]
@@ -772,6 +773,7 @@ requires-dist = [
     { name = "hangar-sdk", extras = ["all"], editable = "packages/sdk" },
     { name = "jsonschema", specifier = ">=4.0" },
     { name = "pyyaml", specifier = ">=6.0" },
+    { name = "starlette", specifier = ">=0.37" },
 ]
 
 [[package]]
