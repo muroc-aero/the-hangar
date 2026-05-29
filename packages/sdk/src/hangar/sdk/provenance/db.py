@@ -526,6 +526,50 @@ def get_session_graph(session_id: str) -> dict:
     return {"session": session_meta, "nodes": nodes, "edges": edges}
 
 
+def build_session_elements(session_id: str) -> dict:
+    """Build Cytoscape elements for a session's tool-call/decision graph.
+
+    Returns ``{"nodes": [...], "edges": [...]}`` where each element is a
+    Cytoscape-native ``{"data": {...}}`` dict, using the same normalized
+    shape as the omd provenance builder
+    (``hangar.omd.provenance.build_provenance_elements``): every node carries
+    a ``kind`` style key (``tool_call`` / ``decision``) and a ``label``;
+    every edge carries ``source`` / ``target`` / ``relation``. This lets the
+    range-safety dashboard render the execution graph for any sdk-backed tool
+    (oas / ocp / pyc) with the same Cytoscape style it uses for omd.
+
+    Dangling edges (endpoints outside the local session, e.g. cross-tool
+    references in a per-tool DB) are dropped.
+    """
+    graph = get_session_graph(session_id)
+
+    nodes: list[dict] = []
+    for n in graph["nodes"]:
+        data = dict(n)
+        if n.get("type") == "tool_call":
+            data["label"] = n.get("tool_name") or n["id"]
+        else:
+            label = n.get("decision_type") or "decision"
+            reasoning = n.get("reasoning")
+            if reasoning:
+                label = f"{label}\n{str(reasoning)[:140]}"
+            data["label"] = label
+        data["kind"] = n.get("type")
+        nodes.append({"data": data})
+
+    node_ids = {nd["data"]["id"] for nd in nodes}
+    edges: list[dict] = []
+    for e in graph["edges"]:
+        src, tgt = e.get("source"), e.get("target")
+        if src not in node_ids or tgt not in node_ids:
+            continue
+        data = dict(e)
+        data["relation"] = e.get("label")
+        edges.append({"data": data})
+
+    return {"nodes": nodes, "edges": edges}
+
+
 def update_session_project(session_id: str, project: str) -> None:
     """Update the project field for an existing session."""
     conn = _get_conn()

@@ -173,24 +173,30 @@ def _entity_label(etype: str, eid: str, entity: dict, meta: dict) -> str:
     return etype
 
 
-def provenance_dag_html(
+def build_provenance_elements(
     plan_id: str,
-    output_path: Path,
     db_path: Path | None = None,
-) -> Path:
-    """Generate an HTML visualization of the provenance DAG.
+) -> dict:
+    """Build Cytoscape elements for a plan's provenance DAG.
 
-    Uses Cytoscape.js with dagre layout (top-to-bottom), entity-type
-    coloring, click-to-inspect details panel, and dashed wasDerivedFrom
-    edges for replan scenarios.
+    Returns ``{"nodes": [...], "edges": [...]}`` where each element is a
+    Cytoscape-native ``{"data": {...}}`` dict: entity / activity nodes with
+    rich data attributes (entity_type, decision/reasoning label via
+    ``_entity_label``, status/priority/mode/stage exposed for style
+    selectors) and edges with PROV directions reversed for a top-to-bottom
+    layout, ``partOf`` containment edges, and dangling edges dropped.
+
+    This is the single source of truth for the provenance graph: the HTML
+    viewer (:func:`provenance_dag_html`) and the range-safety dashboard both
+    render from it, so their graphs cannot drift.
 
     Args:
         plan_id: Plan identifier.
-        output_path: Path to write HTML file.
-        db_path: Path to analysis DB.
+        db_path: Path to analysis DB (None uses the configured default).
 
     Returns:
-        Path to the generated HTML file.
+        ``{"nodes": list[dict], "edges": list[dict]}`` in Cytoscape element
+        form.
     """
     init_analysis_db(db_path)
     dag = query_provenance_dag(plan_id)
@@ -215,6 +221,10 @@ def provenance_dag_html(
             "label": label,
             "type": "entity",
             "entity_type": etype,
+            # Normalized style key, shared with the session-graph builder so
+            # one Cytoscape style can render either graph (the dashboard keys
+            # node color/shape off `kind`).
+            "kind": etype,
             "is_sub": bool(parent_id),
             "parent_ref": parent_id or "",
             "created_at": entity.get("created_at", ""),
@@ -255,6 +265,7 @@ def provenance_dag_html(
                     f"{activity.get('agent', '?')}"
                 ),
                 "type": "activity",
+                "kind": "activity",
                 "activity_type": activity.get("activity_type", ""),
                 "agent": activity.get("agent", ""),
                 "started_at": activity.get("started_at", ""),
@@ -302,7 +313,35 @@ def provenance_dag_html(
         if e["data"]["source"] in node_ids and e["data"]["target"] in node_ids
     ]
 
-    elements_json = json.dumps(nodes + edges)
+    return {"nodes": nodes, "edges": edges}
+
+
+def provenance_dag_html(
+    plan_id: str,
+    output_path: Path,
+    db_path: Path | None = None,
+) -> Path:
+    """Generate an HTML visualization of the provenance DAG.
+
+    Uses Cytoscape.js with dagre layout (top-to-bottom), entity-type
+    coloring, click-to-inspect details panel, and dashed wasDerivedFrom
+    edges for replan scenarios. Elements come from
+    :func:`build_provenance_elements` (shared with the dashboard).
+
+    Args:
+        plan_id: Plan identifier.
+        output_path: Path to write HTML file.
+        db_path: Path to analysis DB.
+
+    Returns:
+        Path to the generated HTML file.
+    """
+    elements = build_provenance_elements(plan_id, db_path)
+    elements_json = json.dumps(elements["nodes"] + elements["edges"])
+
+    # query_provenance_dag is also used here for the decisions summary table;
+    # build_provenance_elements already initialised the DB.
+    dag = query_provenance_dag(plan_id)
 
     # Build decisions summary table from decision entities
     decision_rows = ""
