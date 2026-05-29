@@ -10,6 +10,7 @@ members = [
     "hangar-omd",
     "hangar-pyc",
     "hangar-range-safety",
+    "hangar-results-reader",
     "hangar-sdk",
     "hangar-viewer",
 ]
@@ -626,7 +627,6 @@ dependencies = [
     { name = "hangar-ocp" },
     { name = "hangar-omd" },
     { name = "hangar-pyc" },
-    { name = "hangar-range-safety" },
     { name = "hangar-sdk" },
     { name = "hangar-viewer" },
 ]
@@ -644,7 +644,6 @@ requires-dist = [
     { name = "hangar-ocp", editable = "packages/ocp" },
     { name = "hangar-omd", editable = "packages/omd" },
     { name = "hangar-pyc", editable = "packages/pyc" },
-    { name = "hangar-range-safety", editable = "packages/range-safety" },
     { name = "hangar-sdk", editable = "packages/sdk" },
     { name = "hangar-viewer", editable = "packages/viewer" },
 ]
@@ -708,6 +707,7 @@ version = "0.1.0"
 source = { editable = "packages/omd" }
 dependencies = [
     { name = "click" },
+    { name = "hangar-results-reader" },
     { name = "hangar-sdk", extra = ["all"] },
     { name = "jsonschema" },
     { name = "matplotlib" },
@@ -719,6 +719,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8.0" },
+    { name = "hangar-results-reader", editable = "packages/results-reader" },
     { name = "hangar-sdk", extras = ["all"], editable = "packages/sdk" },
     { name = "jsonschema", specifier = ">=4.0" },
     { name = "matplotlib", specifier = ">=3.5" },
@@ -757,6 +758,7 @@ source = { editable = "packages/range-safety" }
 dependencies = [
     { name = "click" },
     { name = "hangar-omd" },
+    { name = "hangar-results-reader" },
     { name = "hangar-sdk", extra = ["all"] },
     { name = "jsonschema" },
     { name = "pyyaml" },
@@ -766,10 +768,16 @@ dependencies = [
 requires-dist = [
     { name = "click", specifier = ">=8.0" },
     { name = "hangar-omd", editable = "packages/omd" },
+    { name = "hangar-results-reader", editable = "packages/results-reader" },
     { name = "hangar-sdk", extras = ["all"], editable = "packages/sdk" },
     { name = "jsonschema", specifier = ">=4.0" },
     { name = "pyyaml", specifier = ">=6.0" },
 ]
+
+[[package]]
+name = "hangar-results-reader"
+version = "0.1.0"
+source = { editable = "packages/results-reader" }
 
 [[package]]
 name = "hangar-sdk"
