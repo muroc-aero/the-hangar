@@ -1,0 +1,19 @@
+[project]
+name = "hangar-results-reader"
+version = "0.1.0"
+description = "Read-only access to the hangar analysis/provenance database (no OpenMDAO)"
+requires-python = ">=3.11"
+# Intentionally dependency-free: pure stdlib (sqlite3, json). This is the
+# seam that lets consumers (e.g. range-safety) read run results and
+# provenance without pulling in OpenMDAO as a transitive dependency.
+dependencies = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hangar"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

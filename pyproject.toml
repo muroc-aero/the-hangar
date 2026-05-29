@@ -3,13 +3,18 @@ name = "hangar"
 version = "0.1.0"
 description = "Agentic engineering analysis tools"
 requires-python = ">=3.11"
+# Open packages only. Closed packages (e.g. hangar-range-safety) are
+# consumed as workspace members via the packages/* glob when their
+# directory is present (e.g. checked out as a git submodule) and are
+# installed by scripts/dev-setup.sh with `uv sync --all-packages`. They
+# are intentionally absent here so an open-only clone (without the private
+# submodules) resolves cleanly.
 dependencies = [
     "hangar-sdk",
     "hangar-oas",
     "hangar-ocp",
     "hangar-pyc",
     "hangar-omd",
-    "hangar-range-safety",
     "hangar-viewer",
 ]
 
@@ -22,8 +27,11 @@ hangar-oas = { workspace = true }
 hangar-ocp = { workspace = true }
 hangar-pyc = { workspace = true }
 hangar-omd = { workspace = true }
-hangar-range-safety = { workspace = true }
 hangar-viewer = { workspace = true }
+# hangar-range-safety has no source entry here on purpose: when its
+# directory is present it is resolved as a workspace member via the glob
+# above (its own pyproject declares its sources); when absent (open-only
+# clone) nothing references it, so resolution stays clean.
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

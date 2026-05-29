@@ -5,6 +5,7 @@ description = "MDAO server: materializes analysis plans into OpenMDAO problems"
 requires-python = ">=3.11"
 dependencies = [
     "hangar-sdk[all]",
+    "hangar-results-reader",
     "openmdao>=3.35,!=3.40",
     "openaerostruct>=2.12,<3",
     "click>=8.0",
@@ -26,6 +27,7 @@ packages = ["src/hangar"]
 
 [tool.uv.sources]
 hangar-sdk = { workspace = true }
+hangar-results-reader = { workspace = true }
 openaerostruct = { path = "../../upstream/OpenAeroStruct", editable = true }
 
 [tool.pytest.ini_options]
