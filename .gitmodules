@@ -1,0 +1,3 @@
+[submodule "packages/range-safety"]
+	path = packages/range-safety
+	url = https://github.com/muroc-aero/range-safety.git
