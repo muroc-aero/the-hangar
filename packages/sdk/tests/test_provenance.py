@@ -27,6 +27,7 @@ from hangar.sdk.provenance.middleware import (
     set_server_session_id,
 )
 from hangar.sdk.provenance.db import (
+    build_session_elements,
     _next_seq,
     get_session_graph,
     get_session_meta,
@@ -168,6 +169,41 @@ def test_get_session_graph_edge_logic(tmp_path):
     assert "informs" in labels   # cid0 -> dec1
     assert "decides" in labels   # dec1 -> cid2
     assert "sequence" in labels  # cid2 -> cid3
+
+
+def test_build_session_elements(tmp_path):
+    """build_session_elements returns normalized Cytoscape elements."""
+    init_db(tmp_path / "prov.db")
+    sid = _make_session()
+    record_session(sid)
+
+    cid0 = _make_call_id()
+    dec1 = str(uuid.uuid4())
+    cid2 = _make_call_id()
+    record_tool_call(cid0, sid, 0, "create_surface", "{}", "{}", "ok", None,
+                     "2025-01-01T00:00:00+00:00", 0.1)
+    record_decision(dec1, sid, 1, "mesh_resolution", "use a fine mesh for accuracy",
+                    cid0, "num_y=15", "medium")
+    record_tool_call(cid2, sid, 2, "run_aero_analysis", "{}", "{}", "ok", None,
+                     "2025-01-01T00:00:01+00:00", 1.0)
+
+    elements = build_session_elements(sid)
+    assert set(elements) == {"nodes", "edges"}
+
+    # Cytoscape-native form; normalized `kind` style key on every node.
+    by_id = {n["data"]["id"]: n["data"] for n in elements["nodes"]}
+    assert by_id[cid0]["kind"] == "tool_call"
+    assert by_id[cid0]["label"] == "create_surface"
+    assert by_id[dec1]["kind"] == "decision"
+    # decision label carries the reasoning so the node is legible.
+    assert "fine mesh" in by_id[dec1]["label"]
+
+    # Edges carry a `relation` and reference only existing nodes.
+    node_ids = set(by_id)
+    for e in elements["edges"]:
+        assert e["data"]["relation"] in {"informs", "decides", "sequence", "cross_tool"}
+        assert e["data"]["source"] in node_ids
+        assert e["data"]["target"] in node_ids
 
 
 def test_list_sessions(tmp_path):

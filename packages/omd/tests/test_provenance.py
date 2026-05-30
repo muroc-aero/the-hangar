@@ -13,6 +13,7 @@ from hangar.omd.db import (
     add_prov_edge,
 )
 from hangar.omd.provenance import (
+    build_provenance_elements,
     provenance_timeline,
     provenance_dag_html,
     provenance_diff,
@@ -92,6 +93,29 @@ def test_provenance_dag_html(tmp_path):
     content = result.read_text()
     assert "cytoscape" in content
     assert "test-plan" in content
+
+
+def test_build_provenance_elements(tmp_path):
+    db_path = _setup_dag(tmp_path)
+    elements = build_provenance_elements("test-plan", db_path=db_path)
+
+    assert set(elements) == {"nodes", "edges"}
+    # Cytoscape-native element form: every element is {"data": {...}}.
+    node_ids = {n["data"]["id"] for n in elements["nodes"]}
+    assert "test-plan/v1" in node_ids and "run-001" in node_ids
+
+    # Plan entities carry an entity_type; activities are typed too.
+    plan_node = next(n["data"] for n in elements["nodes"] if n["data"]["id"] == "test-plan/v1")
+    assert plan_node["entity_type"] == "plan"
+
+    # No edge references a missing node (dangling edges are dropped).
+    for e in elements["edges"]:
+        assert e["data"]["source"] in node_ids
+        assert e["data"]["target"] in node_ids
+
+    # The wasDerivedFrom replan edge is present (reversed for layout: old->new).
+    derived = [e["data"] for e in elements["edges"] if e["data"]["relation"] == "wasDerivedFrom"]
+    assert derived and derived[0]["source"] == "test-plan/v1" and derived[0]["target"] == "test-plan/v2"
 
 
 def test_provenance_diff(tmp_path):
