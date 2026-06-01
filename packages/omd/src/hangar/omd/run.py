@@ -25,6 +25,10 @@ from hangar.omd.db import (
     record_entity,
     record_activity,
     add_prov_edge,
+    project_headline,
+    query_provenance_dag,
+    query_run_results,
+    resolve_scalar,
 )
 
 logger = logging.getLogger(__name__)
@@ -1315,6 +1319,166 @@ def _record_assessment(
                 metadata=json.dumps(slot_data),
                 parent_id=run_id,
             )
+
+
+# ---------------------------------------------------------------------------
+# Conclusion artifact (concluding stage)
+# ---------------------------------------------------------------------------
+
+
+def _compare(actual: float | None, comparator: str | None, threshold) -> bool | None:
+    """Evaluate ``actual <comparator> threshold``; None if not evaluable.
+
+    Returns None when a value is missing or the threshold is non-numeric (e.g.
+    an ``in`` range), so the caller can leave that criterion unjudged rather
+    than guessing a verdict.
+    """
+    if actual is None or comparator is None or threshold is None:
+        return None
+    try:
+        t = float(threshold)
+    except (TypeError, ValueError):
+        return None
+    return {
+        "<": actual < t,
+        "<=": actual <= t,
+        ">": actual > t,
+        ">=": actual >= t,
+        "==": actual == t,
+        "!=": actual != t,
+    }.get(comparator)
+
+
+def _final_case(run_id: str) -> dict:
+    """Return the final (or last) case data for a run."""
+    cases = query_run_results(run_id)
+    if not cases:
+        return {}
+    final = [c for c in cases if c.get("case_type") == "final"]
+    chosen = final[-1] if final else cases[-1]
+    return chosen.get("data") or {}
+
+
+def _requirement_entity_ids(plan_id: str) -> dict[str, str]:
+    """Map requirement id -> its provenance entity id (highest version wins)."""
+    dag = query_provenance_dag(plan_id)
+    by_id: dict[str, tuple[int, str]] = {}
+    for e in dag.get("entities") or []:
+        if e.get("entity_type") != "requirement":
+            continue
+        try:
+            meta = json.loads(e.get("metadata") or "{}")
+        except (json.JSONDecodeError, TypeError):
+            meta = {}
+        rid = meta.get("id")
+        if not rid:
+            continue
+        version = e.get("version") or 0
+        if rid not in by_id or version >= by_id[rid][0]:
+            by_id[rid] = (version, e["entity_id"])
+    return {rid: ent for rid, (_v, ent) in by_id.items()}
+
+
+def record_conclusion(
+    run_id: str,
+    plan: dict,
+    plan_id: str,
+    narrative: str = "",
+    db_path: Path | None = None,
+) -> dict:
+    """Record a conclusion artifact tying *run_id* to the requirements it resolves.
+
+    The concluding stage is something an agent actively *does*: this writes a
+    ``conclusion`` entity that ``wasDerivedFrom`` the chosen run and carries, per
+    requirement, a verdict auto-derived by evaluating the plan's acceptance
+    criteria against the run's final results. A ``satisfies`` / ``violates`` edge
+    is written to each judged requirement entity, so the verdict shows in the
+    requirements view and the reasoning graph. The agent supplies only the
+    chosen run and a short narrative; the numbers come from the recorder, so the
+    verdicts cannot drift from the results.
+
+    Returns ``{conclusion_id, verdict, narrative, metrics, requirements}`` where
+    ``verdict`` is the overall ``meets`` / ``fails`` / ``partial`` (scoped to
+    primary requirements, or all requirements when none is flagged primary).
+    """
+    if db_path is not None:
+        init_analysis_db(db_path)
+
+    final_data = _final_case(run_id)
+    req_entities = _requirement_entity_ids(plan_id)
+
+    req_results: list[dict] = []
+    for req in plan.get("requirements") or []:
+        if not isinstance(req, dict):
+            continue
+        crit_results = []
+        for crit in req.get("acceptance_criteria") or []:
+            if not isinstance(crit, dict):
+                continue
+            metric = crit.get("metric")
+            actual = resolve_scalar(final_data, metric) if metric else None
+            passed = _compare(actual, crit.get("comparator"), crit.get("threshold"))
+            crit_results.append({
+                "metric": metric,
+                "comparator": crit.get("comparator"),
+                "threshold": crit.get("threshold"),
+                "actual": actual,
+                "passed": passed,
+            })
+        judged = [c["passed"] for c in crit_results if c["passed"] is not None]
+        if judged:
+            verdict = "satisfies" if all(judged) else "violates"
+        else:
+            verdict = "open"  # no evaluable criterion -> cannot judge
+        req_results.append({
+            "id": req.get("id"),
+            "text": req.get("text"),
+            "priority": req.get("priority"),
+            "verdict": verdict,
+            "criteria": crit_results,
+        })
+
+    # Overall verdict, scoped to primary requirements (or all if none primary).
+    primary = [r for r in req_results if r["priority"] == "primary"] or req_results
+    verdicts = [r["verdict"] for r in primary]
+    if verdicts and all(v == "satisfies" for v in verdicts):
+        overall = "meets"
+    elif any(v == "violates" for v in verdicts):
+        overall = "fails"
+    else:
+        overall = "partial"
+
+    metrics = project_headline(run_id, plan)
+
+    conclusion_id = f"conclusion-{run_id}"
+    meta = {
+        "run_id": run_id,
+        "verdict": overall,
+        "narrative": narrative,
+        "metrics": metrics,
+        "requirements": req_results,
+    }
+    record_entity(
+        entity_id=conclusion_id,
+        entity_type="conclusion",
+        created_by="omd",
+        plan_id=plan_id,
+        metadata=json.dumps(meta),
+    )
+    add_prov_edge("wasDerivedFrom", conclusion_id, run_id)
+    for r in req_results:
+        if r["verdict"] in ("satisfies", "violates"):
+            ent = req_entities.get(r["id"])
+            if ent:
+                add_prov_edge(r["verdict"], conclusion_id, ent)
+
+    return {
+        "conclusion_id": conclusion_id,
+        "verdict": overall,
+        "narrative": narrative,
+        "metrics": metrics,
+        "requirements": req_results,
+    }
 
 
 def _record_failure(
