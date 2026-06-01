@@ -12,9 +12,11 @@ from hangar.results_reader.db import (
     KNOWN_PROV_RELATIONS,
     get_db_path,
     init_analysis_db,
+    project_headline,
     query_entity,
     query_provenance_dag,
     query_run_results,
+    resolve_scalar,
 )
 
 __all__ = [
@@ -22,7 +24,9 @@ __all__ = [
     "KNOWN_PROV_RELATIONS",
     "get_db_path",
     "init_analysis_db",
+    "project_headline",
     "query_entity",
     "query_provenance_dag",
     "query_run_results",
+    "resolve_scalar",
 ]

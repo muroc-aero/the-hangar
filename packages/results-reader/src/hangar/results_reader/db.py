@@ -331,3 +331,179 @@ def query_entity(entity_id: str) -> dict | None:
         "SELECT * FROM entities WHERE entity_id = ?", (entity_id,)
     ).fetchone()
     return dict(row) if row else None
+
+
+# ---------------------------------------------------------------------------
+# Headline projection (read-time)
+# ---------------------------------------------------------------------------
+# omd stores a run's final case as a raw OpenMDAO recorder dump: ~100
+# fully-qualified promoted-variable paths, mostly arrays, with the scalar
+# headline values buried at deep dotted paths. The sdk artifact envelope, by
+# contrast, already exposes named headline scalars (CL, CD, L_over_D, ...).
+# `project_headline` conforms the omd shape to that clean form at read time,
+# so a consumer reads one normalized contract from both patterns. It is purely
+# additive: it does not touch how cases are stored or how plots are generated.
+
+# Curated common performance metrics for the OAS factories, in display order.
+# Each entry is (short_name, [path patterns in priority order], unit). The
+# patterns are matched against the final-case keys; the first that resolves to
+# a scalar wins. Tools without these keys simply contribute nothing here -- the
+# plan-driven objective below is what makes the projection general.
+_HEADLINE_METRICS: list[tuple[str, list[str], str]] = [
+    ("CL", ["total_perf.CL_CD.CL", ".CL_CD.CL", "aero_funcs.CL.CL"], ""),
+    ("CD", ["total_perf.CL_CD.CD", ".CL_CD.CD", "aero_funcs.CD.CD"], ""),
+    ("CM", ["total_perf.moment.CM", ".moment.CM"], ""),
+    ("fuelburn", ["total_perf.fuelburn.fuelburn", ".fuelburn"], "kg"),
+    ("failure", ["struct_funcs.failure.failure", ".failure"], ""),
+    (
+        "structural_mass",
+        ["structural_mass.structural_mass", ".structural_mass"],
+        "kg",
+    ),
+    ("S_ref", ["total_perf.sum_areas.S_ref_total", ".S_ref"], "m^2"),
+]
+
+# Short-name -> unit hints for plan-declared objectives whose plan entry omits
+# units. Plan-supplied units always take precedence over this table.
+_UNIT_HINTS: dict[str, str] = {
+    "fuelburn": "kg",
+    "structural_mass": "kg",
+    "alpha": "deg",
+    "twist": "deg",
+}
+
+
+def _scalarize(value: object) -> float | None:
+    """Reduce a recorder value to a scalar float, or None.
+
+    Scalars pass through (NaN/inf rejected). For arrays the magnitude-max is
+    used (worst-case), matching the constraint-assertion convention.
+    """
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        f = float(value)
+        if f != f or f in (float("inf"), float("-inf")):  # NaN / inf
+            return None
+        return f
+    if isinstance(value, (list, tuple)):
+        scalars = [_scalarize(v) for v in value]
+        valid = [s for s in scalars if s is not None]
+        if valid:
+            return max(valid, key=abs)
+    return None
+
+
+def _resolve_path(data: dict, patterns: list[str]) -> float | None:
+    """Resolve the first of ``patterns`` to a scalar in ``data``.
+
+    For each pattern, tries exact key, then a key ending with the pattern,
+    then the pattern as a substring. Returns the first scalar found.
+    """
+    for pattern in patterns:
+        if pattern in data:
+            v = _scalarize(data[pattern])
+            if v is not None:
+                return v
+        for key, val in data.items():
+            if key.endswith(pattern):
+                v = _scalarize(val)
+                if v is not None:
+                    return v
+        for key, val in data.items():
+            if pattern in key:
+                v = _scalarize(val)
+                if v is not None:
+                    return v
+    return None
+
+
+def resolve_scalar(data: dict, name: str) -> float | None:
+    """Resolve a (possibly partial) variable name to a scalar in case data.
+
+    A run's case data is keyed by fully-qualified OpenMDAO paths, but plans
+    refer to variables by partial names (e.g. ``AS_point_0.fuelburn`` for the
+    recorder key ``AS_point_0.total_perf.fuelburn.fuelburn``). This applies the
+    same exact -> suffix -> substring matching the headline projection uses, so
+    callers reading per-iteration trajectories resolve names the same way.
+    Arrays reduce to their magnitude-max scalar; returns None if unresolved.
+    """
+    label = name.rsplit(".", 1)[-1]
+    return _resolve_path(data, [name, "." + label, label])
+
+
+def _final_case_data(run_id: str) -> dict:
+    """Return the final case's data dict for a run (or the last case)."""
+    cases = query_run_results(run_id)
+    if not cases:
+        return {}
+    final = [c for c in cases if c.get("case_type") == "final"]
+    chosen = final[-1] if final else cases[-1]
+    return chosen.get("data") or {}
+
+
+def project_headline(run_id: str, plan: dict | None = None) -> list[dict]:
+    """Project a run's final case into ordered headline metrics.
+
+    Returns a list of ``{"name", "label", "value", "unit", "role"}`` dicts,
+    objective first (when the plan declares one), then curated performance
+    metrics that resolve in the final case. ``L_over_D`` is derived from
+    ``CL``/``CD`` when both are present (so omd runs match the sdk envelope,
+    which exposes it directly). This is read-only and does not require
+    OpenMDAO.
+
+    The plan makes the projection tool-general: any factory's objective is
+    surfaced by name, even one the curated metric table knows nothing about.
+    """
+    data = _final_case_data(run_id)
+    if not data:
+        return []
+
+    headline: list[dict] = []
+    seen: set[str] = set()
+
+    # 1. Plan objective (general across tools).
+    objective = (plan or {}).get("objective") or {}
+    obj_name = objective.get("name")
+    if obj_name:
+        label = obj_name.rsplit(".", 1)[-1]
+        value = resolve_scalar(data, obj_name)
+        if value is not None:
+            unit = objective.get("units") or _UNIT_HINTS.get(label, "")
+            headline.append({
+                "name": obj_name,
+                "label": label,
+                "value": value,
+                "unit": unit,
+                "role": "objective",
+            })
+            seen.add(label)
+
+    # 2. Curated performance metrics present in the data.
+    for short, patterns, unit in _HEADLINE_METRICS:
+        if short in seen:
+            continue
+        value = _resolve_path(data, patterns)
+        if value is not None:
+            headline.append({
+                "name": short,
+                "label": short,
+                "value": value,
+                "unit": unit,
+                "role": "metric",
+            })
+            seen.add(short)
+
+    # 3. Derived lift-to-drag, to match the sdk envelope's L_over_D.
+    cl = next((m["value"] for m in headline if m["label"] == "CL"), None)
+    cd = next((m["value"] for m in headline if m["label"] == "CD"), None)
+    if cl is not None and cd not in (None, 0) and "L_over_D" not in seen:
+        headline.append({
+            "name": "L_over_D",
+            "label": "L_over_D",
+            "value": cl / cd,
+            "unit": "",
+            "role": "metric",
+        })
+
+    return headline

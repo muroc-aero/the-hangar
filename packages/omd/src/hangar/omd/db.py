@@ -36,9 +36,11 @@ from hangar.results_reader.db import (  # noqa: F401
     _now,
     get_db_path,
     init_analysis_db,
+    project_headline,
     query_entity,
     query_provenance_dag,
     query_run_results,
+    resolve_scalar,
 )
 
 logger = logging.getLogger(__name__)
