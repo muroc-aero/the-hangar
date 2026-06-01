@@ -156,9 +156,22 @@ CREATE TABLE IF NOT EXISTS cross_references (
     FOREIGN KEY (session_id) REFERENCES sessions(session_id)
 );
 
+CREATE TABLE IF NOT EXISTS requirements (
+    session_id  TEXT NOT NULL,
+    seq         INTEGER NOT NULL,
+    path        TEXT NOT NULL,
+    operator    TEXT NOT NULL,
+    value_json  TEXT,
+    label       TEXT,
+    recorded_at TEXT NOT NULL,
+    PRIMARY KEY (session_id, seq),
+    FOREIGN KEY (session_id) REFERENCES sessions(session_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_tool_calls_session ON tool_calls(session_id, seq);
 CREATE INDEX IF NOT EXISTS idx_decisions_session  ON decisions(session_id, seq);
 CREATE INDEX IF NOT EXISTS idx_cross_refs_session ON cross_references(session_id);
+CREATE INDEX IF NOT EXISTS idx_requirements_session ON requirements(session_id, seq);
 """
 
 
@@ -354,6 +367,77 @@ def record_decision(
         ),
     )
     conn.commit()
+
+
+# ---------------------------------------------------------------------------
+# Requirements
+# ---------------------------------------------------------------------------
+
+
+def record_requirements(session_id: str, requirements: list[dict]) -> None:
+    """Persist the session's requirement set with replace semantics.
+
+    sdk requirements are ``{path, operator, value, label}`` dot-path assertions
+    set via the ``set_requirements`` / ``configure_session`` tools. They live in
+    the runtime SessionManager during a session; persisting them here lets the
+    dashboard replay the Gather-Requirements / Report views for a finished
+    session instead of leaving them empty.
+
+    The full set is replaced on every call, mirroring the runtime semantics of
+    ``Session.set_requirements`` (which overwrites the list wholesale).
+    """
+    _ensure_session(session_id)
+    conn = _get_conn()
+    conn.execute("DELETE FROM requirements WHERE session_id=?", (session_id,))
+    now = datetime.now(timezone.utc).isoformat()
+    for seq, req in enumerate(requirements or []):
+        # ``value`` is the canonical comparison key; pyc historically uses
+        # ``target`` for the same field, so accept either.
+        value = req.get("value", req.get("target"))
+        conn.execute(
+            """
+            INSERT INTO requirements
+                (session_id, seq, path, operator, value_json, label, recorded_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                session_id,
+                seq,
+                str(req.get("path", "")),
+                str(req.get("operator", "")),
+                _dumps(value),
+                req.get("label"),
+                now,
+            ),
+        )
+    conn.commit()
+
+
+def get_requirements(session_id: str) -> list[dict]:
+    """Return the persisted requirement set for *session_id* in set order.
+
+    Each entry is ``{path, operator, value, label}`` — the same shape passed to
+    ``set_requirements``. Returns an empty list if none were persisted (or the
+    table predates this feature).
+    """
+    conn = _get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT path, operator, value_json, label FROM requirements "
+            "WHERE session_id=? ORDER BY seq",
+            (session_id,),
+        ).fetchall()
+    except Exception:
+        return []
+    return [
+        {
+            "path": r["path"],
+            "operator": r["operator"],
+            "value": _try_json(r["value_json"]),
+            "label": r["label"],
+        }
+        for r in rows
+    ]
 
 
 def _next_seq(session_id: str) -> int:
