@@ -55,8 +55,28 @@ def main() -> None:
     set_setup_tools(["create_engine"])
 
     def _start_viewer(port: int = 7654, db: str | None = None):
+        import os
+        import signal
+        import threading
+
+        os.environ.setdefault("HANGAR_PROV_PORT", str(port))
+        if db:
+            os.environ["HANGAR_PROV_DB"] = db
+
         from hangar.sdk.viz.viewer_server import start_viewer_server
-        start_viewer_server(port=port, db_path=db)
+
+        actual_port = start_viewer_server()
+        if actual_port is None:
+            print(f"Failed to start viewer (port {port} may be in use)")
+            raise SystemExit(1)
+
+        print(f"SDK viewer: http://localhost:{actual_port}/viewer")
+        print("Press Ctrl+C to stop.")
+
+        stop = threading.Event()
+        signal.signal(signal.SIGINT, lambda *_: stop.set())
+        signal.signal(signal.SIGTERM, lambda *_: stop.set())
+        stop.wait()
 
     _cli_main(
         prog="pyc-cli",
