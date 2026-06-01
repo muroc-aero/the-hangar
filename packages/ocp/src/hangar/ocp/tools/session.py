@@ -21,6 +21,7 @@ from hangar.sdk.provenance.db import (
     get_session_graph,
     record_cross_reference,
     record_decision,
+    record_requirements,
     record_session,
     session_exists,
     update_session_project,
@@ -250,6 +251,10 @@ async def set_requirements(
     """Set requirements checked against every analysis result."""
     session = _sessions.get(session_id)
     session.set_requirements(requirements)
+    try:
+        record_requirements(_get_session_id(), requirements)
+    except Exception:
+        pass  # Best-effort; provenance DB may not be initialised
     return {
         "session_id": session_id,
         "requirements_set": len(requirements),

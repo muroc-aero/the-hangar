@@ -32,6 +32,7 @@ from hangar.sdk.provenance.db import (
     list_sessions,
     record_cross_reference,
     record_decision,
+    record_requirements,
     record_session,
     session_exists,
     update_session_project,
@@ -384,6 +385,10 @@ async def configure_session(
 
     if requirements is not None:
         session.set_requirements(requirements)
+        try:
+            record_requirements(_get_session_id(), requirements)
+        except Exception:
+            pass  # Best-effort; provenance DB may not be initialised
 
     return {
         "session_id": session_id,
@@ -416,6 +421,10 @@ async def set_requirements(
     """
     session = _sessions.get(session_id)
     session.set_requirements(requirements)
+    try:
+        record_requirements(_get_session_id(), requirements)
+    except Exception:
+        pass  # Best-effort; provenance DB may not be initialised
     return {
         "session_id": session_id,
         "requirements_set": len(requirements),

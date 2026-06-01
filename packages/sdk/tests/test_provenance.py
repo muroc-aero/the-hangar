@@ -29,11 +29,13 @@ from hangar.sdk.provenance.middleware import (
 from hangar.sdk.provenance.db import (
     build_session_elements,
     _next_seq,
+    get_requirements,
     get_session_graph,
     get_session_meta,
     init_db,
     list_sessions,
     record_decision,
+    record_requirements,
     record_session,
     record_tool_call,
     session_exists,
@@ -74,8 +76,61 @@ def test_init_db_creates_tables(tmp_path):
             "SELECT name FROM sqlite_master WHERE type='table'"
         ).fetchall()
     }
-    assert {"sessions", "tool_calls", "decisions"}.issubset(tables)
+    assert {"sessions", "tool_calls", "decisions", "requirements"}.issubset(tables)
     conn.close()
+
+
+def test_record_and_get_requirements_round_trip(tmp_path):
+    """Requirements persist with their value type preserved and in set order."""
+    init_db(tmp_path / "prov.db")
+    sid = _make_session()
+    record_session(sid)
+
+    reqs = [
+        {"path": "CL", "operator": ">=", "value": 0.4, "label": "min_CL"},
+        {"path": "surfaces.wing.failure", "operator": "<", "value": 1.0},
+    ]
+    record_requirements(sid, reqs)
+
+    got = get_requirements(sid)
+    assert got == [
+        {"path": "CL", "operator": ">=", "value": 0.4, "label": "min_CL"},
+        {"path": "surfaces.wing.failure", "operator": "<", "value": 1.0, "label": None},
+    ]
+
+
+def test_record_requirements_replaces_prior_set(tmp_path):
+    """A second call overwrites the full set, mirroring runtime semantics."""
+    init_db(tmp_path / "prov.db")
+    sid = _make_session()
+    record_session(sid)
+
+    record_requirements(sid, [{"path": "CL", "operator": ">=", "value": 0.4}])
+    record_requirements(sid, [
+        {"path": "L_over_D", "operator": ">", "value": 18.0, "label": "ld"},
+    ])
+
+    got = get_requirements(sid)
+    assert len(got) == 1
+    assert got[0]["path"] == "L_over_D" and got[0]["value"] == 18.0
+
+
+def test_record_requirements_accepts_target_alias(tmp_path):
+    """pyc-style requirements use ``target`` for the comparison value."""
+    init_db(tmp_path / "prov.db")
+    sid = _make_session()
+    record_session(sid)
+
+    record_requirements(sid, [
+        {"path": "performance.TSFC", "operator": "<", "target": 0.6, "label": "tsfc"},
+    ])
+    got = get_requirements(sid)
+    assert got[0]["value"] == 0.6
+
+
+def test_get_requirements_empty_for_unknown_session(tmp_path):
+    init_db(tmp_path / "prov.db")
+    assert get_requirements("nope") == []
 
 
 def test_record_and_retrieve_tool_call(tmp_path):
