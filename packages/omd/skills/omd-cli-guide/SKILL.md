@@ -26,6 +26,7 @@ uv run omd-cli --help
 | `omd-cli validate <plan.yaml>` | Check plan against JSON Schema |
 | `omd-cli run <plan.yaml>` | Materialize and execute (analysis or optimize) |
 | `omd-cli results <run_id>` | Query results from analysis DB |
+| `omd-cli conclude <run_id>` | Record the conclusion (verdict vs requirements) for a final run |
 | `omd-cli export <plan.yaml>` | Generate standalone Python script |
 | `omd-cli provenance <plan_id>` | View provenance timeline or DAG |
 | `omd-cli viewer` | Start interactive Cytoscape.js provenance viewer |
@@ -206,7 +207,15 @@ omd-cli results <run_id> --summary
 
 # 5. Check provenance
 omd-cli provenance <plan_id> --format text
+
+# 6. Record the conclusion (closing step, once you have a final run)
+omd-cli conclude <run_id> --narrative "what these results mean for the requirements"
 ```
+
+The final step is not optional bookkeeping: recording a conclusion is the
+explicit "concluding" act that ties the chosen run to the requirements it
+resolves (verdicts are auto-derived from the acceptance criteria). A study
+is not done until its conclusion is recorded. See `commands.md` (conclude).
 
 ## Range-Safety Integration
 

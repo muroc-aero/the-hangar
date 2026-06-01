@@ -74,6 +74,38 @@ omd-cli results <run_id> [--summary] [--variables v1,v2,...] [--db PATH]
 - `--variables`, `-v` -- filter to specific variable names
 - `--db` -- path to analysis DB
 
+## conclude
+
+Record a conclusion artifact for a completed run. This is the closing
+step of a study: it states what the chosen result means for the
+requirements. Run it once you have settled on a final/best run.
+
+```bash
+omd-cli conclude <run_id> --narrative "what these results mean" [--plan PATH] [--db PATH]
+```
+
+**Options:**
+- `--narrative`, `-n` -- a short sentence on what the results mean
+- `--plan` -- plan YAML to evaluate against (defaults to the run's plan from the store)
+- `--db` -- path to analysis DB
+
+The per-requirement verdict is derived automatically: each requirement's
+acceptance criteria are evaluated against the run's final results, so the
+verdicts cannot drift from the numbers. The command writes a `conclusion`
+entity tied to the run (with `satisfies` / `violates` edges to the
+requirements) and prints what it derived, e.g.:
+
+```
+Conclusion conclusion-run-...: MEETS
+  optimum reached
+  [PASS] R1: reach a low objective
+         paraboloid.f_xy <= -25.0 (actual -27.33)
+```
+
+Recording a conclusion is what moves a study into the Concluding state on
+the dashboard (its Concluding coverage becomes populated). A study is not
+"done" until its conclusion is recorded.
+
 ## export
 
 Generate a standalone Python script from a plan.

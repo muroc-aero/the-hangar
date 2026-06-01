@@ -104,6 +104,65 @@ def results_cmd(run_id: str, variables: tuple, summary: bool,
     click.echo(json.dumps(result, indent=2, default=str))
 
 
+def _load_plan_for_run(run_id: str, plan_path: str | None) -> tuple[dict, str]:
+    """Resolve (plan dict, plan_id) for a run, from an explicit path or the store."""
+    import yaml
+    from hangar.omd.db import query_entity, plan_store_dir
+
+    if plan_path:
+        plan = yaml.safe_load(Path(plan_path).read_text()) or {}
+        plan_id = (plan.get("metadata") or {}).get("id") or run_id
+        return plan, plan_id
+
+    run = query_entity(run_id)
+    if not run or not run.get("plan_id"):
+        raise SystemExit(f"Error: no plan_id recorded for run {run_id!r}; pass --plan.")
+    plan_id = run["plan_id"]
+    store = plan_store_dir() / plan_id
+    versions = sorted(store.glob("v*.yaml"),
+                      key=lambda p: int(p.stem[1:]) if p.stem[1:].isdigit() else 0)
+    if not versions:
+        raise SystemExit(f"Error: no plan versions found for {plan_id!r} in {store}.")
+    plan = yaml.safe_load(versions[-1].read_text()) or {}
+    return plan, plan_id
+
+
+@cli.command("conclude")
+@click.argument("run_id")
+@click.option("--narrative", "-n", default="",
+              help="Short narrative: what these results mean for the requirements.")
+@click.option("--plan", "plan_path", type=click.Path(exists=True), default=None,
+              help="Plan YAML (defaults to the run's plan from the store).")
+@click.option("--db", "db_path", type=click.Path(), default=None)
+def conclude_cmd(run_id: str, narrative: str, plan_path: str | None,
+                 db_path: str | None) -> None:
+    """Record a conclusion artifact for a completed run.
+
+    Auto-derives a per-requirement verdict by evaluating the plan's acceptance
+    criteria against the run's final results, writes a conclusion entity tied to
+    the run (and satisfies/violates edges to the requirements), and prints what
+    it derived. This is the concluding-stage step: the dashboard's Concluding
+    coverage becomes populated once a conclusion exists.
+    """
+    from hangar.omd.db import init_analysis_db
+    from hangar.omd.run import record_conclusion
+
+    init_analysis_db(Path(db_path) if db_path else None)
+    plan, plan_id = _load_plan_for_run(run_id, plan_path)
+    result = record_conclusion(run_id, plan, plan_id, narrative=narrative)
+
+    click.echo(f"Conclusion {result['conclusion_id']}: {result['verdict'].upper()}")
+    if narrative:
+        click.echo(f"  {narrative}")
+    for r in result["requirements"]:
+        mark = {"satisfies": "PASS", "violates": "FAIL", "open": "----"}[r["verdict"]]
+        click.echo(f"  [{mark}] {r['id']}: {r.get('text') or ''}")
+        for c in r["criteria"]:
+            actual = "n/a" if c["actual"] is None else f"{c['actual']:.4g}"
+            click.echo(f"         {c['metric']} {c['comparator']} {c['threshold']} "
+                       f"(actual {actual})")
+
+
 @cli.command("export")
 @click.argument("plan_path", type=click.Path(exists=True))
 @click.option("--output", "-o", type=click.Path(), required=True,

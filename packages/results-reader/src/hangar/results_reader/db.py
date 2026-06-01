@@ -61,6 +61,9 @@ KNOWN_ENTITY_TYPES: frozenset[str] = frozenset({
     "acceptance_criterion",
     "requirement",
     "plan_element",
+    # Agent-recorded conclusion artifact (concluding stage): ties the chosen
+    # run to the requirements it resolves (satisfies / violates edges).
+    "conclusion",
 })
 
 KNOWN_PROV_RELATIONS: frozenset[str] = frozenset({
