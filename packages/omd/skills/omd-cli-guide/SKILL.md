@@ -217,6 +217,41 @@ explicit "concluding" act that ties the chosen run to the requirements it
 resolves (verdicts are auto-derived from the acceptance criteria). A study
 is not done until its conclusion is recorded. See `commands.md` (conclude).
 
+## Watch it live (range-safety dashboard)
+
+Open and link the dashboard at the start of a study, not at the end, so the
+engineer can watch the five stages populate as the work happens. The state
+strip polls every 8s, so each step shows up within a few seconds of the CLI
+command that writes it finishing.
+
+Start the dashboard once (it reads the shared `analysis.db`, so it picks up
+every study automatically):
+
+```bash
+uv run uvicorn hangar.range_safety.dashboard.app:app --port 8011
+# WSL: open the Windows browser at the study you are running
+explorer.exe "http://localhost:8011/"   # then pick omd:<plan_id>
+```
+
+Surface the link to the engineer as soon as `omd-cli assemble` has run: that
+is the first moment the study exists (the plan entity creates it), so the
+dashboard can be opened on `omd:<plan_id>` and will then update on its own as
+you proceed. The stages map to the workflow steps:
+
+- **Gather Requirements** populates only when the plan's requirements carry
+  `acceptance_criteria` (metric / comparator / threshold). Requirements with
+  no criteria leave this stage thin and give the conclusion nothing to derive.
+- **Planning** populates at `assemble` (plan + optimization setup recorded).
+- **Executing** populates when `omd-cli run` completes.
+- **Verifying** populates from the convergence + assessment records written
+  by the same run.
+- **Concluding** populates when `omd-cli conclude` records the conclusion
+  artifact (per-requirement satisfies/violates verdicts).
+
+Entities are written when each command finishes (not mid-optimization), so a
+long `omd-cli run` flips Executing and Verifying at the end of the run, not
+during it.
+
 ## Range-Safety Integration
 
 `range-safety` is a separate CLI in this monorepo that enforces
