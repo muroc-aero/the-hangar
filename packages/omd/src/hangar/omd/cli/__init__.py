@@ -456,10 +456,21 @@ def viewer_cmd(port: int, db_path: str | None) -> None:
     import signal
     import threading
 
-    # Allow port override via env var (consistent with SDK convention)
-    os.environ.setdefault("HANGAR_PROV_PORT", str(port))
+    # Allow port override via env var (consistent with SDK convention).
+    # Use the --port value when the env var is unset *or* empty, so --port is
+    # honoured even when HANGAR_PROV_PORT="" is exported into the shell.
+    if not os.environ.get("HANGAR_PROV_PORT"):
+        os.environ["HANGAR_PROV_PORT"] = str(port)
     if db_path:
         os.environ["HANGAR_PROV_DB"] = db_path
+
+    # The SDK viewer half (/viewer, /sessions, /graph) reads the shared
+    # provenance DB through a process-global connection that must be opened
+    # once at startup -- mirror what the MCP server does. Without this the
+    # session list endpoint 500s with "Provenance DB not initialised".
+    from hangar.sdk.provenance.db import init_db as _prov_init_db
+
+    _prov_init_db()
 
     from hangar.sdk.viz.viewer_server import register_viewer_route, start_viewer_server
 
