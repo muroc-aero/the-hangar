@@ -26,8 +26,12 @@ MARKER=".synced-by-sync-skills"
 clean_synced() {
     local dir="$1"
     [[ -d "$dir" ]] || return 0
-    # Remove files and dirs that contain our marker
-    find "$dir" -maxdepth 1 -name "$MARKER" -exec dirname {} \; | while read -r d; do
+    # Skill dirs carry the marker one level down (<dir>/<name>/MARKER), so look
+    # at depth 2 — a -maxdepth 1 search never sees it and leaves stale dirs that
+    # the later `cp -r` then nests into (<name>/<name>).
+    find "$dir" -mindepth 2 -maxdepth 2 -name "$MARKER" 2>/dev/null | while read -r m; do
+        local d
+        d="$(dirname "$m")"
         echo "  clean: $d"
         rm -rf "$d"
     done
@@ -90,6 +94,9 @@ sync_source() {
         base="$(basename "$d")"
         dst_name="$(prefixed_name "$pkg" "$base")"
         local dst="$SKILLS_DST/$dst_name"
+        # Defensive: never let cp -r nest into a managed dir that survived the
+        # clean step (cp -r into an existing dir creates <name>/<name>).
+        [[ -f "$dst/$MARKER" ]] && rm -rf "$dst"
         cp -r "$d" "$dst"
         # Drop a marker so we can clean on next run
         touch "$dst/$MARKER"
