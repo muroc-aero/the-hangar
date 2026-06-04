@@ -45,6 +45,7 @@ def build_oas_registry() -> dict[str, Callable]:
         "get_last_logs",
         "configure_session",
         "set_requirements",
+        "record_conclusion",
     ]
 
     registry: dict[str, Callable] = {}

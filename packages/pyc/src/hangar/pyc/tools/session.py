@@ -213,6 +213,41 @@ async def set_requirements(
     return {"session_id": session_id, "requirements_count": len(requirements)}
 
 
+async def record_conclusion(
+    run_id: Annotated[str, "Run ID of the chosen run that answers the study"],
+    narrative: Annotated[
+        str,
+        "Short engineering summary of what this run means for the requirements",
+    ] = "",
+    session_id: Annotated[str | None, "Session hint for faster artifact lookup"] = None,
+) -> dict:
+    """Conclude a study: record what a chosen run means for the requirements.
+
+    Call this at the end of a workflow once a run answers the question. The
+    per-requirement verdicts are *auto-derived* by evaluating the session's
+    persisted requirements (set via set_requirements / configure_session)
+    against this run's results, so they cannot drift from the numbers. You supply
+    only the chosen run and a short narrative.
+
+    Writes a ``conclusion`` provenance record that flips the Concluding stage in
+    the range-safety dashboard to populated. Returns
+    ``{conclusion_id, run_id, verdict, narrative, metrics, requirements}`` where
+    ``verdict`` is the overall ``meets`` / ``fails`` / ``partial`` / ``open``.
+    """
+    from hangar.sdk.provenance.conclusion import record_conclusion as _record
+
+    run_id = await _resolve_run_id(run_id, session_id)
+    user = get_current_user()
+    artifact = await asyncio.to_thread(_artifacts.get, run_id, session_id, user)
+    if artifact is None:
+        raise ValueError(f"Run '{run_id}' not found in artifact store.")
+
+    results = artifact.get("results") or {}
+    sid = (artifact.get("metadata") or {}).get("session_id") or _get_session_id()
+
+    return await asyncio.to_thread(_record, sid, run_id, results, narrative)
+
+
 async def reset(
     session_id: Annotated[str, "Session to reset"] = "default",
 ) -> dict:

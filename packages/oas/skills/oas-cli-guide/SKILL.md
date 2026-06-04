@@ -155,12 +155,43 @@ For composite laminates, also set `use_composite=True` with `ply_angles`,
 `ply_fractions`, and composite moduli (`E1`, `E2`, `nu12`, `G12`) plus
 strength properties. See `commands.md` for the full parameter list.
 
+## Conclude the study (record_conclusion)
+
+Close every requirements-driven study with `record_conclusion` once a run
+answers the question. It ties the chosen run to the requirements you set with
+`set_requirements` / `configure_session` and records a verdict:
+
+```bash
+oas-cli set_requirements --requirements '[{"path":"CL","operator":">=","value":0.4,"label":"min_CL"}]'
+# ... run the analysis/optimization that answers the study ...
+oas-cli record_conclusion --run_id <run_id> --narrative "cruise point meets CL target with margin"
+```
+
+The per-requirement verdicts are auto-derived by evaluating each persisted
+requirement against the chosen run's results, so they cannot drift from the
+numbers; you supply only the run and a short narrative. The overall verdict is
+`meets` / `fails` / `partial` / `open`.
+
+This is the step that flips the **Concluding** stage in the range-safety
+dashboard to populated. To watch a study fill in live, start the dashboard once
+and open it on `sdk:<session_id>` as soon as the session starts:
+
+```bash
+uv run uvicorn hangar.range_safety.dashboard.app:app --port 8011
+explorer.exe "http://localhost:8011/"   # WSL: then pick sdk:<session_id>
+```
+
+Requirements populate Gather Requirements, runs populate Executing,
+`log_decision` calls populate Verifying, and `record_conclusion` populates
+Concluding. Without persisted requirements the conclusion has nothing to judge,
+so set them at the start.
+
 ## Available tools
 
 Run `oas-cli list-tools` for the complete, up-to-date list. Key groups:
 
 - **Analysis:** `create_surface`, `run_aero_analysis`, `run_aerostruct_analysis`, `compute_drag_polar`, `compute_stability_derivatives`, `run_optimization`, `reset`
-- **Observability:** `visualize`, `get_run`, `get_detailed_results`, `get_n2_html`, `get_last_logs`, `pin_run`, `unpin_run`, `configure_session`, `set_requirements`
+- **Observability:** `visualize`, `get_run`, `get_detailed_results`, `get_n2_html`, `get_last_logs`, `pin_run`, `unpin_run`, `configure_session`, `set_requirements`, `record_conclusion`
 - **Artifacts:** `list_artifacts`, `get_artifact`, `get_artifact_summary`, `delete_artifact`
 - **Provenance:** `start_session`, `log_decision`, `link_cross_tool_result`, `export_session_graph`
 - **Convenience commands:** `list-tools`, `list-runs`, `show`, `plot`, `viewer`

@@ -129,13 +129,44 @@ All responses follow the same envelope:
 | `SOLVER_CONVERGENCE_ERROR` | OpenMDAO Newton solver failed | Reduce mission range, adjust speeds, check MTOW |
 | `INTERNAL_ERROR` | Bug in OCP code | Surface to the user; do not auto-retry |
 
+## Conclude the study (record_conclusion)
+
+Close every requirements-driven study with `record_conclusion` once a run
+answers the question. It ties the chosen run to the requirements you set with
+`set_requirements` / `configure_session` and records a verdict:
+
+```bash
+ocp-cli set_requirements --requirements '[{"path":"fuel_burn","operator":"<","value":2000,"label":"max_fuel"}]'
+# ... run the mission/optimization that answers the study ...
+ocp-cli record_conclusion --run_id <run_id> --narrative "design mission meets fuel-burn target"
+```
+
+The per-requirement verdicts are auto-derived by evaluating each persisted
+requirement against the chosen run's results, so they cannot drift from the
+numbers; you supply only the run and a short narrative. The overall verdict is
+`meets` / `fails` / `partial` / `open`.
+
+This is the step that flips the **Concluding** stage in the range-safety
+dashboard to populated. To watch a study fill in live, start the dashboard once
+and open it on `sdk:<session_id>` as soon as the session starts:
+
+```bash
+uv run uvicorn hangar.range_safety.dashboard.app:app --port 8011
+explorer.exe "http://localhost:8011/"   # WSL: then pick sdk:<session_id>
+```
+
+Requirements populate Gather Requirements, runs populate Executing,
+`log_decision` calls populate Verifying, and `record_conclusion` populates
+Concluding. Without persisted requirements the conclusion has nothing to judge,
+so set them at the start.
+
 ## Available tools
 
 Run `ocp-cli list-tools` for the complete, up-to-date list. Key groups:
 
 - **Configuration:** `list_aircraft_templates`, `load_aircraft_template`, `define_aircraft`, `set_propulsion_architecture`, `configure_mission`
 - **Analysis:** `run_mission_analysis`, `run_parameter_sweep`, `run_optimization`, `reset`
-- **Observability:** `get_run`, `get_detailed_results`, `get_last_logs`, `pin_run`, `unpin_run`, `configure_session`, `set_requirements`
+- **Observability:** `get_run`, `get_detailed_results`, `get_last_logs`, `pin_run`, `unpin_run`, `configure_session`, `set_requirements`, `record_conclusion`
 - **Artifacts:** `list_artifacts`, `get_artifact`, `get_artifact_summary`, `delete_artifact`
 - **Visualization:** `visualize`
 - **Provenance:** `start_session`, `log_decision`, `link_cross_tool_result`, `export_session_graph`

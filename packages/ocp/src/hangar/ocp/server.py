@@ -41,6 +41,7 @@ from hangar.ocp.tools.session import (
     list_artifacts,
     log_decision,
     pin_run,
+    record_conclusion,
     reset,
     set_requirements,
     start_session,
@@ -213,6 +214,7 @@ mcp.tool()(capture_tool(visualize))
 
 mcp.tool()(capture_tool(configure_session))
 mcp.tool()(capture_tool(set_requirements))
+mcp.tool()(capture_tool(record_conclusion))
 
 # ---------------------------------------------------------------------------
 # Register provenance tools

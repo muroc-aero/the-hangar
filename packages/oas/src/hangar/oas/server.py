@@ -48,7 +48,7 @@ from hangar.oas.tools.session import (
     unpin_run,
     visualize,
 )
-from hangar.oas.tools.session import configure_session, reset, set_requirements
+from hangar.oas.tools.session import configure_session, record_conclusion, reset, set_requirements
 from hangar.oas.tools.resources import (
     WIDGET_URI as _WIDGET_URI,
     artifact_by_run_id,
@@ -257,6 +257,7 @@ mcp.tool()(capture_tool(get_last_logs))
 
 mcp.tool()(capture_tool(configure_session))
 mcp.tool()(capture_tool(set_requirements))
+mcp.tool()(capture_tool(record_conclusion))
 
 # ---------------------------------------------------------------------------
 # Register provenance tools
