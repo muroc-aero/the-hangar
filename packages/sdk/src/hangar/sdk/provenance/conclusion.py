@@ -39,7 +39,16 @@ def derive_conclusion(
     when it fails, and ``open`` when it cannot be evaluated (path missing / type
     mismatch).
     """
-    checked = check_requirements(requirements or [], results or {})
+    # Optimization envelopes nest the final scalars under ``final_results``
+    # (analysis envelopes expose them at the top level). Overlay that sub-dict so
+    # requirement paths like ``CL`` / ``CD`` resolve and the metric snapshot is
+    # populated for optimization runs too, matching how the result views read them.
+    results = results or {}
+    final = results.get("final_results")
+    if isinstance(final, dict):
+        results = {**results, **final}
+
+    checked = check_requirements(requirements or [], results)
 
     req_results: list[dict] = []
     for outcome in checked.get("results", []):

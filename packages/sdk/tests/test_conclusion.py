@@ -71,6 +71,23 @@ def test_derive_no_requirements_is_open():
     assert out["requirements"] == []
 
 
+def test_derive_resolves_optimization_final_results():
+    """Optimization envelopes nest finals under final_results; they still resolve."""
+    reqs = [
+        {"path": "CL", "operator": ">=", "value": 0.49, "label": "lift_target"},
+        {"path": "CD", "operator": "<", "value": 0.01, "label": "drag_ceiling"},
+    ]
+    results = {"success": True, "final_results": {"CL": 0.5, "CD": 0.0077}}
+    out = derive_conclusion(reqs, results)
+    assert out["verdict"] == "meets"
+    assert {r["id"]: r["verdict"] for r in out["requirements"]} == {
+        "lift_target": "satisfies",
+        "drag_ceiling": "satisfies",
+    }
+    # the metric snapshot picks up the nested finals too
+    assert out["metrics"]["CL"] == 0.5 and out["metrics"]["CD"] == 0.0077
+
+
 def test_derive_snapshots_scalar_metrics_only():
     out = derive_conclusion([], {"CL": 0.5, "name": "wing", "_priv": 1, "arr": [1, 2]})
     assert out["metrics"] == {"CL": 0.5}  # strings/private/arrays excluded
