@@ -60,6 +60,18 @@ async def configure_mission(
         float | None,
         "Hybridization fraction during descent (0-1, hybrid architectures only)",
     ] = None,
+    # Weight / takeoff calibration
+    structural_fudge: Annotated[
+        float | None,
+        "Structural empty-weight multiplier applied to the OEW model "
+        "(>= 1.0; typically 1.2-1.7). If omitted, OpenConcept's model default "
+        "is used. Turboprop/hybrid architectures only (ignored for CFM56).",
+    ] = None,
+    takeoff_throttle: Annotated[
+        float | None,
+        "Throttle fraction (0-1) held during takeoff phases (v0v1, v1vr, rotate). "
+        "If omitted, full power (1.0) is used. 'full' missions only.",
+    ] = None,
     # Solver
     num_nodes: Annotated[
         int,
@@ -100,6 +112,10 @@ async def configure_mission(
         params["reserve_range_NM"] = reserve_range
     if loiter_duration is not None:
         params["loiter_duration_min"] = loiter_duration
+    if structural_fudge is not None:
+        params["structural_fudge"] = structural_fudge
+    if takeoff_throttle is not None:
+        params["takeoff_throttle"] = takeoff_throttle
 
     validate_mission_params(params)
 

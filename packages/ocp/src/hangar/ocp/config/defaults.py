@@ -25,6 +25,10 @@ DEFAULT_MISSION_PARAMS: dict = {
     "climb_hybridization": None,
     "cruise_hybridization": None,
     "descent_hybridization": None,
+    # Structural empty-weight fudge multiplier (None = OpenConcept default 1.6)
+    "structural_fudge": None,
+    # Throttle during takeoff phases, 0-1 (None = full power 1.0)
+    "takeoff_throttle": None,
 }
 
 # ---------------------------------------------------------------------------

@@ -371,10 +371,25 @@ def _set_mission_values(
         prob.set_val("v1v0.fltcond|Utrue", np.ones((nn,)) * 60, units="kn")
         prob.set_val("rotate.fltcond|Utrue", np.ones((nn,)) * 80, units="kn")
 
-        # Full throttle during takeoff
-        prob.set_val("v0v1.throttle", np.ones((nn,)))
-        prob.set_val("v1vr.throttle", np.ones((nn,)))
-        prob.set_val("rotate.throttle", np.ones((nn,)))
+        # Throttle during takeoff (default full power 1.0; derate e.g. 0.75)
+        takeoff_throttle = params.get("takeoff_throttle")
+        if takeoff_throttle is None:
+            takeoff_throttle = 1.0
+        prob.set_val("v0v1.throttle", np.ones((nn,)) * takeoff_throttle)
+        prob.set_val("v1vr.throttle", np.ones((nn,)) * takeoff_throttle)
+        prob.set_val("rotate.throttle", np.ones((nn,)) * takeoff_throttle)
+
+    # Structural empty-weight fudge multiplier. Each phase carries its own copy
+    # of the aircraft model (hence its own OEW.structural_fudge). Only the
+    # turboprop/hybrid empty-weight models expose this input; CFM56 uses a
+    # pass-through OEW, so missing paths are skipped.
+    structural_fudge = params.get("structural_fudge")
+    if structural_fudge is not None:
+        for phase in phases:
+            try:
+                prob.set_val(f"{phase}.OEW.structural_fudge", structural_fudge)
+            except (KeyError, RuntimeError):
+                pass
 
     # Payload (for hybrid/reserve missions)
     payload_lb = params.get("payload_lb")
