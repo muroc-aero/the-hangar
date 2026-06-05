@@ -140,6 +140,7 @@ CREATE TABLE IF NOT EXISTS decisions (
     confidence      TEXT DEFAULT 'medium',
     recorded_at     TEXT NOT NULL,
     tool            TEXT DEFAULT '',
+    metadata_json   TEXT,
     FOREIGN KEY (session_id) REFERENCES sessions(session_id)
 );
 
@@ -252,6 +253,12 @@ def init_db(db_path: Path | str | None = None) -> None:
         except Exception:
             logger.info("Migrating %s: adding tool column", table)
             conn.execute(f"ALTER TABLE {table} ADD COLUMN tool TEXT DEFAULT ''")
+    # Migrate: add metadata_json to decisions (carries conclusion payloads).
+    try:
+        conn.execute("SELECT metadata_json FROM decisions LIMIT 0")
+    except Exception:
+        logger.info("Migrating decisions: adding metadata_json column")
+        conn.execute("ALTER TABLE decisions ADD COLUMN metadata_json TEXT")
     conn.commit()
 
 
@@ -342,16 +349,22 @@ def record_decision(
     selected_action: str,
     confidence: str = "medium",
     tool: str = "",
+    metadata_json: str | None = None,
 ) -> None:
-    """Insert a decision record."""
+    """Insert a decision record.
+
+    ``metadata_json`` carries an optional structured payload for decision types
+    that need one (notably ``conclusion``, whose payload holds the per-requirement
+    verdicts derived against a chosen run). Plain reasoning decisions leave it None.
+    """
     _ensure_session(session_id, tool=tool)
     conn = _get_conn()
     conn.execute(
         """
         INSERT OR REPLACE INTO decisions
             (decision_id, session_id, seq, decision_type, reasoning,
-             prior_call_id, selected_action, confidence, recorded_at, tool)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             prior_call_id, selected_action, confidence, recorded_at, tool, metadata_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             decision_id,
@@ -364,6 +377,7 @@ def record_decision(
             confidence,
             datetime.now(timezone.utc).isoformat(),
             tool,
+            metadata_json,
         ),
     )
     conn.commit()
@@ -438,6 +452,37 @@ def get_requirements(session_id: str) -> list[dict]:
         }
         for r in rows
     ]
+
+
+def get_conclusion(session_id: str) -> dict | None:
+    """Return the latest recorded conclusion for *session_id*, or None.
+
+    A conclusion is a ``decision`` row with ``decision_type='conclusion'`` whose
+    ``metadata_json`` holds the auto-derived per-requirement verdicts and overall
+    verdict for a chosen run (written by ``provenance.conclusion.record_conclusion``).
+    The returned dict is the parsed payload plus ``conclusion_id`` / ``created_at``.
+    Returns None if the session has no conclusion (or the column predates this
+    feature).
+    """
+    conn = _get_conn()
+    try:
+        row = conn.execute(
+            "SELECT decision_id, recorded_at, metadata_json FROM decisions "
+            "WHERE session_id=? AND decision_type='conclusion' "
+            "AND metadata_json IS NOT NULL ORDER BY seq DESC LIMIT 1",
+            (session_id,),
+        ).fetchone()
+    except Exception:
+        return None
+    if not row:
+        return None
+    try:
+        meta = json.loads(row["metadata_json"])
+    except (json.JSONDecodeError, TypeError):
+        meta = {}
+    meta.setdefault("conclusion_id", row["decision_id"])
+    meta["created_at"] = row["recorded_at"]
+    return meta
 
 
 def _next_seq(session_id: str) -> int:
@@ -721,8 +766,16 @@ def list_sessions(user: str | None = None) -> list[dict]:
         dec_count = conn.execute(
             "SELECT COUNT(*) FROM decisions WHERE session_id=?", (r["session_id"],)
         ).fetchone()[0]
+        try:
+            concl_count = conn.execute(
+                "SELECT COUNT(*) FROM decisions WHERE session_id=? "
+                "AND decision_type='conclusion'", (r["session_id"],)
+            ).fetchone()[0]
+        except Exception:
+            concl_count = 0
         d["tool_call_count"] = tc_count
         d["decision_count"] = dec_count
+        d["conclusion_count"] = concl_count
         result.append(d)
     return result
 

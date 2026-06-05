@@ -36,6 +36,7 @@ from hangar.pyc.tools.session import (
     get_run,
     list_artifacts,
     pin_run,
+    record_conclusion,
     reset,
     set_requirements,
     unpin_run,
@@ -178,6 +179,7 @@ mcp.tool()(capture_tool(visualize))
 
 mcp.tool()(capture_tool(configure_session))
 mcp.tool()(capture_tool(set_requirements))
+mcp.tool()(capture_tool(record_conclusion))
 
 # ---------------------------------------------------------------------------
 # Register provenance tools
