@@ -46,6 +46,34 @@ modules as the public surface; internal helpers are not contracts.
   `cross_references` tables; `get_session_graph(session_id) -> dict`
   returns `{nodes, edges}` (node types `tool_call`, `decision`).
 
+### Session requirements + conclusions (read-only)
+The sdk session servers (oas / ocp / pyc) persist the gather/conclude data the
+dashboard's `SdkSessionSource` renders for those stages:
+- `hangar.sdk.provenance.db.get_requirements(session_id) -> list[dict]` -- the
+  requirements set via `set_requirements` / `configure_session`, each
+  `{path, operator, value, label, ...}`. Drives the Gather stage and the
+  per-requirement verdict replay.
+- `hangar.sdk.provenance.db.get_conclusion(session_id) -> dict | None` -- the
+  concluding artifact for the session, or `None`. Payload:
+  `{verdict, narrative, metrics, requirements, run_id, conclusion_id,
+  created_at}`, where `verdict` is `meets` / `fails` / `partial` / `open` and
+  each `requirements[]` entry carries a per-requirement `verdict`
+  (`satisfies` / `violates` / `open`) with its `criteria`. A non-`None` result
+  flips the Concluding stage to `populated` and scores the Report view.
+- Storage: a conclusion is a `decisions` row with
+  `decision_type = "conclusion"`, the verdict in `selected_action`, and the full
+  payload JSON in the `decisions.metadata_json` column (added by a migration in
+  `init_db`). `list_sessions` exposes a cheap `conclusion_count` so the study
+  selector need not read each payload.
+- Producer side (not consumed by the dashboard, listed for context): the
+  `record_conclusion` MCP tool / CLI command on oas / ocp / pyc derives the
+  verdict from the persisted requirements vs. the chosen run via
+  `hangar.sdk.provenance.conclusion.derive_conclusion` (auto-derived, agent
+  supplies only the run id + narrative) and persists it with
+  `record_conclusion`. Optimization envelopes nest finals under
+  `results.final_results`; `derive_conclusion` overlays that sub-dict so paths
+  like `CL` / `CD` resolve.
+
 ### Plan schema
 - `hangar.omd.plan_schema` -- the plan JSON Schema. Relevant sections for
   the dashboard: `metadata` (`version`, `parent_version`, `content_hash`),
