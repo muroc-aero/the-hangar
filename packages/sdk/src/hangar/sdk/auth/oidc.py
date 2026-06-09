@@ -224,6 +224,63 @@ def get_current_user() -> str:
     return _hangar_env("HANGAR_USER", "OAS_USER") or getpass.getuser()
 
 
+# Scopes we ADVERTISE in the RFC 9728 protected-resource metadata but do NOT
+# enforce on tokens. See _advertise_extra_scopes_in_resource_metadata().
+ADVERTISED_EXTRA_SCOPES: tuple[str, ...] = ("offline_access",)
+
+
+def _advertise_extra_scopes_in_resource_metadata(
+    extra_scopes: tuple[str, ...] = ADVERTISED_EXTRA_SCOPES,
+) -> None:
+    """Advertise extra OAuth scopes in the protected-resource metadata without enforcing them.
+
+    FastMCP couples the metadata's ``scopes_supported`` to ``required_scopes``:
+    both ``RequireAuthMiddleware`` (enforcement) and
+    ``create_protected_resource_routes`` (advertisement) read the same
+    ``AuthSettings.required_scopes``. So a client only ever sees the scopes we
+    also enforce.
+
+    Claude Code uses the advertised ``scopes_supported`` as the ``scope`` of its
+    Dynamic Client Registration request. With Keycloak DCR, sending a ``scope``
+    field restricts the registered client to exactly those scopes, so any scope
+    we don't advertise (e.g. ``offline_access``) is absent from the client.
+    Claude Code then requests ``offline_access`` at the authorize step (for
+    refresh tokens) and Keycloak rejects it with ``invalid_scope``.
+
+    We can't just add ``offline_access`` to ``required_scopes`` -- that would make
+    the bearer middleware require it on every token, which breaks clients that
+    don't request it (e.g. claude.ai). Instead we patch
+    ``create_protected_resource_routes`` so the advertised ``scopes_supported``
+    includes the extra scopes while enforcement stays on ``required_scopes`` only.
+
+    Idempotent. Must run before ``streamable_http_app()`` builds the routes;
+    calling it from :func:`build_auth_settings` (invoked at FastMCP construction)
+    satisfies that ordering.
+    """
+    try:
+        import mcp.server.auth.routes as _routes  # type: ignore[import]
+    except ImportError:
+        return
+    orig = _routes.create_protected_resource_routes
+    if getattr(orig, "_hangar_extra_scopes_patched", False):
+        return
+
+    def patched(resource_url, authorization_servers, scopes_supported=None, **kwargs):  # type: ignore[no-untyped-def]
+        merged = list(scopes_supported or [])
+        for scope in extra_scopes:
+            if scope not in merged:
+                merged.append(scope)
+        return orig(
+            resource_url,
+            authorization_servers,
+            scopes_supported=merged,
+            **kwargs,
+        )
+
+    patched._hangar_extra_scopes_patched = True  # type: ignore[attr-defined]
+    _routes.create_protected_resource_routes = patched
+
+
 def build_auth_settings() -> Any:
     """Return a FastMCP ``AuthSettings`` object configured from env vars.
 
@@ -237,6 +294,9 @@ def build_auth_settings() -> Any:
         from mcp.server.auth.settings import AuthSettings  # type: ignore[import]
     except ImportError:
         return None
+    # Advertise offline_access so DCR clients (Claude Code) register with it and
+    # can request refresh tokens; enforcement stays on required_scopes only.
+    _advertise_extra_scopes_in_resource_metadata()
     resource_server_url = os.environ.get("RESOURCE_SERVER_URL", "http://localhost:8000")
     return AuthSettings(
         issuer_url=issuer_url,
