@@ -82,7 +82,7 @@ uv run python packages/ocp/examples/kingair_mission/lane_a/full_mission.py
 ## Step 2: Run Lane B (MCP tools)
 
 ```bash
-uv run ocp-cli run-script packages/ocp/examples/kingair_mission/lane_b/full_mission.json --pretty
+uv run ocp-cli --pretty run-script packages/ocp/examples/kingair_mission/lane_b/full_mission.json
 # or, all-in-one summary:
 uv run python packages/ocp/examples/kingair_mission/lane_b/run_all.py
 ```

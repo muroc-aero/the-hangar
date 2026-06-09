@@ -1,7 +1,7 @@
 """Lane B: Run the King Air JSON script(s) in-process and print a summary.
 
 Can also be run via CLI:
-    uv run ocp-cli run-script lane_b/full_mission.json --pretty
+    uv run ocp-cli --pretty run-script lane_b/full_mission.json
 """
 
 import asyncio
