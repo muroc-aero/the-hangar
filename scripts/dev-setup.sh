@@ -31,6 +31,20 @@ for arg in "$@"; do
     esac
 done
 
+# The workspace's [tool.uv.sources] entries point at editable installs in
+# upstream/ (gitignored), so uv sync fails hard on a fresh clone until the
+# upstream repos exist. Clone the required ones at their pinned refs first.
+NEED_UPSTREAM=false
+for d in upstream/OpenAeroStruct upstream/openconcept upstream/pyCycle; do
+    if [ ! -f "$d/setup.py" ] && [ ! -f "$d/pyproject.toml" ]; then
+        NEED_UPSTREAM=true
+    fi
+done
+if [ "$NEED_UPSTREAM" = true ]; then
+    echo "Required upstream clones missing; running scripts/setup-upstream.sh --required..."
+    bash scripts/setup-upstream.sh --required
+fi
+
 # Initialize any private submodules that are wired up but not yet checked
 # out, so their package directories are populated before uv sees them.
 if [ "$PYPI_ONLY" = false ] && [ -f .gitmodules ]; then

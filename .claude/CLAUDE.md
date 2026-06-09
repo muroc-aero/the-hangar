@@ -97,7 +97,8 @@ See `packages/omd/CLAUDE.md` for the full guide. Key points:
 ## Running
 
 ```bash
-# Dev environment setup (installs all packages + CLI entry points)
+# Dev environment setup (clones pinned upstreams if missing, installs all
+# packages + CLI entry points; pins live in scripts/upstream-pins.env)
 bash scripts/dev-setup.sh
 
 # OAS MCP server
