@@ -28,16 +28,18 @@ from hangar.oas.summary import (
 
 
 class TestWeightBalance:
+    # L_equals_W = 1 - L/W (normalized): positive = lift deficit
+
     def test_trimmed_small_residual(self):
         assert _weight_balance(0.0) == "trimmed"
-        assert _weight_balance(50.0) == "trimmed"
-        assert _weight_balance(-50.0) == "trimmed"
+        assert _weight_balance(0.005) == "trimmed"
+        assert _weight_balance(-0.005) == "trimmed"
 
     def test_surplus(self):
-        assert _weight_balance(500.0) == "lift_surplus"
+        assert _weight_balance(-0.05) == "lift_surplus"
 
     def test_deficit(self):
-        assert _weight_balance(-500.0) == "lift_deficit"
+        assert _weight_balance(0.05) == "lift_deficit"
 
     def test_none(self):
         assert _weight_balance(None) == "unknown"
@@ -239,13 +241,19 @@ class TestSummarizeAerostruct:
         assert "near_yield" in summary["flags"]
 
     def test_weight_balance_trimmed(self):
-        summary = summarize_aerostruct(self._make_results(lew=10.0))
+        summary = summarize_aerostruct(self._make_results(lew=0.001))
         assert summary["derived_metrics"]["weight_balance"] == "trimmed"
 
     def test_weight_balance_deficit(self):
-        summary = summarize_aerostruct(self._make_results(lew=-500.0))
+        # L_equals_W = 1 - L/W: positive residual means lift falls short of weight
+        summary = summarize_aerostruct(self._make_results(lew=0.05))
         assert summary["derived_metrics"]["weight_balance"] == "lift_deficit"
         assert "lift_deficit" in summary["flags"]
+
+    def test_weight_balance_surplus(self):
+        summary = summarize_aerostruct(self._make_results(lew=-0.05))
+        assert summary["derived_metrics"]["weight_balance"] == "lift_surplus"
+        assert "lift_surplus" in summary["flags"]
 
     def test_structural_mass_fraction(self):
         summary = summarize_aerostruct(

@@ -90,12 +90,13 @@ def _deflection_metrics(
 
 
 def _weight_balance(lew: float | None) -> str:
-    """Classify L=W residual."""
+    """Classify the L=W residual (upstream: L_equals_W = 1 - L/W, normalized)."""
     if lew is None:
         return "unknown"
-    if abs(lew) < 100.0:
+    if abs(lew) < 0.01:
         return "trimmed"
-    return "lift_surplus" if lew > 0 else "lift_deficit"
+    # Positive residual means lift falls short of weight
+    return "lift_deficit" if lew > 0 else "lift_surplus"
 
 
 def _compute_delta(current: dict, previous: dict | None, keys: list[str]) -> dict | None:

@@ -102,10 +102,19 @@ class TestValidateAerostruct:
 
     def test_large_lew_residual_warns(self):
         results = self._good_results()
-        results["L_equals_W"] = 50000.0  # large residual relative to W0
+        # L_equals_W = 1 - L/W is already normalized: 0.05 = 5% trim imbalance.
+        # Regression: the old check divided by W0 again, so this never tripped.
+        results["L_equals_W"] = 0.05
         findings = validate_aerostruct(results, context={"alpha": 5.0, "W0": 120000})
         failed = [f for f in findings if not f.passed]
         assert any("lew_residual" in f.check_id for f in failed)
+
+    def test_small_lew_residual_passes(self):
+        results = self._good_results()
+        results["L_equals_W"] = 0.001  # 0.1% imbalance, within tolerance
+        findings = validate_aerostruct(results, context={"alpha": 5.0, "W0": 120000})
+        lew_checks = [f for f in findings if "lew_residual" in f.check_id]
+        assert lew_checks and all(f.passed for f in lew_checks)
 
     def test_negative_fuelburn_errors(self):
         results = self._good_results()
