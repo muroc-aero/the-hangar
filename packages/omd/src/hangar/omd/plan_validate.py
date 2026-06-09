@@ -383,6 +383,36 @@ def validate_slot_names(plan: dict) -> list[ValidationFinding]:
     return findings
 
 
+def validate_optimization_config(plan: dict) -> list[ValidationFinding]:
+    """Catch plans with design_variables but no objective (or vice versa).
+
+    The materializer only configures the driver when BOTH are present, so a
+    half-specified optimization silently runs as plain analysis.
+    """
+    findings: list[ValidationFinding] = []
+    has_dvs = bool(plan.get("design_variables"))
+    has_obj = bool(plan.get("objective"))
+    if has_dvs and not has_obj:
+        findings.append(ValidationFinding(
+            path="objective",
+            message=(
+                "Plan defines design_variables but no objective. No optimizer "
+                "driver will be configured and the design variables are inert. "
+                "Add an objective, or remove design_variables for plain analysis."
+            ),
+        ))
+    elif has_obj and not has_dvs:
+        findings.append(ValidationFinding(
+            path="design_variables",
+            message=(
+                "Plan defines an objective but no design_variables. No optimizer "
+                "driver will be configured and the objective is inert. "
+                "Add design_variables, or remove the objective for plain analysis."
+            ),
+        ))
+    return findings
+
+
 def validate_plan_semantic(plan: dict, registry_types: set[str] | None = None) -> list[ValidationFinding]:
     """Run all semantic checks (component types known + var paths resolve)."""
     findings: list[ValidationFinding] = []
@@ -406,6 +436,7 @@ def validate_plan_semantic(plan: dict, registry_types: set[str] | None = None) -
     findings += validate_shared_vars(plan)
     findings += validate_slot_names(plan)
     findings += validate_factory_contracts(plan)
+    findings += validate_optimization_config(plan)
     return findings
 
 
@@ -420,6 +451,7 @@ def format_findings(findings: list[ValidationFinding]) -> str:
 
 __all__ = [
     "validate_factory_contracts",
+    "validate_optimization_config",
     "validate_plan_semantic",
     "validate_shared_vars",
     "validate_slot_names",
