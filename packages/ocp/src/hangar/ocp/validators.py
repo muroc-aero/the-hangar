@@ -20,6 +20,10 @@ from hangar.ocp.config.limits import (
     MISSION_RANGE_MIN_NM,
     NUM_NODES_MAX,
     NUM_NODES_MIN,
+    STRUCTURAL_FUDGE_MAX,
+    STRUCTURAL_FUDGE_MIN,
+    TAKEOFF_THROTTLE_MAX,
+    TAKEOFF_THROTTLE_MIN,
 )
 
 
@@ -98,6 +102,22 @@ def validate_mission_params(params: dict) -> None:
                     f"{speed_key} must be between {AIRSPEED_MIN_KN} and "
                     f"{AIRSPEED_MAX_KN} kn, got {speed}"
                 )
+
+    fudge = params.get("structural_fudge")
+    if fudge is not None:
+        if not (STRUCTURAL_FUDGE_MIN <= fudge <= STRUCTURAL_FUDGE_MAX):
+            raise UserInputError(
+                f"structural_fudge must be between {STRUCTURAL_FUDGE_MIN} and "
+                f"{STRUCTURAL_FUDGE_MAX}, got {fudge}"
+            )
+
+    takeoff_throttle = params.get("takeoff_throttle")
+    if takeoff_throttle is not None:
+        if not (TAKEOFF_THROTTLE_MIN <= takeoff_throttle <= TAKEOFF_THROTTLE_MAX):
+            raise UserInputError(
+                f"takeoff_throttle must be between {TAKEOFF_THROTTLE_MIN} and "
+                f"{TAKEOFF_THROTTLE_MAX}, got {takeoff_throttle}"
+            )
 
 
 def validate_aircraft_data_for_architecture(

@@ -38,6 +38,17 @@ TOFL_MAX_FT = 15000.0
 # Throttle bound
 THROTTLE_MAX = 1.10
 
+# Takeoff throttle setting (0-1, derate for engine power management)
+TAKEOFF_THROTTLE_MIN = 0.0
+TAKEOFF_THROTTLE_MAX = 1.0
+
+# Structural weight fudge multiplier on empty weight model.
+# MIN=1.0 matches the lowest OpenConcept model default (BWB); turboprop/hybrid
+# default to 1.6, jet transport to 1.2.
+# TODO: verify MAX -- 3.0 is a provisional typo-guard, not a documented limit.
+STRUCTURAL_FUDGE_MIN = 1.0
+STRUCTURAL_FUDGE_MAX = 3.0
+
 # Design variable bounds for optimization
 DV_MTOW_LOWER_KG = 500.0
 DV_MTOW_UPPER_KG = 200000.0
