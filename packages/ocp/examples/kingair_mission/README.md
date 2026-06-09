@@ -29,19 +29,21 @@ OpenConcept run. Three gaps caused it:
 | #38 | twin OEW counted one engine; balanced-field ignored engine-out (`propulsor_active`) | PR #40 |
 | #39 | prop rpm hardcoded to 2000; King Air uses 1900 | template-driven rpm |
 
-With all three applied, Lane B reproduces Lane A:
+With all three applied, and both lanes converged to Newton `1e-10`, Lane B
+reproduces Lane A to machine precision:
 
 | Metric | Lane A (upstream) | Lane B (OCP) | Δ |
 |--------|------:|------:|------:|
 | OEW    | 2935.44 kg | 2935.44 kg | exact |
-| Fuel burn | 756.02 kg | 756.02 kg | exact |
-| TOFL   | 3054.61 ft | 3054.64 ft | 0.001 % |
+| Fuel burn | 756.02 kg | 756.02 kg | ~1e-13 |
+| MTOW   | 4581 kg | 4581 kg | exact |
+| TOFL   | 3054.64 ft | 3054.64 ft | ~1e-10 |
 
-The TOFL Δ is **not** a model difference. The upstream `run_kingair_analysis`
-stops Newton at `atol=rtol=1e-6`; the OCP builder converges to `1e-10`.
-Tightening the reference to `1e-10` gives `3054.641429 ft`, which matches Lane B
-to machine precision. The 0.03 ft gap is the upstream example under-converging,
-not OCP.
+Earlier this example showed a ~0.03 ft TOFL gap. That was **not** a model
+difference: the upstream `run_kingair_analysis` stops Newton at `atol=rtol=1e-6`,
+under-converging the balanced field, while the OCP builder drives to `1e-10`.
+Lane A now re-converges the reference to `1e-10` after the upstream run (see
+`lane_a/full_mission.py`), so all four metrics agree to machine precision.
 
 ---
 
@@ -113,11 +115,11 @@ King Air C90GT full mission -- Lane A (upstream) vs Lane B (OCP MCP)
 Metric              Lane A        Lane B     rel. diff
 ----------------------------------------------------------------
 OEW             2935.44 kg    2935.44 kg     0.00e+00
-Fuel burn        756.02 kg     756.02 kg     1.54e-08
+Fuel burn        756.02 kg     756.02 kg     1.69e-13
 MTOW               4581 kg       4581 kg     0.00e+00
-TOFL            3054.61 ft    3054.64 ft     9.37e-06
+TOFL            3054.64 ft    3054.64 ft     1.06e-10
 ================================================================
-OEW and fuel match exactly; TOFL matches to solver tolerance.
+All four metrics match to machine precision (both lanes at Newton 1e-10).
 ```
 
 Or run each lane on its own and eyeball the numbers:
@@ -130,9 +132,10 @@ uv run python packages/ocp/examples/kingair_mission/lane_a/full_mission.py
 uv run python packages/ocp/examples/kingair_mission/lane_b/run_all.py
 ```
 
-> Requires PRs #37 and #40 to be merged. Without them Lane B cannot pass the
-> calibration params (#37) and the balanced field runs both engines (#40), so
-> the TOFL column will not match until all three fixes are present.
+> The three fixes (#37, #40, #39) are in `main`. They are what makes the lanes
+> agree: without #37 Lane B cannot pass the calibration params, without #40 the
+> balanced field runs both engines, and without #39 the prop rpm defaults to
+> 2000. Revert any one and the comparison diverges.
 
 ---
 
@@ -142,5 +145,7 @@ uv run python packages/ocp/examples/kingair_mission/lane_b/run_all.py
 uv run python -m pytest packages/ocp/examples/kingair_mission/tests/ -v --rootdir=.
 ```
 
-`test_b_matches_a` asserts Lane B reproduces Lane A within tolerance. Reverting
-any of the three fixes makes it fail.
+`test_b_matches_a` is the comparison check: it asserts Lane B reproduces Lane A
+across all four reported metrics (OEW, fuel, MTOW, TOFL) within tolerance, the
+same numbers `compare.py` prints. Reverting any of the three fixes, or removing
+Lane A's `1e-10` re-convergence, makes it fail.

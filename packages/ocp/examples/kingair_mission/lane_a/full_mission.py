@@ -23,6 +23,17 @@ def run() -> dict:
         from openconcept.examples.KingAirC90GT import run_kingair_analysis
         prob = run_kingair_analysis(plots=False)
 
+        # The upstream example stops Newton at atol=rtol=1e-6 (maxiter=10), which
+        # leaves the balanced-field TOFL ~0.03 ft short of a converged solution.
+        # The OCP builder drives to 1e-10, so re-converge the reference to the
+        # same tolerance. Without this the lanes disagree on TOFL purely because
+        # the reference is under-converged, not from any model difference; with
+        # it, all four metrics match to machine precision (TOFL rel diff ~2e-10).
+        prob.model.nonlinear_solver.options["atol"] = 1e-10
+        prob.model.nonlinear_solver.options["rtol"] = 1e-10
+        prob.model.nonlinear_solver.options["maxiter"] = 20
+        prob.run_model()
+
     fuel_burn = float(prob.get_val("descent.fuel_used_final", units="kg")[0])
     oew = float(prob.get_val("climb.OEW", units="kg")[0])
     mtow = float(prob.get_val("ac|weights|MTOW", units="kg")[0])
