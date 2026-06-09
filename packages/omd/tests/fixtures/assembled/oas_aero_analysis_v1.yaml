@@ -1,0 +1,25 @@
+metadata:
+  id: plan-oas-aero
+  name: OAS rectangular wing aero analysis
+  version: 1
+  content_hash: 6797446f4d934a1ac1ae75e96a96a693a475a3f4594b6e5542e8081a46262aa6
+operating_points:
+  velocity: 248.136
+  alpha: 5.0
+  Mach_number: 0.84
+  re: 1.0e6
+  rho: 0.38
+components:
+- id: wing
+  type: oas/AeroPoint
+  config:
+    surfaces:
+    - name: wing
+      wing_type: rect
+      num_x: 2
+      num_y: 7
+      span: 10.0
+      root_chord: 1.0
+      symmetry: true
+      with_viscous: true
+      CD0: 0.015

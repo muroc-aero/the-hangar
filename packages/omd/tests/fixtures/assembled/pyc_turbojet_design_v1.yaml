@@ -1,0 +1,21 @@
+metadata:
+  id: plan-pyc-turbojet-design
+  name: pyCycle turbojet design point
+  version: 1
+  content_hash: 2cd58d28668ac2dabab34f277bc7b7750c61c3c191e13a0f73ef3dae9625c4fe
+operating_points:
+  alt: 0.0
+  MN: 1.0e-06
+  Fn_target: 11800.0
+  T4_target: 2370.0
+components:
+- id: turbojet
+  type: pyc/TurbojetDesign
+  config:
+    comp_PR: 13.5
+    comp_eff: 0.83
+    turb_eff: 0.86
+    Nmech: 8070.0
+    burner_dPqP: 0.03
+    nozz_Cv: 0.99
+    thermo_method: CEA

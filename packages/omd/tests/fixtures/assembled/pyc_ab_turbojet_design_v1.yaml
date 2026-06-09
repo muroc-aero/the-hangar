@@ -1,0 +1,20 @@
+metadata:
+  id: plan-pyc-ab-turbojet-design
+  name: pyCycle afterburning turbojet design point
+  version: 1
+  content_hash: fae37a9a998a11cbb0c21cd406ae00fe151fe4c6ab6a99cfc7376a2d9d0d130e
+operating_points:
+  alt: 0.0
+  MN: 1.0e-06
+  Fn_target: 11800.0
+  T4_target: 2370.0
+  ab_FAR: 0.0
+components:
+- id: ab_turbojet
+  type: pyc/ABTurbojetDesign
+  config:
+    thermo_method: CEA
+    comp_PR: 13.5
+    comp_eff: 0.83
+    turb_eff: 0.86
+    Nmech: 8070.0
