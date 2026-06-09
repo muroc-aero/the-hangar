@@ -84,7 +84,11 @@ async def configure_mission(
     ] = 400.0,
     descent_Ueas: Annotated[float, "Descent equivalent airspeed in kn"] = 100.0,
     # Payload
-    payload: Annotated[float | None, "Payload in lb (for hybrid/reserve missions)"] = None,
+    payload: Annotated[
+        float | None,
+        "Payload weight in pounds (lb), NOT kilograms. Applies to all mission "
+        "types; if omitted the template's default payload is used.",
+    ] = None,
     # Reserve (only for 'with_reserve')
     reserve_altitude: Annotated[float | None, "Reserve cruise altitude in ft"] = None,
     reserve_range: Annotated[float | None, "Reserve range in NM"] = None,
