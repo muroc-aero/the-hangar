@@ -4,10 +4,10 @@ This is the quickest way to see the parity by eye:
 
     uv run python packages/ocp/examples/kingair_mission/compare.py
 
-Lane A is the upstream OpenConcept ``run_kingair_analysis`` (the reference).
-Lane B drives the same analysis through the OCP MCP tools. With the #36/#37,
-#38/#40 and #39 fixes in place the two columns match (OEW and fuel exactly;
-TOFL to solver tolerance -- see README).
+Lane A is the upstream OpenConcept ``run_kingair_analysis`` (the reference),
+re-converged to Newton 1e-10. Lane B drives the same analysis through the OCP
+MCP tools. With the #36/#37, #38/#40 and #39 fixes in place, and both lanes at
+1e-10, all four columns match to machine precision -- see README.
 """
 
 import asyncio
@@ -73,7 +73,7 @@ def main():
         print(f"{label:<12}{fmt.format(av) + ' ' + unit:>14}"
               f"{fmt.format(bv) + ' ' + unit:>14}{rel:>13.2e}")
     print("=" * 64)
-    print("OEW and fuel match exactly; TOFL matches to solver tolerance.")
+    print("All four metrics match to machine precision (both lanes at Newton 1e-10).")
 
 
 if __name__ == "__main__":

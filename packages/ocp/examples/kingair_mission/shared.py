@@ -41,17 +41,19 @@ MISSION_FULL = dict(
 )
 
 # ── Tolerances for parity tests ──────────────────────────────────────────
-# Observed parity with all three fixes applied:
+# Observed parity with all three fixes applied and both lanes converged to
+# Newton 1e-10:
 #   OEW   exact     (engines_weight sums both PT6A)
 #   fuel  exact     (mission dynamics keyed off fixed MTOW, not per-phase OEW)
-#   TOFL  ~1e-10    (when both sides converge Newton to 1e-10)
+#   MTOW  exact     (fixed aircraft input, identical on both sides)
+#   TOFL  ~2e-10    (balanced-field range_final, converged reference)
 #
-# Lane A calls the upstream run_kingair_analysis, which stops Newton at
-# atol=rtol=1e-6; the OCP builder drives to 1e-10. That tolerance gap, not any
-# model difference, is the only reason TOFL is not bit-identical: tightening the
-# reference to 1e-10 yields 3054.641429 ft, matching OCP exactly. TOL_TOFL is
-# sized to absorb the reference's 1e-6 under-convergence (~0.03 ft on ~3055 ft).
+# Lane A re-converges the upstream run_kingair_analysis to 1e-10 (the upstream
+# example itself stops Newton at 1e-6, which under-converges TOFL by ~0.03 ft);
+# the OCP builder already drives to 1e-10. With both tight, TOFL matches to
+# machine precision, so TOL_TOFL asserts agreement to ~6 digits rather than
+# absorbing a convergence gap.
 TOL_FUEL = dict(rtol=1e-3)
 TOL_OEW = dict(rtol=1e-3)
-TOL_TOFL = dict(rtol=2e-3)
+TOL_TOFL = dict(rtol=1e-6)
 TOL_SCALARS = dict(rtol=1e-3)

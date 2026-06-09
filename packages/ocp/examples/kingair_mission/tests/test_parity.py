@@ -27,7 +27,7 @@ import pytest
 DEMO_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(DEMO_DIR))
 
-from shared import TOL_FUEL, TOL_OEW, TOL_TOFL
+from shared import TOL_FUEL, TOL_OEW, TOL_SCALARS, TOL_TOFL
 
 LANE_B_DIR = DEMO_DIR / "lane_b"
 
@@ -77,9 +77,15 @@ class TestFullMission:
     @pytest.mark.slow
     @pytest.mark.asyncio
     async def test_b_matches_a(self):
-        """Lane B (OCP builder) must reproduce Lane A (upstream OpenConcept)."""
+        """Lane B (OCP builder) must reproduce Lane A (upstream OpenConcept).
+
+        This is the comparison check that ``compare.py`` prints by eye, asserted
+        across all four reported metrics. With both lanes converged to Newton
+        1e-10, OEW/fuel/MTOW match exactly and TOFL to ~6 digits.
+        """
         a = run_lane_a("full_mission")
         b = await run_lane_b("full_mission")
         np.testing.assert_allclose(b["OEW_kg"], a["OEW_kg"], **TOL_OEW)
         np.testing.assert_allclose(b["fuel_burn_kg"], a["fuel_burn_kg"], **TOL_FUEL)
+        np.testing.assert_allclose(b["MTOW_kg"], a["MTOW_kg"], **TOL_SCALARS)
         np.testing.assert_allclose(b["TOFL_ft"], a["TOFL_ft"], **TOL_TOFL)
