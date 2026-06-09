@@ -74,6 +74,15 @@ OCP-specific gotchas:
   ratings on the aircraft. `kingair` template is hybrid-ready.
 - Architecture changes invalidate the cached problem.
 - `descent_vs` is passed as a positive number; the tool negates it.
+- Mission calibration goes on `configure_mission`: `structural_fudge`
+  (scales OEW to the real airframe) and `takeoff_throttle` (derates the
+  engine on the takeoff roll). Omitting them shifts OEW and TOFL.
+- `load_aircraft_template(overrides=...)` only replaces fields that
+  ALREADY exist in the template, addressed by their full nested path, e.g.
+  `{"ac": {"weights": {"MTOW": {"value": 4500, "units": "kg"}}}}`. Any key
+  it introduces (including `structural_fudge`/`takeoff_throttle`) is inert --
+  the model never reads it. The tool returns a `warnings` list naming every
+  override path that had no effect; if you see one, you used the wrong tool.
 
 Templates: `caravan`, `b738`, `kingair`, `tbm850`.
 Architectures: `turboprop`, `twin_turboprop`, `series_hybrid`,

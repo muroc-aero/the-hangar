@@ -39,6 +39,35 @@ async def test_load_with_overrides():
     )
     session = sessions.get("default")
     assert session.aircraft_data["ac"]["weights"]["MTOW"]["value"] == 5000
+    # Overriding an existing field is silent -- no warnings.
+    assert "warnings" not in result
+
+
+async def test_overrides_warn_on_mission_calibration_keys():
+    """structural_fudge / takeoff_throttle in overrides are a no-op and must warn."""
+    result = await load_aircraft_template(
+        "kingair",
+        overrides={"structural_fudge": 1.67, "takeoff_throttle": 0.75},
+    )
+    warnings = result.get("warnings", [])
+    assert len(warnings) == 2
+    joined = " ".join(warnings)
+    assert "structural_fudge" in joined
+    assert "takeoff_throttle" in joined
+    # The warning must point the agent to the correct tool.
+    assert "configure_mission" in joined
+
+
+async def test_overrides_warn_on_unknown_field():
+    """An override path absent from the template warns as a no-op."""
+    result = await load_aircraft_template(
+        "caravan",
+        overrides={"ac": {"weights": {"made_up_field": {"value": 1.0}}}},
+    )
+    warnings = result.get("warnings", [])
+    assert len(warnings) == 1
+    assert "ac|weights|made_up_field" in warnings[0]
+    assert "no effect" in warnings[0]
 
 
 async def test_load_invalid_template():

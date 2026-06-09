@@ -33,6 +33,12 @@ Load a built-in aircraft data template.
 | `template` | `--template` | (required) | `caravan`, `b738`, `kingair`, `tbm850` |
 | `overrides` | `--overrides` | `None` | JSON dict of nested overrides |
 
+`--overrides` only replaces fields that already exist in the template,
+addressed by their full nested path. Any key it introduces is inert (the model
+never reads it), and the response lists it under `warnings`. Mission calibration
+(`structural_fudge`, `takeoff_throttle`) is NOT an override -- pass it to
+`configure-mission`.
+
 ```bash
 ocp-cli load-aircraft-template --template caravan
 ocp-cli load-aircraft-template --template kingair \
