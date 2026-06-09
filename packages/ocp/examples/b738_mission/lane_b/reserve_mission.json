@@ -1,0 +1,32 @@
+[
+  {
+    "tool": "load_aircraft_template",
+    "args": {
+      "template": "b738"
+    }
+  },
+  {
+    "tool": "set_propulsion_architecture",
+    "args": {
+      "architecture": "twin_turbofan"
+    }
+  },
+  {
+    "tool": "configure_mission",
+    "args": {
+      "mission_type": "with_reserve",
+      "cruise_altitude": 33000.0,
+      "mission_range": 2050.0,
+      "climb_vs": 1450.0,
+      "climb_Ueas": 225.0,
+      "cruise_Ueas": 261.0,
+      "descent_vs": 575.0,
+      "descent_Ueas": 250.0,
+      "reserve_altitude": 15000.0,
+      "num_nodes": 11
+    }
+  },
+  {
+    "tool": "run_mission_analysis"
+  }
+]
