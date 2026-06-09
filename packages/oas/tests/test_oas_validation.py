@@ -93,7 +93,9 @@ class TestValidateAerostruct:
 
     def test_structural_failure_detected(self):
         results = self._good_results()
-        results["surfaces"]["wing"]["failure"] = 1.5  # > 1.0 = failed
+        # failure = stress/allowable - 1: 0.4 means 40% over allowable.
+        # Regression: the old > 1.0 threshold called this safe.
+        results["surfaces"]["wing"]["failure"] = 0.4
         findings = validate_aerostruct(results, context={"alpha": 5.0, "W0": 120000})
         errors = [f for f in findings if not f.passed and f.severity == "error"]
         assert any("structural_failure" in f.check_id for f in errors)
@@ -112,12 +114,63 @@ class TestValidateAerostruct:
         errors = [f for f in findings if not f.passed and f.severity == "error"]
         assert any("fuelburn" in f.check_id for f in errors)
 
-    def test_failure_below_1_passes(self):
+    def test_failure_below_0_passes(self):
         results = self._good_results()
-        results["surfaces"]["wing"]["failure"] = 0.9  # approaching limit but not failed
+        results["surfaces"]["wing"]["failure"] = -0.05  # 5% margin to allowable
         findings = validate_aerostruct(results, context={"alpha": 5.0, "W0": 120000})
         failure_checks = [f for f in findings if "structural_failure" in f.check_id]
         assert all(f.passed for f in failure_checks)
+
+
+# ---------------------------------------------------------------------------
+# Failure metric convention pinned against upstream
+# ---------------------------------------------------------------------------
+
+
+class TestFailureConventionUpstream:
+    """Pin failure = stress/allowable - 1 (zero boundary) against upstream FailureKS."""
+
+    def _run_failure_ks(self, vonmises_pa: float) -> float:
+        import numpy as np
+        import openmdao.api as om
+        from openaerostruct.structures.failure_ks import FailureKS
+
+        surface = {
+            "name": "wing",
+            "yield": 250e6,
+            "fem_model_type": "tube",
+            "mesh": np.zeros((2, 3, 3)),  # ny=3 -> 2 spanwise elements
+        }
+        prob = om.Problem()
+        prob.model.add_subsystem("ks", FailureKS(surface=surface), promotes=["*"])
+        prob.setup()
+        prob["vonmises"] = np.full((2, 2), vonmises_pa)
+        prob.run_model()
+        return float(prob["failure"][0])
+
+    def test_overstress_gives_positive_failure_and_is_flagged(self):
+        failure = self._run_failure_ks(275e6)  # 10% above yield
+        assert failure > 0.0
+        results = {
+            "CL": 0.5, "CD": 0.035, "L_over_D": 14.3,
+            "structural_mass": 900.0, "L_equals_W": 0.0,
+            "surfaces": {"wing": {"failure": failure}},
+        }
+        findings = validate_aerostruct(results, context={"alpha": 5.0, "W0": 120000})
+        errors = [f for f in findings if not f.passed and f.severity == "error"]
+        assert any("structural_failure" in f.check_id for f in errors)
+
+    def test_understress_gives_negative_failure_and_passes(self):
+        failure = self._run_failure_ks(150e6)  # 40% margin to yield
+        assert failure < 0.0
+        results = {
+            "CL": 0.5, "CD": 0.035, "L_over_D": 14.3,
+            "structural_mass": 900.0, "L_equals_W": 0.0,
+            "surfaces": {"wing": {"failure": failure}},
+        }
+        findings = validate_aerostruct(results, context={"alpha": 5.0, "W0": 120000})
+        failure_checks = [f for f in findings if "structural_failure" in f.check_id]
+        assert failure_checks and all(f.passed for f in failure_checks)
 
 
 # ---------------------------------------------------------------------------

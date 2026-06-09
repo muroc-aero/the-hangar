@@ -292,26 +292,31 @@ def validate_aerostruct(results: dict, context: dict | None = None) -> list[Vali
     for surf_name, surf_res in results.get("surfaces", {}).items():
         failure = surf_res.get("failure")
         if failure is not None:
-            struct_failed = failure > 1.0
+            # OAS convention: failure = stress/allowable - 1, so failure > 0 is overstress
+            struct_failed = failure > 0.0
             is_composite = surf_res.get(
                 "material_model", surfaces_by_name.get(surf_name, {}).get("useComposite", False)
             ) == "composite" or surfaces_by_name.get(surf_name, {}).get("useComposite", False)
 
             if struct_failed:
                 if is_composite:
-                    fail_msg = f"Surface '{surf_name}': failure index = {failure:.4f} > 1.0 \u2014 Tsai-Wu FAILURE"
+                    fail_msg = f"Surface '{surf_name}': failure = {failure:.4f} > 0 \u2014 Tsai-Wu FAILURE"
                     fail_rem = (
-                        "Tsai-Wu failure criterion exceeded. "
+                        "Tsai-Wu failure criterion exceeded (failure = SR\u00b7SF - 1 > 0). "
                         "Increase skin/spar thickness, adjust ply layup (angles/fractions), or reduce load factor."
                     )
                 else:
-                    fail_msg = f"Surface '{surf_name}': failure index = {failure:.4f} > 1.0 \u2014 STRUCTURAL FAILURE"
+                    fail_msg = f"Surface '{surf_name}': failure = {failure:.4f} > 0 \u2014 STRUCTURAL FAILURE"
                     fail_rem = (
-                        "failure > 1 means von Mises stress exceeds yield/safety_factor. "
+                        "failure > 0 means von Mises stress exceeds yield/safety_factor "
+                        "(failure = stress/allowable - 1). "
                         "Increase thickness, reduce load factor, or choose a stronger material."
                     )
             else:
-                fail_msg = f"Surface '{surf_name}': failure index = {failure:.4f} \u2264 1.0 \u2713 (structure intact)"
+                fail_msg = (
+                    f"Surface '{surf_name}': failure = {failure:.4f} \u2264 0 \u2713 "
+                    f"(structure intact, {-failure * 100:.0f}% margin to allowable)"
+                )
                 fail_rem = ""
 
             findings.append(ValidationFinding(

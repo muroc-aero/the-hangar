@@ -104,6 +104,21 @@ created in the current session.
 **Workaround:** Call `create_surface` first with the exact name string used
 in the analysis call. Names are case-sensitive.
 
+### 9. Failure metric convention (failure > 0 = overstress, not > 1)
+
+**Symptom:** A wing with `failure = 0.4` is reported or interpreted as safe
+("utilisation 40%"), when it is actually 40% OVER the allowable stress.
+
+**Cause:** OAS's KS failure aggregate is `failure = stress/allowable - 1`
+(see upstream `structures/failure_ks.py`), not a raw utilisation ratio.
+Zero is the failure boundary. The same convention applies to the composite
+Tsai-Wu variant (`failure = SR * safety_factor - 1`).
+
+**Workaround:** Interpret `failure > 0` as structural failure and `-failure`
+as the margin to allowable (e.g. `failure = -0.3` means 30% margin). When
+setting optimization constraints or requirements, use `failure <= 0` (or
+`upper: -0.05` for a 5% margin), never `failure <= 1`.
+
 ## Diagnostic checklist
 
 When OAS results look wrong:

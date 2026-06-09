@@ -180,7 +180,7 @@ class TestSummarizeAero:
 
 
 class TestSummarizeAerostruct:
-    def _make_results(self, failure=0.3, lew=0.0, struct_mass=500.0,
+    def _make_results(self, failure=-0.3, lew=0.0, struct_mass=500.0,
                       tip_deflection=0.15, cg=None, fuel_vol=None):
         surf = {
             "CL": 0.5, "CDi": 0.018, "CDv": 0.007, "CDw": 0.0,
@@ -223,17 +223,19 @@ class TestSummarizeAerostruct:
             assert key in summary
 
     def test_structural_margin(self):
-        summary = summarize_aerostruct(self._make_results(failure=0.3))
+        # failure = stress/allowable - 1, so -0.3 means 30% margin to allowable
+        summary = summarize_aerostruct(self._make_results(failure=-0.3))
         assert "structural_margin_pct" in summary["derived_metrics"]
-        assert summary["derived_metrics"]["structural_margin_pct"] == pytest.approx(70.0)
+        assert summary["derived_metrics"]["structural_margin_pct"] == pytest.approx(30.0)
 
     def test_failure_flag(self):
-        summary = summarize_aerostruct(self._make_results(failure=1.2))
+        # Regression: 0.2 is 20% over allowable; the old > 1.0 threshold called it safe
+        summary = summarize_aerostruct(self._make_results(failure=0.2))
         assert "structural_failure" in summary["flags"]
         assert "FAILS" in summary["narrative"]
 
     def test_near_yield_flag(self):
-        summary = summarize_aerostruct(self._make_results(failure=0.85))
+        summary = summarize_aerostruct(self._make_results(failure=-0.1))
         assert "near_yield" in summary["flags"]
 
     def test_weight_balance_trimmed(self):
@@ -427,7 +429,7 @@ class TestSummarizeStability:
 
 
 class TestSummarizeOptimization:
-    def _make_results(self, success=True, n_iters=10):
+    def _make_results(self, success=True, n_iters=10, failure=-0.2):
         obj_start = 0.025
         obj_final = 0.020
         return {
@@ -435,7 +437,7 @@ class TestSummarizeOptimization:
             "optimized_design_variables": {"twist": [1.0, 2.0, 3.0], "alpha": [5.5]},
             "final_results": {
                 "CL": 0.5, "CD": obj_final,
-                "surfaces": {"wing": {"failure": 0.2}},
+                "surfaces": {"wing": {"failure": failure}},
             },
             "optimization_history": {
                 "initial_dvs": {"twist": [0.0, 0.0, 0.0], "alpha": [5.0]},
@@ -479,3 +481,13 @@ class TestSummarizeOptimization:
     def test_delta_always_none(self):
         summary = summarize_optimization(self._make_results())
         assert summary["delta"] is None
+
+    def test_structural_failure_in_opt_flag(self):
+        # failure = stress/allowable - 1: 0.2 is 20% over allowable
+        summary = summarize_optimization(self._make_results(failure=0.2))
+        assert "structural_failure_in_opt" in summary["flags"]
+        assert "structural failure" in summary["narrative"].lower()
+
+    def test_no_failure_flag_when_safe(self):
+        summary = summarize_optimization(self._make_results(failure=-0.2))
+        assert "structural_failure_in_opt" not in summary["flags"]
