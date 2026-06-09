@@ -90,12 +90,13 @@ def _deflection_metrics(
 
 
 def _weight_balance(lew: float | None) -> str:
-    """Classify L=W residual."""
+    """Classify the L=W residual (upstream: L_equals_W = 1 - L/W, normalized)."""
     if lew is None:
         return "unknown"
-    if abs(lew) < 100.0:
+    if abs(lew) < 0.01:
         return "trimmed"
-    return "lift_surplus" if lew > 0 else "lift_deficit"
+    # Positive residual means lift falls short of weight
+    return "lift_deficit" if lew > 0 else "lift_surplus"
 
 
 def _compute_delta(current: dict, previous: dict | None, keys: list[str]) -> dict | None:
@@ -131,11 +132,12 @@ def _classify_flags(results: dict, derived: dict, analysis_type: str) -> list[st
     elif drag_bd.get("CDv", 0) > 50:
         flags.append("viscous_drag_dominant")
     if analysis_type == "aerostruct":
+        # OAS convention: failure = stress/allowable - 1, so failure > 0 is overstress
         failure = _extract_max_failure(results)
         if failure is not None:
-            if failure > 1.0:
+            if failure > 0.0:
                 flags.append("structural_failure")
-            elif failure > 0.8:
+            elif failure > -0.2:
                 flags.append("near_yield")
         wb = derived.get("weight_balance")
         if wb == "lift_deficit":
@@ -188,15 +190,15 @@ def _narrative_aerostruct(results: dict, derived: dict, context: dict) -> str:
     parts = [_narrative_aero(results, derived, context)]
     failure = _extract_max_failure(results)
     if failure is not None:
-        if failure > 1.0:
-            parts.append(f"Structure FAILS (failure={failure:.3f} > 1.0).")
-        elif failure > 0.8:
-            margin = (1.0 - failure) * 100.0
+        # failure = stress/allowable - 1: > 0 is overstress, margin to allowable is -failure
+        margin = -failure * 100.0
+        if failure > 0.0:
+            parts.append(f"Structure FAILS (failure={failure:.3f} > 0).")
+        elif failure > -0.2:
             parts.append(
                 f"Structure is near yield (failure={failure:.3f}, margin {margin:.0f}%)."
             )
         else:
-            margin = (1.0 - failure) * 100.0
             parts.append(
                 f"Structure is safe with {margin:.0f}% margin (failure={failure:.3f})."
             )
@@ -258,7 +260,7 @@ def _narrative_optimization(results: dict, derived: dict) -> str:
     if obj_imp is not None:
         parts.append(f"Objective improved by {obj_imp:.1f}%.")
     failure = _extract_max_failure(final)
-    if failure is not None and failure > 1.0:
+    if failure is not None and failure > 0.0:
         parts.append(f"Warning: optimized design has structural failure (failure={failure:.3f}).")
     return " ".join(parts) or "Optimization complete."
 
@@ -309,7 +311,8 @@ def summarize_aerostruct(
             derived["drag_breakdown_pct"] = bd
         failure = surf.get("failure")
         if failure is not None:
-            derived["structural_margin_pct"] = round((1.0 - float(failure)) * 100.0, 1)
+            # failure = stress/allowable - 1, so margin to allowable is -failure
+            derived["structural_margin_pct"] = round(-float(failure) * 100.0, 1)
         derived.update(_deflection_metrics(results, standard_detail, surf_name))
         fv = surf.get("total_fuel_volume_m3")
         if fv is not None:
@@ -434,6 +437,6 @@ def summarize_optimization(
     flags: list[str] = []
     if not results.get("success"):
         flags.append("not_converged")
-    if failure is not None and failure > 1.0:
+    if failure is not None and failure > 0.0:
         flags.append("structural_failure_in_opt")
     return {"narrative": narrative, "derived_metrics": derived, "flags": flags, "delta": None}

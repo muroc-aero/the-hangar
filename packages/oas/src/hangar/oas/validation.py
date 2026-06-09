@@ -243,13 +243,11 @@ def validate_aerostruct(results: dict, context: dict | None = None) -> list[Vali
         _check_ld_reasonable(CL, CD, alpha),
     ]
 
-    # L=W residual (normalized)
+    # L=W residual: upstream outputs L_equals_W = 1 - L/W, already normalized
     lew = results.get("L_equals_W")
     if lew is not None:
-        # L_equals_W is L - W; normalize by W0 if available
-        W0 = ctx.get("W0", 1.0)  # fallback to avoid div-by-zero
-        normalized = abs(lew) / max(abs(W0), 1.0)
-        passed = normalized < 0.01  # 1% tolerance
+        residual = abs(lew)
+        passed = residual < 0.01  # 1% tolerance
         findings.append(ValidationFinding(
             check_id="numerics.lew_residual",
             category="numerics",
@@ -257,13 +255,14 @@ def validate_aerostruct(results: dict, context: dict | None = None) -> list[Vali
             confidence="high",
             passed=passed,
             message=(
-                f"|L - W| / W\u2080 = {normalized:.4f} < 0.01 \u2713"
+                f"|1 - L/W| = {residual:.4f} < 0.01 \u2713"
                 if passed
-                else f"|L - W| / W\u2080 = {normalized:.4f} \u2265 0.01 \u2014 lift-weight balance not satisfied"
+                else f"|1 - L/W| = {residual:.4f} \u2265 0.01 \u2014 lift-weight balance not satisfied"
             ),
             remediation=(
-                "Large L=W residual means the solver did not converge the coupled aero-structural "
-                "trim. Consider tighter solver tolerances or adjusting W0."
+                "Large L=W residual means the lift does not balance the weight at this "
+                "condition. In plain analysis, adjust alpha (or W0) to trim; in optimization, "
+                "add the L_equals_W = 0 constraint or check solver convergence."
             ),
         ))
 
@@ -292,26 +291,31 @@ def validate_aerostruct(results: dict, context: dict | None = None) -> list[Vali
     for surf_name, surf_res in results.get("surfaces", {}).items():
         failure = surf_res.get("failure")
         if failure is not None:
-            struct_failed = failure > 1.0
+            # OAS convention: failure = stress/allowable - 1, so failure > 0 is overstress
+            struct_failed = failure > 0.0
             is_composite = surf_res.get(
                 "material_model", surfaces_by_name.get(surf_name, {}).get("useComposite", False)
             ) == "composite" or surfaces_by_name.get(surf_name, {}).get("useComposite", False)
 
             if struct_failed:
                 if is_composite:
-                    fail_msg = f"Surface '{surf_name}': failure index = {failure:.4f} > 1.0 \u2014 Tsai-Wu FAILURE"
+                    fail_msg = f"Surface '{surf_name}': failure = {failure:.4f} > 0 \u2014 Tsai-Wu FAILURE"
                     fail_rem = (
-                        "Tsai-Wu failure criterion exceeded. "
+                        "Tsai-Wu failure criterion exceeded (failure = SR\u00b7SF - 1 > 0). "
                         "Increase skin/spar thickness, adjust ply layup (angles/fractions), or reduce load factor."
                     )
                 else:
-                    fail_msg = f"Surface '{surf_name}': failure index = {failure:.4f} > 1.0 \u2014 STRUCTURAL FAILURE"
+                    fail_msg = f"Surface '{surf_name}': failure = {failure:.4f} > 0 \u2014 STRUCTURAL FAILURE"
                     fail_rem = (
-                        "failure > 1 means von Mises stress exceeds yield/safety_factor. "
+                        "failure > 0 means von Mises stress exceeds yield/safety_factor "
+                        "(failure = stress/allowable - 1). "
                         "Increase thickness, reduce load factor, or choose a stronger material."
                     )
             else:
-                fail_msg = f"Surface '{surf_name}': failure index = {failure:.4f} \u2264 1.0 \u2713 (structure intact)"
+                fail_msg = (
+                    f"Surface '{surf_name}': failure = {failure:.4f} \u2264 0 \u2713 "
+                    f"(structure intact, {-failure * 100:.0f}% margin to allowable)"
+                )
                 fail_rem = ""
 
             findings.append(ValidationFinding(

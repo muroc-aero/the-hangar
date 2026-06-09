@@ -146,7 +146,8 @@ PARAMETER TIPS:
   • Good starting mesh: num_x=2, num_y=7 (fast); use num_y=15 for higher fidelity
   • wing_type="CRM" produces a realistic transport wing with built-in twist;
     wing_type="rect" produces a flat untwisted planform — simpler but less realistic
-  • failure > 1.0 means structural failure (utilisation ratio > 1); failure < 1.0 = OK
+  • failure = stress/allowable - 1: failure > 0 means STRUCTURAL FAILURE; failure < 0 = OK
+    (margin to allowable = -failure, e.g. failure = -0.3 → 30% margin)
   • L_equals_W residual near 0 means the wing is sized to carry the aircraft weight
   • mesh_3d plot: use run_aerostruct_analysis (not aero-only) with fem_model_type="tube"
     or "wingbox" to see structural elements + deflection overlay. Aero-only runs show

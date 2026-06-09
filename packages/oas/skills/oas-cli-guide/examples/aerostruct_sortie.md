@@ -44,7 +44,7 @@ Structural analysis requires `fem_model_type` plus material properties:
 
 ## Key notes
 
-- `failure > 1.0` = structural failure (utilisation ratio); NOT `failure > 0`
+- `failure = stress/allowable - 1`, so `failure > 0` = structural failure; `failure < 0` = margin remaining (e.g. -0.3 = 30% margin)
 - `load_factor` scales L=W trim weight, NOT aerodynamic loads; use alpha to change structural loads
 - Omitting structural parameters produces a `USER_INPUT_ERROR`
 

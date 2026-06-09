@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from hangar.omd.plan_validate import (
+    validate_optimization_config,
     validate_var_paths,
     validate_plan_semantic,
 )
@@ -88,6 +89,42 @@ def test_known_component_type_not_flagged():
 def test_empty_plan_no_findings():
     findings = validate_plan_semantic({})
     assert findings == []
+
+
+def test_dvs_without_objective_flagged():
+    plan = _minimal_plan()
+    plan["design_variables"] = [{"name": "twist_cp"}]
+    findings = validate_optimization_config(plan)
+    assert len(findings) == 1
+    assert findings[0].path == "objective"
+    assert "inert" in findings[0].message
+
+
+def test_objective_without_dvs_flagged():
+    plan = _minimal_plan()
+    plan["objective"] = {"name": "CD"}
+    findings = validate_optimization_config(plan)
+    assert len(findings) == 1
+    assert findings[0].path == "design_variables"
+    assert "inert" in findings[0].message
+
+
+def test_complete_optimization_config_not_flagged():
+    plan = _minimal_plan()
+    plan["design_variables"] = [{"name": "twist_cp"}]
+    plan["objective"] = {"name": "CD"}
+    assert validate_optimization_config(plan) == []
+
+
+def test_no_optimization_config_not_flagged():
+    assert validate_optimization_config(_minimal_plan()) == []
+
+
+def test_semantic_validation_includes_optimization_check():
+    plan = _minimal_plan()
+    plan["design_variables"] = [{"name": "twist_cp"}]
+    findings = validate_plan_semantic(plan)
+    assert any(f.path == "objective" for f in findings)
 
 
 def test_generic_promoted_names_recognized():

@@ -308,6 +308,28 @@ def run_plan(
             "errors": errors,
         }
 
+    # Optimize mode requires a complete optimization spec. The materializer
+    # only configures the driver when BOTH design_variables and objective are
+    # present; refuse to silently run a half-specified plan as analysis.
+    if mode == "optimize":
+        missing = [
+            key for key in ("design_variables", "objective")
+            if not plan.get(key)
+        ]
+        if missing:
+            msg = (
+                f"Plan cannot run in optimize mode: missing {' and '.join(missing)}. "
+                "Without both, no optimizer driver is configured and the run "
+                "would be a plain analysis. Add the missing section(s) or use "
+                "--mode analysis."
+            )
+            return {
+                "run_id": None,
+                "status": "failed",
+                "summary": {},
+                "errors": [{"path": "plan", "message": msg}],
+            }
+
     # Generate IDs
     run_id = _generate_run_id()
     plan_id = plan.get("metadata", {}).get("id", "unknown")
@@ -534,7 +556,9 @@ def run_plan(
     if stab_results:
         summary["stability"] = stab_results
 
-    # Determine status
+    # Determine status. "converged" is only reported when an actual optimizer
+    # driver ran and claims success; if the driver result is unavailable the
+    # status stays "completed" rather than implying convergence.
     status = "completed"
     if mode == "optimize":
         try:

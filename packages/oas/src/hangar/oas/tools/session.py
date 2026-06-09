@@ -404,7 +404,7 @@ async def set_requirements(
         list[dict],
         "List of requirement dicts: {path, operator, value, label}. "
         "Operators: ==, !=, <, <=, >, >=. "
-        "Example: [{\"path\": \"surfaces.wing.failure\", \"operator\": \"<\", \"value\": 1.0}]",
+        "Example: [{\"path\": \"surfaces.wing.failure\", \"operator\": \"<\", \"value\": 0.0}]",
     ],
     session_id: Annotated[str, "Session identifier"] = "default",
 ) -> dict:
@@ -416,7 +416,7 @@ async def set_requirements(
 
     Example requirements:
       {"path": "CL", "operator": ">=", "value": 0.4, "label": "min_CL"}
-      {"path": "surfaces.wing.failure", "operator": "<", "value": 1.0, "label": "no_failure"}
+      {"path": "surfaces.wing.failure", "operator": "<", "value": 0.0, "label": "no_failure"}
       {"path": "L_over_D", "operator": ">", "value": 10.0, "label": "min_LD"}
     """
     session = _sessions.get(session_id)

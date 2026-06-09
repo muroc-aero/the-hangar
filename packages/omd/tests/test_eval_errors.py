@@ -71,3 +71,46 @@ def test_empty_components(tmp_path):
     }))
     result = run_plan(plan_path, db_path=tmp_path / "analysis.db")
     assert result["status"] == "failed"
+
+
+def _paraboloid_plan(**extra) -> dict:
+    plan = {
+        "metadata": {"id": "plan-incomplete-opt", "name": "x", "version": 1},
+        "components": [{
+            "id": "paraboloid", "type": "paraboloid/Paraboloid", "config": {},
+        }],
+        "operating_points": {"x": 0.0, "y": 0.0},
+    }
+    plan.update(extra)
+    return plan
+
+
+def test_optimize_mode_without_objective_fails(tmp_path):
+    """Optimize mode with DVs but no objective must error, not run as analysis."""
+    plan_path = tmp_path / "plan.yaml"
+    plan_path.write_text(yaml.dump(_paraboloid_plan(
+        design_variables=[{"name": "x", "lower": -50.0, "upper": 50.0}],
+    )))
+    result = run_plan(plan_path, mode="optimize", db_path=tmp_path / "analysis.db")
+    assert result["status"] == "failed"
+    assert any("objective" in e["message"] for e in result["errors"])
+
+
+def test_optimize_mode_without_design_variables_fails(tmp_path):
+    """Optimize mode with an objective but no DVs must error."""
+    plan_path = tmp_path / "plan.yaml"
+    plan_path.write_text(yaml.dump(_paraboloid_plan(
+        objective={"name": "paraboloid.f_xy"},
+    )))
+    result = run_plan(plan_path, mode="optimize", db_path=tmp_path / "analysis.db")
+    assert result["status"] == "failed"
+    assert any("design_variables" in e["message"] for e in result["errors"])
+
+
+def test_analysis_mode_unaffected_by_missing_optimization(tmp_path):
+    """Plain analysis of a plan without optimization config still runs."""
+    plan_path = tmp_path / "plan.yaml"
+    plan_path.write_text(yaml.dump(_paraboloid_plan()))
+    result = run_plan(plan_path, mode="analysis", db_path=tmp_path / "analysis.db")
+    assert result["status"] == "completed"
+    assert result["errors"] == []
