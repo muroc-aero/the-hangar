@@ -190,3 +190,34 @@ class TestGeneratePlots:
         )
         assert "planform" in saved
         assert "convergence" not in saved  # skipped gracefully
+
+    def test_composite_component_types(self, aero_recorder, tmp_path):
+        """Regression: composite runs (len(component_types) > 1) crashed with
+        NameError on _GENERIC_PLOTS before plotting anything."""
+        saved = generate_plots(
+            aero_recorder,
+            plot_types=["planform"],
+            output_dir=tmp_path,
+            component_types={
+                "aero": "oas/AeroPoint",
+                "extra": "paraboloid/Paraboloid",
+            },
+        )
+        assert "planform" in saved
+        # Type-specific plots from a composite get component-id prefixes
+        assert saved["planform"].name == "aero_planform.png"
+        assert saved["planform"].exists()
+
+    def test_composite_generic_plot_unprefixed(self, opt_recorder, tmp_path):
+        """Generic plots (convergence etc.) keep unprefixed filenames in composites."""
+        saved = generate_plots(
+            opt_recorder,
+            plot_types=["convergence"],
+            output_dir=tmp_path,
+            component_types={
+                "a": "paraboloid/Paraboloid",
+                "b": "paraboloid/Paraboloid",
+            },
+        )
+        assert "convergence" in saved
+        assert saved["convergence"].name == "convergence.png"

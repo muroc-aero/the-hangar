@@ -90,6 +90,7 @@ def generate_plots(
         Dict mapping plot type to saved file path.
     """
     from hangar.omd.registry import (
+        _GENERIC_PLOTS,
         get_plot_provider, get_plot_provider_with_slots, get_all_plot_providers,
     )
 
