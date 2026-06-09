@@ -13,6 +13,7 @@ from pathlib import Path
 
 import openmdao.api as om
 
+from hangar.omd.op_points import normalize_operating_points
 from hangar.omd.registry import get_factory, get_factory_contract
 
 logger = logging.getLogger(__name__)
@@ -94,7 +95,11 @@ def materialize(
         point_name, surface_names, recorder_path, etc.
     """
     components = plan.get("components", [])
-    operating_points = plan.get("operating_points", {})
+    # Resolve {value, units} entries to plain values in canonical units
+    # so factories never see raw unit-tagged dicts.
+    operating_points = normalize_operating_points(
+        plan.get("operating_points", {})
+    )
 
     if not components:
         raise ValueError("Plan must contain at least one component")
