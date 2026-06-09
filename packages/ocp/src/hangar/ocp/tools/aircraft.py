@@ -16,6 +16,18 @@ _MISSION_LEVEL_KEYS = {
     "takeoff_throttle": "configure_mission(takeoff_throttle=...)",
 }
 
+# Flat override keys that agents reach for which DO correspond to a real field,
+# just at a nested aircraft-data path the template already populates. Maps the
+# flat leaf name (case-insensitive) -> its canonical pipe path.
+_FIELD_ALIASES = {
+    "prop_rpm": "ac|propulsion|propeller|rpm",
+    "rpm": "ac|propulsion|propeller|rpm",
+    "propeller_diameter": "ac|propulsion|propeller|diameter",
+    "prop_diameter": "ac|propulsion|propeller|diameter",
+    "mtow": "ac|weights|MTOW",
+    "engine_rating": "ac|propulsion|engine|rating",
+}
+
 
 async def list_aircraft_templates() -> dict:
     """List all built-in aircraft templates with summary specifications.
@@ -71,11 +83,18 @@ async def load_aircraft_template(
     if overrides:
         for path in _deep_merge(data, overrides):
             leaf = path.split("|")[-1]
+            alias = _FIELD_ALIASES.get(leaf) or _FIELD_ALIASES.get(leaf.lower())
             if leaf in _MISSION_LEVEL_KEYS:
                 warnings.append(
                     f"Override {path!r} is a mission calibration knob, not an "
                     f"aircraft-data field; it was stored but has NO effect here. "
                     f"Set it via {_MISSION_LEVEL_KEYS[leaf]} instead."
+                )
+            elif alias:
+                warnings.append(
+                    f"Override {path!r} has no effect: {leaf!r} is not a top-level "
+                    f"field. It lives at {alias!r}, which the template already sets. "
+                    f"Override that nested path if you need to change it."
                 )
             else:
                 warnings.append(

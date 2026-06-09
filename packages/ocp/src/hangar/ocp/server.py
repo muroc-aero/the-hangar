@@ -140,8 +140,23 @@ CALIBRATION & OVERRIDES — where each kind of input goes:
     nested path, e.g. {"ac": {"weights": {"MTOW": {"value": 4500, "units": "kg"}}}}.
   • Do NOT put structural_fudge/takeoff_throttle (or any unknown key) in
     load_aircraft_template overrides — the model never reads new keys, so they
-    are silently inert. load_aircraft_template returns a "warnings" list naming
-    any override path that had no effect; if you see one, you used the wrong tool.
+    are silently inert.
+
+OVERRIDABLE AIRCRAFT-DATA PATHS (use these nested paths in load_aircraft_template overrides):
+  • ac|weights|MTOW, ac|weights|W_fuel_max, ac|weights|MLW
+  • ac|geom|wing|S_ref, ac|geom|wing|AR, ac|geom|wing|taper, ac|geom|wing|toverc
+  • ac|propulsion|engine|rating, ac|propulsion|propeller|rpm, ac|propulsion|propeller|diameter
+  • ac|aero|polar|e, ac|aero|polar|CD0_cruise, ac|aero|polar|CD0_TO, ac|aero|CLmax_TO
+  Each leaf is {"value": <x>, "units": <str>}. Templates already populate these
+  (e.g. kingair sets ac|propulsion|propeller|rpm = 1900), so override only to change them.
+
+INERT-INPUT WARNINGS:
+  load_aircraft_template, set_propulsion_architecture and configure_mission each
+  return a "warnings" list when a supplied input has no effect for the current
+  template / architecture / mission_type — e.g. takeoff_throttle on a non-'full'
+  mission, *_hybridization on a non-hybrid architecture, motor/battery ratings on
+  a turboprop, or an override key that matches no existing field. A warning means
+  the value was ignored: read it and route the input to the right tool/path.
 
 RESPONSE ENVELOPE (all analysis tools):
   Every analysis tool returns a versioned envelope (schema_version="1.0"):
