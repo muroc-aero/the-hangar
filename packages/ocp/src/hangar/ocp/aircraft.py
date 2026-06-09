@@ -154,6 +154,12 @@ def make_aircraft_model_class(
                         "ac|weights*",
                         "duration",
                     ])
+                elif num_engines > 1:
+                    # Multi-engine prop systems model engine failure by
+                    # multiplying throttle by propulsor_active. The full mission
+                    # drives this flag (1 in v0v1, 0 in v1vr/v1v0) to size the
+                    # balanced field length; promote it so it reaches propmodel.
+                    propulsion_promotes_inputs.append("propulsor_active")
 
                 self.add_subsystem(
                     "propmodel",
@@ -211,8 +217,11 @@ def make_aircraft_model_class(
                     self.connect("propmodel.prop1.component_weight", "W_propeller")
                     self.connect("propmodel.eng1.component_weight", "W_engine")
                 else:
+                    # Multi-engine: use the summed engine/propeller weights
+                    # (engines_weight = eng1 + eng2), not a single engine's,
+                    # otherwise OEW undercounts by one powerplant.
                     self.connect("propmodel.propellers_weight", "W_propeller")
-                    self.connect("propmodel.eng1.component_weight", "W_engine")
+                    self.connect("propmodel.engines_weight", "W_engine")
             elif is_cfm56:
                 # B738 pattern: pass-through OEW from aircraft data
                 passthru = om.ExecComp(
