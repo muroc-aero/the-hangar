@@ -29,6 +29,7 @@ def _import_class(module_path: str, class_name: str) -> type:
 def make_aircraft_model_class(
     architecture: str,
     propulsion_overrides: dict | None = None,
+    prop_rpm: float | None = None,
 ) -> type:
     """Create an ``om.Group`` subclass wired for the given propulsion architecture.
 
@@ -39,6 +40,10 @@ def make_aircraft_model_class(
     propulsion_overrides
         Optional overrides (not currently used at class-creation time, but
         reserved for future per-component configuration).
+    prop_rpm
+        Propeller speed (rpm) baked into the propulsion model as a design value.
+        Comes from the aircraft template (e.g. King Air C90GT = 1900). Falls back
+        to 2000 when the template does not specify it.
 
     Returns
     -------
@@ -46,6 +51,8 @@ def make_aircraft_model_class(
         A dynamically created ``om.Group`` subclass that OpenConcept mission
         analysis can instantiate with ``aircraft_model=<returned class>``.
     """
+    # Per-aircraft propeller speed; 2000 rpm is the historical fallback default.
+    rpm_val = 2000.0 if prop_rpm is None else float(prop_rpm)
     arch_info = PROPULSION_ARCHITECTURES[architecture]
     has_fuel = arch_info["has_fuel"]
     has_battery = arch_info["has_battery"]
@@ -92,9 +99,9 @@ def make_aircraft_model_class(
             else:
                 # Propeller RPM control
                 if num_engines == 1:
-                    controls.add_output("prop1rpm", val=np.ones((nn,)) * 2000, units="rpm")
+                    controls.add_output("prop1rpm", val=np.ones((nn,)) * rpm_val, units="rpm")
                 else:
-                    controls.add_output("proprpm", val=np.ones((nn,)) * 2000, units="rpm")
+                    controls.add_output("proprpm", val=np.ones((nn,)) * rpm_val, units="rpm")
 
             # Hybridization control for hybrid architectures
             if is_hybrid:

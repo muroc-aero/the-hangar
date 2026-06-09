@@ -145,7 +145,10 @@ _KINGAIR_DATA: dict = {
         },
         "propulsion": {
             "engine": {"rating": {"value": 750, "units": "hp"}},
-            "propeller": {"diameter": {"value": 2.28, "units": "m"}},
+            "propeller": {
+                "diameter": {"value": 2.28, "units": "m"},
+                "rpm": {"value": 1900, "units": "rpm"},
+            },
             "motor": {"rating": {"value": 527.2, "units": "hp"}},
             "generator": {"rating": {"value": 1083.7, "units": "hp"}},
         },

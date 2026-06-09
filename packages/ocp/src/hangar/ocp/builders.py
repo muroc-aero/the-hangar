@@ -97,6 +97,22 @@ def _has_field(data: dict, pipe_path: str) -> bool:
     return True
 
 
+def _field_value(data: dict, pipe_path: str) -> Any:
+    """Return the ``value`` at a pipe-separated path, or None if absent.
+
+    Aircraft data leaves are ``{"value": x, "units": ...}`` dicts; this returns
+    the bare ``value``.
+    """
+    if not _has_field(data, pipe_path):
+        return None
+    current = data
+    for part in pipe_path.split("|"):
+        current = current[part]
+    if isinstance(current, dict):
+        return current.get("value")
+    return current
+
+
 def _register_fields(dv_comp: Any, data: dict, fields: list[str]) -> None:
     """Register available fields from the aircraft data dict."""
     for field_path in fields:
@@ -142,8 +158,14 @@ def build_mission_problem(
     is_hybrid = arch_info["has_battery"] and arch_info["has_fuel"]
     is_cfm56 = arch_info["prop_class"] == "CFM56"
 
+    # Propeller speed is a per-aircraft design value baked into the propulsion
+    # model. Read it from the template (falls back to the model default of 2000).
+    prop_rpm = _field_value(aircraft_data, "ac|propulsion|propeller|rpm")
+
     # Create the dynamic aircraft model class
-    AircraftModelClass = make_aircraft_model_class(architecture, propulsion_overrides)
+    AircraftModelClass = make_aircraft_model_class(
+        architecture, propulsion_overrides, prop_rpm=prop_rpm
+    )
 
     # Select mission profile class
     if mission_type == "basic":
