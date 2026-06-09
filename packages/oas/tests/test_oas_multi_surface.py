@@ -17,7 +17,7 @@ from hangar.oas.server import (
     run_aero_analysis,
     run_aerostruct_analysis,
 )
-from conftest import SMALL_RECT
+from oas_surface_defs import SMALL_RECT
 
 pytestmark = pytest.mark.slow
 

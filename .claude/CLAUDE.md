@@ -119,16 +119,20 @@ docker compose -f docker/docker-compose.yml up --build
 
 ## Testing
 ```bash
-# All tests
-uv run pytest packages/sdk/tests/ packages/oas/tests/ packages/omd/tests/
+# All package tests (testpaths in the root pyproject scope collection to
+# packages/*/tests; upstream/, demos, and example parity suites excluded)
+uv run pytest
+
+# Skip slow integration tests
+uv run pytest -m "not slow"
 
 # By package
 uv run pytest packages/sdk/tests/
 uv run pytest packages/oas/tests/
 uv run pytest packages/omd/tests/
 
-# Skip slow integration tests
-uv run pytest -m "not slow"
+# Example parity suites run per-directory (each sets up its own sys.path)
+uv run pytest packages/oas/examples/rectangular_wing/tests/
 ```
 
 ## Skills

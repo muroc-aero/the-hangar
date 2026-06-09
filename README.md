@@ -125,11 +125,9 @@ uv run oas-cli interactive
 uv run ocp-cli interactive
 uv run pyc-cli interactive
 
-# Run tests
-uv run pytest packages/sdk/tests/
-uv run pytest packages/oas/tests/
-uv run pytest packages/ocp/tests/
-uv run pytest packages/pyc/tests/
+# Run tests (all packages; skip slow integration tests with -m "not slow")
+uv run pytest
+uv run pytest -m "not slow"
 
 # Docker
 docker compose -f docker/docker-compose.yml up --build

@@ -20,7 +20,7 @@ from hangar.oas.server import (
     set_requirements,
     unpin_run,
 )
-from conftest import SMALL_RECT, SMALL_RECT_STRUCT
+from oas_surface_defs import SMALL_RECT, SMALL_RECT_STRUCT
 
 pytestmark = pytest.mark.slow
 
