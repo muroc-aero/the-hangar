@@ -9,6 +9,7 @@ from typing import Annotated
 from hangar.sdk.helpers import _suppress_output
 
 from hangar.ocp.builders import build_mission_problem
+from hangar.ocp.config.defaults import PROPULSION_ARCHITECTURES
 from hangar.ocp.results import extract_mission_results, extract_trajectory_data
 from hangar.ocp.state import sessions as _sessions
 from hangar.ocp.tools._helpers import _finalize_analysis, _make_run_id
@@ -19,6 +20,47 @@ from hangar.ocp.validators import (
     validate_num_nodes,
     validate_session_ready_for_analysis,
 )
+
+
+def _inert_mission_param_warnings(
+    mission_type: str, architecture: str | None, supplied: dict
+) -> list[str]:
+    """Warn about mission params that have no effect for this mission/architecture.
+
+    ``supplied`` maps each optional param name to its user-supplied value (None
+    if the agent did not pass it). The schema accepts these regardless of context,
+    so a param can be silently inert -- e.g. takeoff_throttle on a 'basic' mission
+    or hybridization on a non-hybrid aircraft. Surface those as warnings.
+    """
+    warnings: list[str] = []
+    arch = PROPULSION_ARCHITECTURES.get(architecture or "", {})
+    is_hybrid = bool(arch.get("has_battery") and arch.get("has_fuel"))
+    is_cfm56 = arch.get("prop_class") == "CFM56"
+
+    if supplied.get("takeoff_throttle") is not None and mission_type != "full":
+        warnings.append(
+            f"takeoff_throttle has no effect for mission_type={mission_type!r} -- "
+            "takeoff phases exist only in 'full' missions."
+        )
+    if supplied.get("structural_fudge") is not None and is_cfm56:
+        warnings.append(
+            f"structural_fudge has no effect for the {architecture!r} (CFM56) "
+            "architecture, which uses a pass-through OEW from the aircraft data."
+        )
+    for phase in ("climb", "cruise", "descent"):
+        if supplied.get(f"{phase}_hybridization") is not None and architecture and not is_hybrid:
+            warnings.append(
+                f"{phase}_hybridization has no effect for the {architecture!r} "
+                "architecture (not hybrid); use a series_hybrid architecture to apply it."
+            )
+    if mission_type != "with_reserve":
+        for name in ("reserve_altitude", "reserve_range", "loiter_duration"):
+            if supplied.get(name) is not None:
+                warnings.append(
+                    f"{name} has no effect for mission_type={mission_type!r} -- "
+                    "reserve and loiter phases exist only in 'with_reserve' missions."
+                )
+    return warnings
 
 
 async def configure_mission(
@@ -120,6 +162,23 @@ async def configure_mission(
     validate_mission_params(params)
 
     session = _sessions.get(session_id)
+
+    # Flag any supplied param that is inert for this mission_type / architecture.
+    warnings = _inert_mission_param_warnings(
+        mission_type,
+        session.propulsion_architecture,
+        {
+            "takeoff_throttle": takeoff_throttle,
+            "structural_fudge": structural_fudge,
+            "climb_hybridization": climb_hybridization,
+            "cruise_hybridization": cruise_hybridization,
+            "descent_hybridization": descent_hybridization,
+            "reserve_altitude": reserve_altitude,
+            "reserve_range": reserve_range,
+            "loiter_duration": loiter_duration,
+        },
+    )
+
     session.mission_type = mission_type
     session.mission_params = params
     session.num_nodes = num_nodes
@@ -136,7 +195,7 @@ async def configure_mission(
     else:
         phases = ["climb", "cruise", "descent"]
 
-    return {
+    result = {
         "mission_type": mission_type,
         "phases": phases,
         "cruise_altitude_ft": cruise_altitude,
@@ -145,6 +204,9 @@ async def configure_mission(
         "parameters": params,
         "next_step": "Call run_mission_analysis() to execute the analysis.",
     }
+    if warnings:
+        result["warnings"] = warnings
+    return result
 
 
 async def run_mission_analysis(

@@ -81,8 +81,19 @@ OCP-specific gotchas:
   ALREADY exist in the template, addressed by their full nested path, e.g.
   `{"ac": {"weights": {"MTOW": {"value": 4500, "units": "kg"}}}}`. Any key
   it introduces (including `structural_fudge`/`takeoff_throttle`) is inert --
-  the model never reads it. The tool returns a `warnings` list naming every
-  override path that had no effect; if you see one, you used the wrong tool.
+  the model never reads it.
+- Overridable nested paths: `ac|weights|MTOW`, `ac|weights|W_fuel_max`,
+  `ac|geom|wing|{S_ref,AR,taper,toverc}`, `ac|propulsion|engine|rating`,
+  `ac|propulsion|propeller|{rpm,diameter}`, `ac|aero|polar|{e,CD0_cruise,CD0_TO}`.
+  Each leaf is `{"value": x, "units": str}`. Templates already set these (kingair's
+  `ac|propulsion|propeller|rpm` is 1900), so override only to change them.
+- Inert inputs are flagged, not silent: `load_aircraft_template`,
+  `set_propulsion_architecture`, and `configure_mission` each return a
+  `warnings` list when a supplied value has no effect for the current template,
+  architecture, or mission type (e.g. `takeoff_throttle` on a non-`full`
+  mission, `*_hybridization` on a non-hybrid, motor/battery ratings on a
+  turboprop, or an override key that matches no field). A warning means the
+  value was ignored -- route it to the right tool or nested path.
 
 Templates: `caravan`, `b738`, `kingair`, `tbm850`.
 Architectures: `turboprop`, `twin_turboprop`, `series_hybrid`,

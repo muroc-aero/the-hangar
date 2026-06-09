@@ -56,6 +56,25 @@ async def set_propulsion_architecture(
         )
 
     arch_info = PROPULSION_ARCHITECTURES[architecture]
+    is_hybrid = arch_info["has_battery"] and arch_info["has_fuel"]
+
+    # Electric-powertrain params are inert on non-hybrid architectures: the model
+    # has no motor/generator/battery to read them. Flag them rather than writing
+    # silently-unused values into the aircraft data.
+    warnings: list[str] = []
+    if not is_hybrid:
+        for name, value in (
+            ("motor_rating", motor_rating),
+            ("generator_rating", generator_rating),
+            ("battery_weight", battery_weight),
+            ("battery_specific_energy", battery_specific_energy),
+        ):
+            if value is not None:
+                warnings.append(
+                    f"{name} has no effect for the {architecture!r} architecture "
+                    "(no electric powertrain). Use a series_hybrid or "
+                    "twin_series_hybrid architecture to apply it."
+                )
 
     # Apply propulsion parameter overrides to aircraft data
     ac = session.aircraft_data.get("ac", {})
@@ -94,7 +113,7 @@ async def set_propulsion_architecture(
     session.propulsion_overrides = overrides
     session.invalidate_cache()
 
-    return {
+    result = {
         "architecture": architecture,
         "description": f"{arch_info['prop_class']} propulsion system",
         "has_fuel": arch_info["has_fuel"],
@@ -103,3 +122,6 @@ async def set_propulsion_architecture(
         "overrides_applied": overrides,
         "next_step": "Call configure_mission() to set the mission profile, then run_mission_analysis().",
     }
+    if warnings:
+        result["warnings"] = warnings
+    return result

@@ -70,6 +70,15 @@ async def test_overrides_warn_on_unknown_field():
     assert "no effect" in warnings[0]
 
 
+async def test_overrides_flat_alias_points_to_nested_path():
+    """A flat key like prop_rpm warns with the real nested path, not 'unknown'."""
+    result = await load_aircraft_template("kingair", overrides={"prop_rpm": 1900})
+    warnings = result.get("warnings", [])
+    assert len(warnings) == 1
+    assert "ac|propulsion|propeller|rpm" in warnings[0]
+    assert "template already sets" in warnings[0]
+
+
 async def test_load_invalid_template():
     with pytest.raises(ValueError, match="Unknown"):
         await load_aircraft_template("concorde")
