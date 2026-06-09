@@ -129,6 +129,20 @@ CRITICAL CONSTRAINTS:
   • Architecture changes invalidate the cached problem — set architecture before mission.
   • descent_vs is provided as a positive number and automatically negated.
 
+CALIBRATION & OVERRIDES — where each kind of input goes:
+  • Mission calibration (structural_fudge, takeoff_throttle) → pass as
+    configure_mission(structural_fudge=…, takeoff_throttle=…) arguments.
+    structural_fudge scales OEW to the real airframe; takeoff_throttle derates
+    the engine during the takeoff roll. Omitting them changes OEW and TOFL.
+  • Aircraft geometry/weights/propulsion values → either define_aircraft
+    arguments, or load_aircraft_template(overrides=…). The overrides dict ONLY
+    replaces fields that already exist in the template, addressed by their full
+    nested path, e.g. {"ac": {"weights": {"MTOW": {"value": 4500, "units": "kg"}}}}.
+  • Do NOT put structural_fudge/takeoff_throttle (or any unknown key) in
+    load_aircraft_template overrides — the model never reads new keys, so they
+    are silently inert. load_aircraft_template returns a "warnings" list naming
+    any override path that had no effect; if you see one, you used the wrong tool.
+
 RESPONSE ENVELOPE (all analysis tools):
   Every analysis tool returns a versioned envelope (schema_version="1.0"):
     • results:     fuel_burn_kg, OEW_kg, TOFL_ft, battery_SOC_final, phase_results, ...

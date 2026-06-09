@@ -8,6 +8,14 @@ from typing import Annotated
 from hangar.ocp.config.aircraft_templates import AIRCRAFT_TEMPLATES
 from hangar.ocp.state import sessions as _sessions
 
+# Calibration knobs that agents commonly (and wrongly) try to pass through the
+# ``load_aircraft_template`` overrides dict, where they are inert. They belong
+# on ``configure_mission`` instead. Maps override leaf name -> correct call.
+_MISSION_LEVEL_KEYS = {
+    "structural_fudge": "configure_mission(structural_fudge=...)",
+    "takeoff_throttle": "configure_mission(takeoff_throttle=...)",
+}
+
 
 async def list_aircraft_templates() -> dict:
     """List all built-in aircraft templates with summary specifications.
@@ -55,16 +63,35 @@ async def load_aircraft_template(
     info = AIRCRAFT_TEMPLATES[template]
     data = copy.deepcopy(info["data"])
 
-    # Apply overrides
+    # Apply overrides. ``overrides`` only overrides fields that already exist in
+    # the template's nested aircraft-data structure; any key it introduces is a
+    # field the model never reads, so it is silently inert. Collect those and
+    # surface them as warnings rather than failing silently.
+    warnings: list[str] = []
     if overrides:
-        _deep_merge(data, overrides)
+        for path in _deep_merge(data, overrides):
+            leaf = path.split("|")[-1]
+            if leaf in _MISSION_LEVEL_KEYS:
+                warnings.append(
+                    f"Override {path!r} is a mission calibration knob, not an "
+                    f"aircraft-data field; it was stored but has NO effect here. "
+                    f"Set it via {_MISSION_LEVEL_KEYS[leaf]} instead."
+                )
+            else:
+                warnings.append(
+                    f"Override {path!r} does not match any existing field in the "
+                    f"{template!r} template; it was stored but the model does not "
+                    f"read it (no effect). Overrides must target existing nested "
+                    f"paths, e.g. {{'ac': {{'weights': {{'MTOW': {{'value': 4500, "
+                    f"'units': 'kg'}}}}}}}}."
+                )
 
     session = _sessions.get(session_id)
     session.aircraft_data = data
     session.aircraft_template = template
     session.invalidate_cache()
 
-    return {
+    result = {
         "template": template,
         "description": info["description"],
         "default_architecture": info["default_architecture"],
@@ -74,6 +101,9 @@ async def load_aircraft_template(
             "or choose a different architecture."
         ),
     }
+    if warnings:
+        result["warnings"] = warnings
+    return result
 
 
 async def define_aircraft(
@@ -206,13 +236,24 @@ async def define_aircraft(
     }
 
 
-def _deep_merge(base: dict, override: dict) -> None:
-    """Recursively merge override into base dict (mutates base)."""
+def _deep_merge(base: dict, override: dict, _path: str = "") -> list[str]:
+    """Recursively merge override into base dict (mutates base).
+
+    Returns the pipe-joined paths of override keys that did not already exist in
+    ``base`` -- i.e. newly created fields. Because the OpenConcept model only
+    reads known aircraft-data paths, such keys are inert, so callers can surface
+    them as no-effect warnings.
+    """
+    unknown: list[str] = []
     for key, value in override.items():
+        path = f"{_path}|{key}" if _path else key
         if key in base and isinstance(base[key], dict) and isinstance(value, dict):
-            _deep_merge(base[key], value)
+            unknown.extend(_deep_merge(base[key], value, path))
         else:
+            if key not in base:
+                unknown.append(path)
             base[key] = value
+    return unknown
 
 
 def _summarize_aircraft_data(data: dict) -> dict:
