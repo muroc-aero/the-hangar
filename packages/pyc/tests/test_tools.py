@@ -1,16 +1,17 @@
 """Integration tests for pyCycle MCP tools."""
 
 import pytest
-import pytest_asyncio
 
 from hangar.pyc.tools.engine import create_engine
 from hangar.pyc.tools.analysis import run_design_point, run_off_design
 from hangar.pyc.tools.session import (
-    list_artifacts,
+    delete_artifact,
     get_artifact,
+    get_artifact_summary,
+    list_artifacts,
+    log_decision,
     reset,
     start_session,
-    log_decision,
 )
 
 
@@ -170,6 +171,69 @@ class TestSessionTools:
         )
         arts = await list_artifacts()
         assert arts["count"] >= 1
+        # Artifacts live under the tool-container session_id, not the
+        # provenance session id; oas/ocp do the same and cross-tool artifact
+        # lookups rely on it.
+        assert arts["artifacts"][0]["session_id"] == "default"
+
+
+class TestArtifactScoping:
+    """Artifact tools must be scoped to the authenticated user."""
+
+    @pytest.fixture
+    def two_user_artifacts(self):
+        from hangar.sdk.auth import get_current_user
+        from hangar.sdk.state import artifacts as _artifacts
+
+        def save(user):
+            return _artifacts.save(
+                session_id="default",
+                analysis_type="design",
+                tool_name="run_design_point",
+                surfaces=["engine"],
+                parameters={"alt": 0.0},
+                results={"performance": {"TSFC": 0.8}},
+                user=user,
+            )
+
+        return {
+            "mine": save(get_current_user()),
+            "theirs": save("someone-else"),
+        }
+
+    async def test_list_excludes_other_users(self, two_user_artifacts):
+        arts = await list_artifacts()
+        run_ids = {a["run_id"] for a in arts["artifacts"]}
+        assert two_user_artifacts["mine"] in run_ids
+        assert two_user_artifacts["theirs"] not in run_ids
+
+    async def test_get_own_artifact(self, two_user_artifacts):
+        artifact = await get_artifact(two_user_artifacts["mine"])
+        assert artifact["results"]["performance"]["TSFC"] == 0.8
+
+    async def test_get_other_users_artifact_denied(self, two_user_artifacts):
+        with pytest.raises(ValueError, match="not found"):
+            await get_artifact(two_user_artifacts["theirs"])
+
+    async def test_summary_own_artifact(self, two_user_artifacts):
+        summary = await get_artifact_summary(two_user_artifacts["mine"])
+        assert summary["run_id"] == two_user_artifacts["mine"]
+
+    async def test_summary_other_users_artifact_denied(self, two_user_artifacts):
+        with pytest.raises(ValueError, match="not found"):
+            await get_artifact_summary(two_user_artifacts["theirs"])
+
+    async def test_delete_own_artifact(self, two_user_artifacts):
+        result = await delete_artifact(two_user_artifacts["mine"])
+        assert result["status"] == "deleted"
+
+    async def test_delete_other_users_artifact_denied(self, two_user_artifacts):
+        from hangar.sdk.state import artifacts as _artifacts
+
+        with pytest.raises(ValueError, match="not found"):
+            await delete_artifact(two_user_artifacts["theirs"])
+        # Still on disk under the other user
+        assert _artifacts.get(two_user_artifacts["theirs"], user="someone-else") is not None
 
     async def test_reset_clears_engines(self, turbojet_engine):
         await reset()
