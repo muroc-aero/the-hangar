@@ -66,37 +66,13 @@ def build_oas_registry() -> dict[str, Callable]:
 def main() -> None:
     """OAS CLI entry point — wires the OAS registry into the generic CLI."""
     from hangar.sdk.cli.runner import set_registry_builder, set_setup_tools
-    from hangar.sdk.cli.main import main as _cli_main
+    from hangar.sdk.cli.main import main as _cli_main, viewer_command
 
     set_registry_builder(build_oas_registry)
     set_setup_tools(["create_surface"])
 
-    def _start_viewer(port: int = 7654, db: str | None = None):
-        import os
-        import signal
-        import threading
-
-        os.environ.setdefault("HANGAR_PROV_PORT", str(port))
-        if db:
-            os.environ["HANGAR_PROV_DB"] = db
-
-        from hangar.sdk.viz.viewer_server import start_viewer_server
-
-        actual_port = start_viewer_server()
-        if actual_port is None:
-            print(f"Failed to start viewer (port {port} may be in use)")
-            raise SystemExit(1)
-
-        print(f"SDK viewer: http://localhost:{actual_port}/viewer")
-        print("Press Ctrl+C to stop.")
-
-        stop = threading.Event()
-        signal.signal(signal.SIGINT, lambda *_: stop.set())
-        signal.signal(signal.SIGTERM, lambda *_: stop.set())
-        stop.wait()
-
     _cli_main(
         prog="oas-cli",
         description="OpenAeroStruct CLI — run analysis tools from the command line.",
-        viewer_callback=_start_viewer,
+        viewer_callback=viewer_command,
     )

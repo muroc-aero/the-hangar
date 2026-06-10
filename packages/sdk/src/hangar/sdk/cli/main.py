@@ -25,7 +25,6 @@ import inspect
 import json
 import sys
 import types as _types
-import typing
 from pathlib import Path
 from typing import Any, Union, get_type_hints
 
@@ -156,7 +155,7 @@ def _build_subparser(subparsers, tool_name: str, fn) -> argparse.ArgumentParser:
                 dest=param_name,
                 default=default,
                 metavar="JSON",
-                help=f"JSON value (e.g. '[1,2,3]' or '{{\"key\":val}}')",
+                help="JSON value (e.g. '[1,2,3]' or '{\"key\":val}')",
             )
         else:
             arg_type = _argparse_type(raw_annotation)
@@ -296,7 +295,7 @@ def oneshot_mode(
        OAS when no setup tools are declared. Saves ``create_surface()``
        args and replays them via the ``"create_surface"`` registry entry.
     """
-    from hangar.sdk.cli.runner import run_tool, get_registry, get_setup_tools, json_dumps
+    from hangar.sdk.cli.runner import run_tool, get_registry, get_setup_tools
     from hangar.sdk.cli.state import (
         load_setup_steps, save_setup_step,
         load_surfaces, save_surfaces,
@@ -505,7 +504,7 @@ def _cmd_list_runs(
     output: str | None = None,
 ) -> None:
     """List recent analysis runs."""
-    from hangar.sdk.cli.runner import run_tool_sync, json_dumps
+    from hangar.sdk.cli.runner import run_tool_sync
 
     args: dict = {}
     if analysis_type:
@@ -548,7 +547,7 @@ def _cmd_show(
     output: str | None = None,
 ) -> None:
     """Show summary of a run's results."""
-    from hangar.sdk.cli.runner import run_tool_sync, json_dumps
+    from hangar.sdk.cli.runner import run_tool_sync
 
     response = run_tool_sync("get_run", {"run_id": run_id})
     _output_response(response, pretty=True, output=output)
@@ -587,6 +586,42 @@ def _cmd_plot(
         print(f"Plot saved to: {file_path}")
     else:
         print(json_dumps(response, pretty=True))
+
+
+# ---------------------------------------------------------------------------
+# Shared viewer subcommand
+# ---------------------------------------------------------------------------
+
+
+def viewer_command(port: int = 7654, db: str | None = None) -> None:
+    """Blocking ``viewer`` subcommand shared by the tool CLIs.
+
+    Starts the SDK provenance viewer on *port* (serving *db* if given) in a
+    daemon thread and blocks until Ctrl+C. Pass as ``viewer_callback`` to
+    :func:`main`.
+    """
+    import os
+    import signal
+    import threading
+
+    os.environ.setdefault("HANGAR_PROV_PORT", str(port))
+    if db:
+        os.environ["HANGAR_PROV_DB"] = db
+
+    from hangar.sdk.viz.viewer_server import start_viewer_server
+
+    actual_port = start_viewer_server()
+    if actual_port is None:
+        print(f"Failed to start viewer (port {port} may be in use)")
+        raise SystemExit(1)
+
+    print(f"SDK viewer: http://localhost:{actual_port}/viewer")
+    print("Press Ctrl+C to stop.")
+
+    stop = threading.Event()
+    signal.signal(signal.SIGINT, lambda *_: stop.set())
+    signal.signal(signal.SIGTERM, lambda *_: stop.set())
+    stop.wait()
 
 
 # ---------------------------------------------------------------------------

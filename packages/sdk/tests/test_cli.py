@@ -19,8 +19,7 @@ import argparse
 import base64
 import json
 import sys
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import numpy as np
 import pytest
@@ -33,11 +32,9 @@ from hangar.sdk.cli.main import (
 )
 from hangar.sdk.cli.runner import json_dumps
 from hangar.sdk.cli.state import (
-    STATE_DIR,
     clear_state,
     load_surfaces,
     save_surfaces,
-    _state_path,
 )
 
 
@@ -249,7 +246,7 @@ async def test_interactive_loop_malformed_json(capsys):
     await _run()
 
     captured = capsys.readouterr()
-    lines = [l for l in captured.out.strip().splitlines() if l]
+    lines = [ln for ln in captured.out.strip().splitlines() if ln]
     assert len(lines) == 2
     err = json.loads(lines[0])
     assert err["ok"] is False
@@ -396,3 +393,49 @@ def test_load_corrupt_state_returns_empty(isolated_state):
     path.write_text("not valid json", encoding="utf-8")
     loaded = load_surfaces("ws")
     assert loaded == {}
+
+
+# ---------------------------------------------------------------------------
+# viewer_command (shared `viewer` subcommand)
+# ---------------------------------------------------------------------------
+
+
+def test_viewer_command_exits_when_server_fails(monkeypatch):
+    """Port busy (start_viewer_server returns None) exits with code 1."""
+    import os
+
+    from hangar.sdk.cli.main import viewer_command
+
+    monkeypatch.delenv("HANGAR_PROV_PORT", raising=False)
+    with patch.dict(os.environ), patch(
+        "hangar.sdk.viz.viewer_server.start_viewer_server", return_value=None
+    ):
+        with pytest.raises(SystemExit) as excinfo:
+            viewer_command(port=7991)
+    assert excinfo.value.code == 1
+
+
+def test_viewer_command_sets_env_from_args(monkeypatch, tmp_path):
+    """--port and --db reach the viewer via HANGAR_PROV_PORT/HANGAR_PROV_DB."""
+    import os
+
+    from hangar.sdk.cli.main import viewer_command
+
+    monkeypatch.delenv("HANGAR_PROV_PORT", raising=False)
+    monkeypatch.delenv("HANGAR_PROV_DB", raising=False)
+    db = str(tmp_path / "prov.db")
+
+    seen = {}
+
+    def fake_start():
+        seen["port"] = os.environ.get("HANGAR_PROV_PORT")
+        seen["db"] = os.environ.get("HANGAR_PROV_DB")
+        return None  # skip the blocking wait
+
+    with patch.dict(os.environ), patch(
+        "hangar.sdk.viz.viewer_server.start_viewer_server", side_effect=fake_start
+    ):
+        with pytest.raises(SystemExit):
+            viewer_command(port=7991, db=db)
+
+    assert seen == {"port": "7991", "db": db}

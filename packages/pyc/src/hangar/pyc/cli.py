@@ -50,17 +50,13 @@ def build_pyc_registry() -> dict[str, Callable]:
 def main() -> None:
     """pyCycle CLI entry point."""
     from hangar.sdk.cli.runner import set_registry_builder, set_setup_tools
-    from hangar.sdk.cli.main import main as _cli_main
+    from hangar.sdk.cli.main import main as _cli_main, viewer_command
 
     set_registry_builder(build_pyc_registry)
     set_setup_tools(["create_engine"])
 
-    def _start_viewer(port: int = 7654, db: str | None = None):
-        from hangar.sdk.viz.viewer_server import start_viewer_server
-        start_viewer_server(port=port, db_path=db)
-
     _cli_main(
         prog="pyc-cli",
         description="pyCycle CLI -- run cycle analysis tools from the command line.",
-        viewer_callback=_start_viewer,
+        viewer_callback=viewer_command,
     )
