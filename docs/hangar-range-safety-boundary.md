@@ -33,13 +33,12 @@ modules as the public surface; internal helpers are not contracts.
   (includes `satisfies`, `violates`, `verifies`, `justifies`,
   `precedes`, `executes`).
 
-  > Decoupling note: today these live in `hangar.omd.db`, which pulls in
-  > OpenMDAO. The roadmap extracts the read-only query functions + schema
-  > constants into a thin `hangar-results-reader` package
-  > (`REPO_SEPARATION.md` step 4) so `range-safety` can read results
-  > without OpenMDAO as a transitive dependency. `range-safety` should
-  > consume them through that seam, re-exported for back-compat from
-  > `hangar.omd.db` until the extraction lands.
+  > Decoupling note: this extraction has landed (PR #21, 2026-05-29). The
+  > read-only query functions + schema constants live in the thin
+  > `hangar-results-reader` package (`hangar.results_reader.db`), so
+  > `range-safety` reads results without OpenMDAO as a transitive
+  > dependency. `hangar.omd.db` re-exports them for back-compat; new code
+  > should import from `hangar.results_reader` directly.
 
 ### Cross-tool session provenance (read-only)
 - `hangar.sdk.provenance.db` -- `sessions`, `tool_calls`, `decisions`,
@@ -145,15 +144,15 @@ These are the only `the-hangar`-side changes the dashboard depends on.
 They are tracked in the range-safety `ROADMAP.md`; listed here so the
 public side knows what is expected of it.
 
-1. **Public-workspace hygiene.** Move `hangar-range-safety` (and
-   `hangar-viewer`) out of the committed root `pyproject.toml` workspace
-   member list / dependency list, and add them conditionally in
-   `scripts/dev-setup.sh` (when the submodule is present, or in non-`--pypi`
-   mode). An open-only clone without the private submodule must still
-   `uv sync` cleanly.
-2. **Results-reader seam.** Extract the read-only query functions and
-   schema constants from `hangar.omd.db` into `hangar-results-reader`,
-   re-exported from `hangar.omd.db` for back-compat.
-3. **Plot adapter stability.** Keep a stable
+1. **Public-workspace hygiene.** [Landed, PR #21, 2026-05-29.]
+   `hangar-range-safety` is out of the committed root `pyproject.toml`
+   workspace member list / dependency list and is added conditionally in
+   `scripts/dev-setup.sh` when the submodule is present. An open-only
+   clone without the private submodule `uv sync`s cleanly.
+2. **Results-reader seam.** [Landed, PR #21, 2026-05-29.] The read-only
+   query functions and schema constants are extracted from
+   `hangar.omd.db` into `hangar-results-reader`, re-exported from
+   `hangar.omd.db` for back-compat.
+3. **Plot adapter stability.** [Open.] Keep a stable
    `generate_plot_png(run_id, plot_type) -> bytes` entry point across the
    viewer split so the dashboard adapter re-points with a one-line change.

@@ -31,15 +31,16 @@ session lifecycle differ.
 ## Prerequisites
 
 ```bash
-# Install the package (oas-cli is a console_scripts entry point):
-uv pip install -e ".[mcp]"   # or: pip install -e ".[mcp]"
+# Install the workspace packages (oas-cli is a console_scripts entry point
+# from packages/oas, installed by the dev setup):
+bash scripts/dev-setup.sh
 
 # Verify:
 oas-cli list-tools
 ```
 
-If `command not found`, the virtualenv is not activated or the package was not
-installed. You can also invoke via `python -m oas_mcp.cli <args>`.
+If `command not found`, the virtualenv is not activated or the packages were
+not installed. `uv run oas-cli <args>` works without activating the venv.
 
 ## Global flags come BEFORE the subcommand
 
@@ -84,40 +85,38 @@ function signature. So `Mach_number` -> `--Mach-number`, `CD0` -> `--CD0`,
 velocity=248.136 m/s   # cruise
 Mach_number=0.84
 density=0.38 kg/m^3
-reynolds_number=1e6    # REQUIRED — server rejects if omitted
+reynolds_number=1e6    # per unit length (1/m); optional, default 1e6
 alpha=5.0 degrees
 
-num_x=7, num_y=35      # default mesh (num_y must be ODD)
+num_x=2, num_y=7       # server default mesh (num_y must be ODD) -- scoping
+                       # tier only; see the mesh table below
 wing_type="CRM"        # realistic transport wing
 symmetry=True          # model half-span
 ```
 
-## Mesh resolution guide
+## Mesh resolution -- scoping vs production
 
-**Default to publication-quality mesh (num_x=7, num_y=35).** This matches
-the upstream OAS rectangular wing examples and produces mesh-converged
-results. Only drop to a coarser mesh if the user explicitly asks for fast
-iteration or if analysis runtime is causing problems.
+The server default (num_x=2, num_y=7) is scoping fidelity: it makes a run
+finish in seconds, which is right for design exploration, debugging, and
+skill checks, and wrong for any number that will be acted on. This is the
+agreed tiering, shared with `hangar-mcp-guide`:
 
-| Tier | num_y | num_x | When to use |
-|------|-------|-------|-------------|
-| Fast iteration | 7 | 2 | User asks for speed, or solver debugging |
-| Reduced | 13-21 | 3-5 | Runtime is too slow at full resolution |
-| **Publication (default)** | **35** | **7** | **All normal analyses** |
-| Extra-fine | 51 | 11 | Mesh convergence verification |
+| Use case | num_y | num_x |
+|----------|-------|-------|
+| Scoping, debugging, agent skill checks | 7 - 11 | 2 |
+| Real trade study | 21 - 31 | 3 - 5 |
+| Production sizing for a stakeholder | 41+ | 5+ |
 
-The upstream OAS examples universally use 35x7 or higher for demonstration
-analyses. The server default (num_x=2, num_y=7) is a unit-test mesh that
-under-resolves spanwise loads and induced drag -- do not use it for results
-you plan to interpret.
+All values must remain odd. Before quoting a production number, run a quick
+mesh refinement study: rerun the same case at e.g. num_y = 11, 21, 41 and
+confirm the objective changes by less than 1-2% between the last two
+levels. Tell the user which tier a result came from.
 
 For multi-surface configurations (wing + tail), the tail can use fewer
-spanwise points than the wing (e.g. num_y=21 for tail when wing is num_y=35).
-
-**When to reduce mesh**: if an analysis or optimization is taking too long,
-drop to num_y=21, num_x=5 first. Only go to num_y=7 for pure input debugging.
+spanwise points than the wing (e.g. num_y=21 for tail when wing is num_y=31).
 Published OAS mesh convergence studies (Aerospace 2022, 9(7):378) found 23x5
-sufficient for <3% CD error on a wing, so 21x5 is a reasonable fallback.
+sufficient for <3% CD error on a wing, so 21x5 is a reasonable trade-study
+floor.
 
 ## Error handling
 

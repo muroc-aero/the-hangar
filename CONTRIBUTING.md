@@ -7,7 +7,7 @@ Thanks for considering a contribution. The Hangar is an open-source monorepo of 
 - **Report a bug** — open a [GitHub issue](https://github.com/muroc-aero/the-hangar/issues) with a minimal reproducer. Include the package (`oas`, `ocp`, `pyc`, `omd`, or `sdk`), the command or tool call that fails, and the version (`git rev-parse --short HEAD`).
 - **Propose a feature** — start a [discussion](https://github.com/muroc-aero/the-hangar/discussions) before writing significant code. For new MCP tools, see [Adding a new tool](#adding-a-new-tool) below.
 - **Improve docs** — the project README, package READMEs, and the skills under `skills/` and `packages/<pkg>/skills/` are all fair game.
-- **Add a case study** — reproductions of published MDAO results are especially welcome. See `deploy/landing/studies/` for the format.
+- **Add a case study** — reproductions of published MDAO results are especially welcome. See `packages/omd/demos/` (e.g. `brelje_2018a`) for the format: the omd plan, comparison tests, and figures live there.
 - **Wrap a new tool** — add a new MCP server for an engineering analysis tool. See [Adding a new tool](#adding-a-new-tool).
 
 ## Code of Conduct
@@ -50,7 +50,7 @@ See the top-level `README.md` and `.claude/CLAUDE.md` for architecture notes and
 ## Code style
 
 - Python 3.11+. `uv` manages the environment.
-- `ruff` handles formatting and linting (config in `pyproject.toml`). Run `uv run ruff check .` and `uv run ruff format .` before pushing.
+- There is no enforced formatter or linter configuration yet; match the style of the surrounding code (PEP 8, 4-space indents, double quotes dominant).
 - Type hints are expected on new public APIs.
 - Keep the SDK (`hangar-sdk`) dependency-free of tool packages. Tool packages depend on the SDK, not the other way around.
 - Namespace rule: **never** add `__init__.py` inside `src/hangar/`. Leaf packages (`src/hangar/oas/__init__.py`, etc.) only. This is what keeps the `hangar.*` namespace working across separately-installable packages.
@@ -101,7 +101,7 @@ No CLA or DCO sign-off is required. Apache License 2.0 Section 5 already grants 
 
 ## Pull request process
 
-1. Ensure tests pass locally (`pytest` + `ruff`).
+1. Ensure tests pass locally (`uv run pytest -m "not slow"` at minimum).
 2. Update the relevant package `README.md` and any affected skill under `packages/<pkg>/skills/` or top-level `skills/`.
 3. Open the PR against `main` with a clear description: what changed, why, how to verify.
 4. PRs require one maintainer approval and all CI checks green before merge.

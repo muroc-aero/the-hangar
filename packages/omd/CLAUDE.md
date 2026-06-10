@@ -43,7 +43,7 @@ All runtime data lives under `hangar_data/omd/` (configurable via `OMD_DATA_ROOT
 - `plots/{run-id}/*.png` -- visualization PNGs (generated on demand)
 
 ## Source layout
-- `cli.py` -- click-based CLI: run, plot, results, assemble, validate, export, provenance
+- `cli.py` -- click-based CLI: run, polar, plot, results, summary, conclude, assemble, validate, export, provenance, plan (init/add-*/set-*/review), viewer
 - `run.py` -- plan execution pipeline: load, materialize, execute, record, N2 generation
 - `materializer.py` -- converts plan YAML to OpenMDAO Problem
   - Factory lookup via registry
@@ -302,9 +302,18 @@ uv run pytest packages/omd/tests/test_assemble.py -v
 # Assemble modular YAML into plan.yaml
 omd-cli assemble my-plan/
 
+# Author a plan directory incrementally (instead of hand-writing YAML)
+omd-cli plan init my-plan/ --id my-plan --name "My Plan"
+omd-cli plan add-component my-plan/ --id wing --type oas/AeroPoint --config-file wing.yaml
+omd-cli plan add-requirement my-plan/ --id R1 --text "CD below 0.04 at cruise" --type performance
+omd-cli plan review my-plan/
+
 # Run analysis or optimization
 omd-cli run plan.yaml --mode analysis
 omd-cli run plan.yaml --mode optimize
+
+# Drag polar sweep (OAS plans)
+omd-cli polar plan.yaml --alpha-start -2 --alpha-end 10 --num 7
 
 # Generate all plots for a run
 omd-cli plot <run_id> --type all
@@ -314,6 +323,12 @@ omd-cli plot <run_id> --list-types
 
 # Query results
 omd-cli results <run_id> --summary
+
+# One-page HTML run summary (also rendered eagerly at the end of each run)
+omd-cli summary <run_id>
+
+# Record the study conclusion (auto-derived verdicts vs plan requirements)
+omd-cli conclude <run_id> --narrative "what these results mean"
 
 # View provenance
 omd-cli provenance <plan_id> --format text
