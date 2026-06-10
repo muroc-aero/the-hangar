@@ -56,6 +56,17 @@ Run with `-s` to see comparison tables of Lane A vs Lane B results:
 uv run pytest packages/omd/examples/tests/ -v -s
 ```
 
+Lane C parity is covered in two stages:
+
+1. **Scripted (CI)** -- `tests/test_parity_lane_c.py` drives the same
+   MCP tool functions an agent uses (plan_init -> plan_add_component ->
+   assemble_plan -> validate_plan -> run_plan -> get_results) in
+   process and compares against Lane A.
+2. **Agent eval (manual / automatable)** -- `agent_eval/eval_lane_c.py`
+   launches a blind agent through the Claude Agent SDK, restricted to
+   the omd MCP tools, and scores its reported metrics against Lane A.
+   See `agent_eval/README.md`.
+
 ## Data Artifacts
 
 All omd runtime data is stored in `hangar_data/omd/`:
