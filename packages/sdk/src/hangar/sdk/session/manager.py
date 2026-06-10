@@ -269,16 +269,35 @@ class Session:
 
 
 class SessionManager:
-    """Global registry of named sessions. The default session is always available."""
+    """Global registry of named sessions, keyed per authenticated user.
+
+    The same short session name (every tool defaults to ``"default"``)
+    resolves to a different :class:`Session` per user, so surfaces, engines,
+    requirements, pins, and cached problems never cross users on a shared
+    HTTP server. On stdio there is one user per process and this degrades to
+    a plain name-keyed registry. Sessions are created on first access.
+    """
 
     def __init__(self) -> None:
-        self._sessions: dict[str, Session] = {"default": Session()}
+        self._sessions: dict[tuple[str, str], Session] = {}
+
+    @staticmethod
+    def _key(session_id: str) -> tuple[str, str]:
+        from hangar.sdk.auth import get_current_user
+
+        return (get_current_user(), session_id)
 
     def get(self, session_id: str = "default") -> Session:
-        if session_id not in self._sessions:
-            self._sessions[session_id] = Session()
-        return self._sessions[session_id]
+        key = self._key(session_id)
+        if key not in self._sessions:
+            self._sessions[key] = Session()
+        return self._sessions[key]
 
     def reset(self) -> None:
-        """Clear all sessions and cached problems."""
-        self._sessions = {"default": Session()}
+        """Clear the calling user's sessions and cached problems."""
+        from hangar.sdk.auth import get_current_user
+
+        user = get_current_user()
+        self._sessions = {
+            key: session for key, session in self._sessions.items() if key[0] != user
+        }

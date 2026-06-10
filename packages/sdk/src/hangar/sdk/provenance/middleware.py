@@ -11,34 +11,54 @@ import time
 import uuid
 from contextvars import ContextVar
 from datetime import datetime, timezone
-from typing import Any
 
 from hangar.sdk.provenance.db import _next_seq, record_tool_call, _dumps
 
 # ---------------------------------------------------------------------------
 # Session ID state
 # ---------------------------------------------------------------------------
+# The active provenance session is tracked per authenticated user so that one
+# user's start_session never repoints another user's recording on a shared
+# HTTP server. A user's choice must stick across requests (and connections),
+# so this is process-level state keyed by user, not request-scoped. On stdio
+# there is one user per process and the map holds a single entry.
 
-# Module-level: persists across asyncio task boundaries (server use)
-_server_session_id: str = "default"
+# Per-user active sessions (user -> session_id), set by start_session.
+_user_session_ids: dict[str, str] = {}
 
-# ContextVar: overrides module-level only when explicitly set (test isolation)
+# Per-process fallback for users who never called start_session. Seeded by
+# each server's main() with its auto-created startup session.
+_default_session_id: str = "default"
+
+# ContextVar: overrides everything, only when explicitly set (test isolation)
 _prov_session_id: ContextVar[str] = ContextVar("_prov_session_id", default="")
 
 
 def _get_session_id() -> str:
-    """Return the active provenance session ID.
+    """Return the active provenance session ID for the current user.
 
-    Priority: ContextVar (tests) > module-level (server).
+    Priority: ContextVar (tests) > per-user active session (start_session)
+    > per-process default (server startup auto-session).
     """
     ctx = _prov_session_id.get()
-    return ctx if ctx else _server_session_id
+    if ctx:
+        return ctx
+    from hangar.sdk.auth import get_current_user
+
+    return _user_session_ids.get(get_current_user(), _default_session_id)
 
 
 def set_server_session_id(session_id: str) -> None:
-    """Set the module-level session ID (called by start_session tool)."""
-    global _server_session_id
-    _server_session_id = session_id
+    """Set the active session ID for the current user (called by start_session)."""
+    from hangar.sdk.auth import get_current_user
+
+    _user_session_ids[get_current_user()] = session_id
+
+
+def set_default_session_id(session_id: str) -> None:
+    """Seed the per-process fallback session (called by server main() at startup)."""
+    global _default_session_id
+    _default_session_id = session_id
 
 
 # ---------------------------------------------------------------------------
