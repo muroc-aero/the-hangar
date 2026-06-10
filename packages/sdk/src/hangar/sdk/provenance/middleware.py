@@ -119,6 +119,23 @@ def capture_tool(fn):
         except Exception as exc:
             status = "error"
             error_msg = str(exc)
+            from hangar.sdk.errors import HangarError
+
+            if isinstance(exc, HangarError):
+                # Typed errors return the promised error envelope (error.code,
+                # error.details) instead of surfacing as a bare exception
+                # string, so agents can act on the code and structured details.
+                from hangar.sdk.envelope.response import make_error_envelope
+
+                result = make_error_envelope(
+                    tool_name, exc.error_code, str(exc), exc.details, inputs=kwargs,
+                )
+                result["_provenance"] = {
+                    "call_id": call_id,
+                    "session_id": session_id,
+                }
+                outputs_json = _safe_json(result)
+                return result
             raise
         else:
             # Inject _provenance into the returned dict so Claude can pass

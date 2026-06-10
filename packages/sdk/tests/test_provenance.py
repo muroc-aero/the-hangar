@@ -350,6 +350,46 @@ async def test_capture_decorator_records_on_error(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_capture_decorator_returns_error_envelope_for_hangar_errors(tmp_path):
+    """Typed HangarError subclasses become error envelopes, not raised exceptions."""
+    import sqlite3
+
+    from hangar.sdk.errors import UserInputError
+
+    init_db(tmp_path / "prov.db")
+    sid = _make_session()
+    record_session(sid)
+    token = _prov_session_id.set(sid)
+
+    try:
+
+        @capture_tool
+        async def rejecting_tool() -> dict:
+            raise UserInputError(
+                "num_nodes must be odd", details={"field": "num_nodes", "value": 4}
+            )
+
+        result = await rejecting_tool()
+
+        assert result["results"] is None
+        assert result["run_id"] is None
+        assert result["error"]["code"] == "USER_INPUT_ERROR"
+        assert result["error"]["message"] == "num_nodes must be odd"
+        assert result["error"]["details"] == {"field": "num_nodes", "value": 4}
+        assert result["_provenance"]["session_id"] == sid
+
+        # Provenance still records the call as an error.
+        db_conn = sqlite3.connect(str(tmp_path / "prov.db"))
+        rows = db_conn.execute(
+            "SELECT status, error_msg FROM tool_calls WHERE session_id=?", (sid,)
+        ).fetchall()
+        db_conn.close()
+        assert rows == [("error", "num_nodes must be odd")]
+    finally:
+        _prov_session_id.reset(token)
+
+
+@pytest.mark.asyncio
 async def test_capture_decorator_injects_provenance(tmp_path):
     """_provenance dict is injected into returned dict on success."""
     init_db(tmp_path / "prov.db")

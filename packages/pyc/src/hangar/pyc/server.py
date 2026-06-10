@@ -102,7 +102,8 @@ RESPONSE ENVELOPE (all analysis tools):
     * validation:  physics and numerics checks -- check "passed" before trusting
     * telemetry:   timing and cache info
     * run_id:      use for get_run(), pin_run(), get_artifact()
-    * error:       present when the tool failed
+    * error:       present when the tool failed; check error.code for action to take
+  Error codes: USER_INPUT_ERROR, SOLVER_CONVERGENCE_ERROR, CACHE_EVICTED_ERROR, INTERNAL_ERROR
 
 KEY OUTPUTS:
   * TSFC  -- thrust-specific fuel consumption (lbm/hr/lbf); lower = more efficient

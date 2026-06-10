@@ -165,6 +165,8 @@ RESPONSE ENVELOPE (all analysis tools):
     • telemetry:   timing and cache hit info
     • run_id:      use for get_run(), pin_run(), get_detailed_results()
     • summary:     narrative interpretation with derived metrics and delta vs previous run
+    • error:       present when the tool failed; check error.code for action to take
+  Error codes: USER_INPUT_ERROR, SOLVER_CONVERGENCE_ERROR, CACHE_EVICTED_ERROR, INTERNAL_ERROR
 
 PARAMETER SWEEP:
   Supported sweep parameters: mission_range, cruise_altitude, battery_weight,
