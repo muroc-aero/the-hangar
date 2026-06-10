@@ -73,7 +73,7 @@ NOTE: All *_cp arrays use ROOT-to-TIP ordering: cp[0]=root, cp[-1]=tip.
   Storage layout: {OAS_DATA_DIR}/{user}/{project}/{session_id}/{run_id}.json
   OAS_DATA_DIR env var controls storage root (default: ./oas_data/)
   OAS_USER env var sets user identity (default: OS login name)
-  OAS_PROJECT env var sets default project per session (default: "default")
+  configure_session(project="name") sets the project for subsequent runs (default: "default")
   Pass run_name="label" to tag a run; visible in list_artifacts output.
   list_artifacts(session_id?, analysis_type?, user?, project?)  list saved runs
   get_artifact(run_id, session_id?)             full metadata + results

@@ -176,7 +176,7 @@ ARTIFACT STORAGE (every analysis is automatically saved):
   • Each analysis tool returns a run_id — use it to retrieve results later.
   • Storage hierarchy: {HANGAR_DATA_DIR}/{user}/{project}/{session_id}/{run_id}.json
   • HANGAR_USER env var sets user identity (default: OS login name)
-  • OAS_PROJECT env var sets default project (default: "default")
+  • configure_session(project="name") sets the project for subsequent runs (default: "default")
   • Pass run_name="my label" to any analysis tool to tag a run
   • list_artifacts(session_id?, analysis_type?, user?, project?) — browse saved runs
   • get_artifact(run_id) — full metadata + results for a past run

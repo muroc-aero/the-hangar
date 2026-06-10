@@ -18,7 +18,6 @@ from hangar.sdk.telemetry import get_run_logs
 from hangar.sdk.provenance.middleware import _get_session_id, _prov_session_id, set_server_session_id
 from hangar.sdk.provenance.db import (
     _next_seq,
-    get_session_graph,
     record_cross_reference,
     record_decision,
     record_requirements,
@@ -304,7 +303,7 @@ async def record_conclusion(
 
 async def list_artifacts(
     session_id: Annotated[str | None, "Filter by session ID"] = None,
-    analysis_type: Annotated[str | None, "Filter by type: 'mission', 'optimization'"] = None,
+    analysis_type: Annotated[str | None, "Filter by type: 'mission', 'optimization', 'sweep'"] = None,
     project: Annotated[str | None, "Filter by project name"] = None,
 ) -> dict:
     """List saved analysis artifacts."""
