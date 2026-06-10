@@ -1,8 +1,9 @@
 # Multi-tenant identity seam
 
-Status: design note, 2026-06-10. Implementation is deliberately deferred;
-this records the decision and the shape of the change so the work is
-mechanical when scheduled.
+Status: implemented 2026-06-10 (PR #53). Retained as the rationale record
+for the per-user keying of `SessionManager` and the active provenance
+session; the design below matches what landed. Two-user isolation tests
+live in `packages/sdk/tests/test_multiuser.py`.
 
 ## Decision
 
@@ -27,7 +28,7 @@ behaves correctly per transport:
 All scoping below derives the user from this function. Nothing else should
 read the ContextVar directly.
 
-## What is broken today
+## What was broken (fixed in PR #53)
 
 1. **Active provenance session** (`sdk/provenance/middleware.py`).
    `_server_session_id` is a module-level global with a ContextVar override
