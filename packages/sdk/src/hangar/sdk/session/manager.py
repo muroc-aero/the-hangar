@@ -8,7 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 
@@ -276,10 +276,15 @@ class SessionManager:
     requirements, pins, and cached problems never cross users on a shared
     HTTP server. On stdio there is one user per process and this degrades to
     a plain name-keyed registry. Sessions are created on first access.
+
+    ``session_factory`` lets a tool package register a :class:`Session`
+    subclass with extra typed state (e.g. pyc's engine registry) instead of
+    duck-punching attributes onto the base class.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, session_factory: Callable[[], Session] = Session) -> None:
         self._sessions: dict[tuple[str, str], Session] = {}
+        self._session_factory = session_factory
 
     @staticmethod
     def _key(session_id: str) -> tuple[str, str]:
@@ -290,7 +295,7 @@ class SessionManager:
     def get(self, session_id: str = "default") -> Session:
         key = self._key(session_id)
         if key not in self._sessions:
-            self._sessions[key] = Session()
+            self._sessions[key] = self._session_factory()
         return self._sessions[key]
 
     def reset(self) -> None:

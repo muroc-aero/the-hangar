@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import time
-from typing import Any
 
 from hangar.sdk.artifacts.store import _make_run_id  # noqa: F401 -- re-export
 from hangar.sdk.auth import get_current_user
 from hangar.sdk.envelope.response import make_envelope
 from hangar.sdk.validation.requirements import check_requirements
 from hangar.sdk.telemetry import make_telemetry
-from hangar.sdk.state import artifacts as _artifacts
+from hangar.pyc.state import artifacts as _artifacts
 
 from hangar.pyc.validation import ValidationFinding, findings_to_dict
 

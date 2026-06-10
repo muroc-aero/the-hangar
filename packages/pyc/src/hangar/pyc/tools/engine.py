@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import asyncio
 from typing import Annotated, Any
 
-from hangar.sdk.helpers import _suppress_output
-from hangar.sdk.state import sessions as _sessions
+from hangar.pyc.state import sessions as _sessions
 
 from hangar.pyc.archetypes import get_archetype, ARCHETYPES
 from hangar.pyc.validators import (
@@ -74,14 +72,10 @@ async def create_engine(
 
     # Store engine config in session
     session = _sessions.get(session_id)
-    if not hasattr(session, "engines"):
-        session.engines = {}
-
     session.engines[name] = {
         "archetype": archetype,
         "params": params,
         "design_solved": False,
-        "design_prob": None,
     }
 
     return {

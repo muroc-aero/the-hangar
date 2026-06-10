@@ -37,6 +37,9 @@ services:
     environment:
       OCP_TRANSPORT: http
       OCP_HOST: 0.0.0.0
+      # In-container port must match the container side of the ports mapping
+      # (the server's native default is 8001).
+      OCP_PORT: 8000
       HANGAR_DATA_DIR: /data
       HANGAR_PROV_DB: /data/provenance.db
 
@@ -54,6 +57,9 @@ services:
     environment:
       PYC_TRANSPORT: http
       PYC_HOST: 0.0.0.0
+      # In-container port must match the container side of the ports mapping
+      # (the server's native default is 8002).
+      PYC_PORT: 8000
       HANGAR_DATA_DIR: /data
       HANGAR_PROV_DB: /data/provenance.db
 

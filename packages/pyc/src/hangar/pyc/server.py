@@ -44,7 +44,7 @@ from hangar.pyc.tools.session import (
 )
 
 # Re-export for tests
-from hangar.sdk.state import sessions as _sessions, artifacts as _artifacts  # noqa: F401
+from hangar.pyc.state import sessions as _sessions, artifacts as _artifacts  # noqa: F401
 
 # ---------------------------------------------------------------------------
 # Register pyCycle plot types with the SDK viewer infrastructure
@@ -137,7 +137,10 @@ VISUALIZATION:
     * ts_diagram           -- T-s diagram of the Brayton cycle
     * performance_summary  -- table card with all key engine metrics
     * component_bars       -- bar chart comparing component PR, efficiency, power
-    * design_vs_offdesign  -- paired bars comparing design vs off-design (off-design only)""",
+    * design_vs_offdesign  -- paired bars comparing design vs off-design (off-design only)
+
+Use the prompts (design_point, off_design_study, compare_engines) for guided
+workflows, and the resources (pyc://reference, pyc://workflows) for quick lookup.""",
 )
 
 # ---------------------------------------------------------------------------
@@ -191,6 +194,45 @@ mcp.tool()(_prov_tools.log_decision)
 mcp.tool()(_prov_tools.link_cross_tool_result)
 mcp.tool()(_prov_tools.export_session_graph)
 
+# ---------------------------------------------------------------------------
+# Register MCP resources
+# ---------------------------------------------------------------------------
+
+from hangar.pyc.tools.resources import (  # noqa: E402
+    artifact_by_run_id,
+    reference_guide,
+    workflow_guide,
+)
+
+mcp.resource("pyc://reference", description="Parameter reference for all pyc MCP tools")(reference_guide)
+mcp.resource("pyc://workflows", description="Step-by-step workflows for common analysis tasks")(workflow_guide)
+mcp.resource("pyc://artifacts/{run_id}", description="Retrieve a saved analysis artifact by run_id")(artifact_by_run_id)
+
+# ---------------------------------------------------------------------------
+# Register MCP prompts
+# ---------------------------------------------------------------------------
+
+from hangar.pyc.tools.prompts import (  # noqa: E402
+    prompt_compare_engines,
+    prompt_design_point,
+    prompt_off_design_study,
+)
+
+mcp.prompt(
+    name="design_point",
+    description="Guided turbojet design-point sizing workflow",
+)(prompt_design_point)
+
+mcp.prompt(
+    name="off_design_study",
+    description="Design + off-design throttle/altitude study",
+)(prompt_off_design_study)
+
+mcp.prompt(
+    name="compare_engines",
+    description="Two-engine component sensitivity comparison",
+)(prompt_compare_engines)
+
 
 # ---------------------------------------------------------------------------
 # Entry point
@@ -218,7 +260,8 @@ def main():
     parser.add_argument(
         "--port",
         type=int,
-        default=int(os.environ.get("PYC_PORT", "8001")),
+        # 8000=oas, 8001=ocp, 8002=pyc (matches the docker-compose host ports)
+        default=int(os.environ.get("PYC_PORT", "8002")),
     )
     args = parser.parse_args()
 

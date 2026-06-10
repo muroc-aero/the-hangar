@@ -13,7 +13,7 @@ from typing import Annotated
 
 from hangar.sdk.auth import get_current_user
 from hangar.sdk.helpers import _get_viewer_base_url, _resolve_run_id
-from hangar.sdk.state import artifacts as _artifacts, sessions as _sessions
+from hangar.pyc.state import artifacts as _artifacts, sessions as _sessions
 from hangar.sdk.telemetry import get_run_logs
 from hangar.sdk.provenance.middleware import _get_session_id, _prov_session_id, set_server_session_id
 from hangar.sdk.provenance.db import (
@@ -256,8 +256,6 @@ async def reset(
     """
     session = _sessions.get(session_id)
     session.clear()
-    if hasattr(session, "engines"):
-        session.engines.clear()
     return {"status": "reset", "session_id": session_id}
 
 
