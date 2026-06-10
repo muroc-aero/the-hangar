@@ -12,33 +12,16 @@ Migrated from: OpenAeroStruct/oas_mcp/cli_runner.py (generic parts only)
 from __future__ import annotations
 
 import asyncio
-import json
-from typing import Any, Callable
-
-import numpy as np
+from typing import Callable
 
 # ---------------------------------------------------------------------------
-# JSON serialization
+# JSON serialization (canonical home: sdk.serialization)
 # ---------------------------------------------------------------------------
 
-
-class _NumpyEncoder(json.JSONEncoder):
-    def default(self, obj: Any) -> Any:
-        if isinstance(obj, np.ndarray):
-            return obj.tolist()
-        if isinstance(obj, np.integer):
-            return int(obj)
-        if isinstance(obj, np.floating):
-            return float(obj)
-        if isinstance(obj, np.bool_):
-            return bool(obj)
-        return super().default(obj)
-
-
-def json_dumps(obj: Any, pretty: bool = False) -> str:
-    """Serialize obj to JSON, handling numpy types."""
-    indent = 2 if pretty else None
-    return json.dumps(obj, cls=_NumpyEncoder, indent=indent)
+from hangar.sdk.serialization import (  # noqa: E402
+    NumpyEncoder as _NumpyEncoder,  # noqa: F401 -- re-export (cli.state imports it)
+    json_dumps,  # noqa: F401 -- re-export (cli.main and tool CLIs import it)
+)
 
 
 # ---------------------------------------------------------------------------

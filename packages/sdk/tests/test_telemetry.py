@@ -51,13 +51,13 @@ class TestMakeTelemetry:
     def test_basic_telemetry(self):
         telem = make_telemetry(elapsed_s=0.123, cache_hit=True, surface_count=2)
         assert telem["elapsed_s"] == pytest.approx(0.123)
-        assert telem["oas.cache.hit"] is True
-        assert telem["oas.surface.count"] == 2
+        assert telem["cache.hit"] is True
+        assert telem["surface.count"] == 2
 
     def test_mesh_shape_included(self):
         telem = make_telemetry(0.1, False, 1, mesh_shape=(2, 7, 3))
-        assert telem["oas.mesh.nx"] == 2
-        assert telem["oas.mesh.ny"] == 7
+        assert telem["mesh.nx"] == 2
+        assert telem["mesh.ny"] == 7
 
     def test_extra_keys_included(self):
         telem = make_telemetry(0.1, False, extra={"custom": "value"})
@@ -72,3 +72,53 @@ class TestRunLogs:
     def test_unknown_run_id_returns_empty(self):
         logs = get_run_logs("nonexistent_run_id_xyz")
         assert logs is None or logs == []
+
+
+class TestConcurrentRunLogCapture:
+    @pytest.mark.asyncio
+    async def test_concurrent_runs_do_not_mix_logs(self):
+        """Two concurrent captures route their own log lines to their own buffers."""
+        import asyncio
+
+        from hangar.sdk.telemetry import RunLogStore
+        from hangar.sdk.telemetry.logging import logger
+
+        store = RunLogStore()
+
+        async def run(run_id: str, n: int) -> None:
+            with store.capture(run_id, "sess", "tool"):
+                for i in range(n):
+                    logger.warning("%s line %d", run_id, i)
+                    await asyncio.sleep(0)
+
+        await asyncio.gather(run("run_a", 5), run("run_b", 5))
+
+        logs_a = store.get_logs("run_a")
+        logs_b = store.get_logs("run_b")
+        assert len(logs_a) == 5
+        assert len(logs_b) == 5
+        assert all("run_a" in r["message"] for r in logs_a)
+        assert all("run_b" in r["message"] for r in logs_b)
+
+    def test_capture_extends_into_worker_threads(self):
+        """Logs emitted from asyncio.to_thread land in the capturing run's buffer."""
+        import asyncio
+
+        from hangar.sdk.telemetry import RunLogStore
+        from hangar.sdk.telemetry.logging import logger
+
+        store = RunLogStore()
+
+        async def main() -> None:
+            with store.capture("run_thread", "sess", "tool"):
+                await asyncio.to_thread(logger.warning, "from worker thread")
+
+        asyncio.run(main())
+        logs = store.get_logs("run_thread")
+        assert logs and logs[0]["message"] == "from worker thread"
+
+
+class TestTelemetryKeysAreToolNeutral:
+    def test_no_oas_prefixed_keys(self):
+        telem = make_telemetry(0.1, True, 1, mesh_shape=(2, 7, 3))
+        assert not [k for k in telem if k.startswith("oas.")]

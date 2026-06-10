@@ -8,22 +8,14 @@ shared across all hangar tool servers.
 from __future__ import annotations
 
 import asyncio
-import uuid
-from datetime import datetime, timezone
 from typing import Annotated
 
 from hangar.sdk.auth import get_current_user
 from hangar.sdk.helpers import _get_viewer_base_url, _resolve_run_id
 from hangar.sdk.telemetry import get_run_logs
-from hangar.sdk.provenance.middleware import _get_session_id, _prov_session_id, set_server_session_id
+from hangar.sdk.provenance.middleware import _get_session_id
 from hangar.sdk.provenance.db import (
-    _next_seq,
-    get_session_graph,
-    record_cross_reference,
-    record_decision,
     record_requirements,
-    record_session,
-    session_exists,
     update_session_project,
 )
 
@@ -35,131 +27,14 @@ from hangar.ocp.state import sessions as _sessions, artifacts as _artifacts
 # ---------------------------------------------------------------------------
 
 
-async def start_session(
-    notes: Annotated[str, "Optional notes describing this provenance session"] = "",
-    session_id: Annotated[
-        str | None,
-        "Session ID to join (for cross-tool workflows). "
-        "If None, a new session is created.",
-    ] = None,
-) -> dict:
-    """Start a new provenance session for this OCP workflow.
+from hangar.sdk.provenance.tools import build_provenance_tools
 
-    Returns ``{session_id, started_at, joined}``.
-    """
-    joined = False
-    if session_id is not None and session_exists(session_id):
-        joined = True
-    elif session_id is None:
-        session_id = f"sess-{uuid.uuid4().hex[:12]}"
-
-    started_at = datetime.now(timezone.utc).isoformat()
-    if not joined:
-        record_session(session_id, notes=notes, user=get_current_user())
-    set_server_session_id(session_id)
-    _prov_session_id.set(session_id)
-    return {"session_id": session_id, "started_at": started_at, "joined": joined}
-
-
-async def log_decision(
-    decision_type: Annotated[
-        str,
-        "Category: 'architecture_choice', 'mission_params', 'dv_selection', "
-        "'constraint_choice', 'result_interpretation', 'convergence_assessment'",
-    ],
-    reasoning: Annotated[str, "Explanation of why this decision was made"],
-    selected_action: Annotated[str, "The action or value chosen"],
-    prior_call_id: Annotated[str | None, "call_id from a preceding tool result"] = None,
-    confidence: Annotated[str, "Confidence level: 'high', 'medium', or 'low'"] = "medium",
-) -> dict:
-    """Record a reasoning/decision step in the provenance log."""
-    session_id = _get_session_id()
-    decision_id = str(uuid.uuid4())
-    seq = _next_seq(session_id)
-    record_decision(
-        decision_id=decision_id,
-        session_id=session_id,
-        seq=seq,
-        decision_type=decision_type,
-        reasoning=reasoning,
-        prior_call_id=prior_call_id,
-        selected_action=selected_action,
-        confidence=confidence,
-    )
-    return {"decision_id": decision_id}
-
-
-async def link_cross_tool_result(
-    source_call_id: Annotated[str, "call_id from the source tool's _provenance field"],
-    source_tool: Annotated[str, "Name of the source tool server (e.g. 'oas', 'ocp', 'pyc')"],
-    target_tool: Annotated[str, "Name of the target tool server that will consume this data"],
-    target_call_id: Annotated[str | None, "call_id from the target tool (if known)"] = None,
-    variables: Annotated[dict | None, "Data being passed between tools"] = None,
-    notes: Annotated[str, "Description of the data handoff"] = "",
-) -> dict:
-    """Record a cross-tool data dependency in the provenance graph.
-
-    Call this when passing results from one tool server to another.
-    Creates a visible edge in the provenance DAG connecting the two tool calls.
-
-    Returns ``{ref_id}``.
-    """
-    session_id = _get_session_id()
-    ref_id = str(uuid.uuid4())
-    record_cross_reference(
-        ref_id=ref_id,
-        session_id=session_id,
-        source_call_id=source_call_id,
-        source_tool=source_tool,
-        target_call_id=target_call_id,
-        target_tool=target_tool,
-        variables=variables,
-        notes=notes,
-    )
-    return {"ref_id": ref_id}
-
-
-async def export_session_graph(
-    session_id: Annotated[str | None, "Session ID to export (None = current)"] = None,
-) -> dict:
-    """Export the provenance graph for a session as JSON."""
-    from hangar.sdk.provenance.flush import flush_session_graph
-
-    sid = session_id or _get_session_id()
-    user = get_current_user()
-    try:
-        session = _sessions.get(sid)
-        project = session.project
-    except Exception:
-        project = None
-
-    flush_result = flush_session_graph(sid, user=user, project=project)
-
-    viewer_url: str | None = None
-    try:
-        base = _get_viewer_base_url()
-        if base:
-            viewer_url = f"{base}/viewer?session_id={sid}"
-    except Exception:
-        pass
-
-    unified_viewer_url: str | None = None
-    try:
-        from hangar.sdk.helpers import _get_unified_viewer_url
-        ubase = _get_unified_viewer_url()
-        if ubase:
-            unified_viewer_url = f"{ubase}/viewer?session_id={sid}"
-    except Exception:
-        pass
-
-    return {
-        "session_id": sid,
-        "graph_path": flush_result.get("path"),
-        "viewer_url": viewer_url,
-        "unified_viewer_url": unified_viewer_url,
-        "node_count": flush_result.get("node_count", 0),
-        "edge_count": flush_result.get("edge_count", 0),
-    }
+# The four shared provenance tools, bound to this package's session manager.
+_prov = build_provenance_tools(_sessions)
+start_session = _prov.start_session
+log_decision = _prov.log_decision
+link_cross_tool_result = _prov.link_cross_tool_result
+export_session_graph = _prov.export_session_graph
 
 
 # ---------------------------------------------------------------------------
@@ -304,7 +179,7 @@ async def record_conclusion(
 
 async def list_artifacts(
     session_id: Annotated[str | None, "Filter by session ID"] = None,
-    analysis_type: Annotated[str | None, "Filter by type: 'mission', 'optimization'"] = None,
+    analysis_type: Annotated[str | None, "Filter by type: 'mission', 'optimization', 'sweep'"] = None,
     project: Annotated[str | None, "Filter by project name"] = None,
 ) -> dict:
     """List saved analysis artifacts."""

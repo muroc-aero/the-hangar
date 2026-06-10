@@ -10,11 +10,9 @@ from typing import Annotated
 from hangar.sdk.helpers import _suppress_output
 
 from hangar.ocp.builders import build_mission_problem
-from hangar.ocp.config.defaults import PROPULSION_ARCHITECTURES
 from hangar.ocp.results import extract_mission_results
 from hangar.ocp.state import sessions as _sessions
 from hangar.ocp.tools._helpers import _finalize_analysis, _make_run_id
-from hangar.ocp.validation import validate_mission_results
 from hangar.ocp.validators import validate_session_ready_for_analysis
 
 
@@ -161,7 +159,7 @@ async def run_parameter_sweep(
         run_id=run_id,
         session=session,
         session_id=session_id,
-        analysis_type="mission",
+        analysis_type="sweep",
         inputs=inputs,
         results=results,
         trajectory=None,

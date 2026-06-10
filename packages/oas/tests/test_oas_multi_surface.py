@@ -103,3 +103,54 @@ class TestMultiSurfaceAerostruct:
     async def test_fuelburn_positive(self, wing_and_tail_struct):
         r = _r(await run_aerostruct_analysis(wing_and_tail_struct, alpha=5.0))
         assert r["fuelburn"] > 0
+
+
+# ---------------------------------------------------------------------------
+# Multi-surface optimization scope warning
+# ---------------------------------------------------------------------------
+
+
+class TestMultiSurfaceScopeFinding:
+    def test_surface_scoped_dv_warns(self):
+        from hangar.oas.tools.optimization import _multi_surface_scope_finding
+
+        finding = _multi_surface_scope_finding(
+            ["wing", "tail"],
+            [{"name": "twist", "lower": -10, "upper": 10}],
+            [{"name": "CL", "equals": 0.5}],
+        )
+        assert finding is not None
+        assert finding.check_id == "setup.multi_surface_dv_scope"
+        assert finding.severity == "warning"
+        assert "twist" in finding.message
+        assert "'wing'" in finding.message
+
+    def test_cp_alias_counts_as_surface_scoped(self):
+        from hangar.oas.tools.optimization import _multi_surface_scope_finding
+
+        finding = _multi_surface_scope_finding(
+            ["wing", "tail"],
+            [{"name": "twist_cp", "lower": -10, "upper": 10}],
+            [],
+        )
+        assert finding is not None
+
+    def test_scalar_dv_and_toplevel_constraints_do_not_warn(self):
+        from hangar.oas.tools.optimization import _multi_surface_scope_finding
+
+        finding = _multi_surface_scope_finding(
+            ["wing", "tail"],
+            [{"name": "alpha", "lower": -5, "upper": 10}],
+            [{"name": "L_equals_W", "equals": 0.0}],
+        )
+        assert finding is None
+
+    def test_single_surface_does_not_warn(self):
+        from hangar.oas.tools.optimization import _multi_surface_scope_finding
+
+        finding = _multi_surface_scope_finding(
+            ["wing"],
+            [{"name": "twist", "lower": -10, "upper": 10}],
+            [{"name": "failure", "upper": 0.0}],
+        )
+        assert finding is None

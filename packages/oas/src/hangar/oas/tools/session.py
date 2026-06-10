@@ -10,10 +10,6 @@ Migrated from:
 from __future__ import annotations
 
 import asyncio
-import json
-import uuid
-from datetime import datetime, timezone
-from pathlib import Path
 from typing import Annotated
 
 import numpy as np
@@ -24,17 +20,9 @@ from hangar.sdk.state import artifacts as _artifacts, sessions as _sessions
 from hangar.sdk.telemetry import get_run_logs
 from hangar.sdk.viz.plotting import PLOT_TYPES, generate_n2, generate_plot
 from hangar.sdk.viz.widget import extract_plot_data
-from hangar.sdk.provenance.middleware import _get_session_id, _prov_session_id, set_server_session_id
+from hangar.sdk.provenance.middleware import _get_session_id
 from hangar.sdk.provenance.db import (
-    _dumps,
-    _next_seq,
-    get_session_graph,
-    list_sessions,
-    record_cross_reference,
-    record_decision,
     record_requirements,
-    record_session,
-    session_exists,
     update_session_project,
 )
 
@@ -47,176 +35,14 @@ from hangar.oas.validators import validate_safe_name
 # start_session, log_decision, export_session_graph
 
 
-async def start_session(
-    notes: Annotated[str, "Optional notes describing this provenance session"] = "",
-    session_id: Annotated[
-        str | None,
-        "Session ID to join (for cross-tool workflows). "
-        "If None, a new session is created. If the ID already exists, "
-        "this server joins the existing session.",
-    ] = None,
-) -> dict:
-    """Start a new provenance session and set it as the current session.
+from hangar.sdk.provenance.tools import build_provenance_tools
 
-    Returns ``{session_id, started_at, joined}``.  Call this at the beginning of a
-    workflow to group all subsequent tool calls under a named session.
-
-    Pass an existing ``session_id`` to join a session created by another tool
-    server (e.g., for cross-tool workflows where OAS and OCP share provenance).
-    """
-    joined = False
-    if session_id is not None and session_exists(session_id):
-        joined = True
-    elif session_id is None:
-        session_id = f"sess-{uuid.uuid4().hex[:12]}"
-
-    started_at = datetime.now(timezone.utc).isoformat()
-    if not joined:
-        record_session(session_id, notes=notes, user=get_current_user())
-    # Set module-level var so all subsequent tool calls (separate asyncio tasks)
-    # are recorded under this session.
-    set_server_session_id(session_id)
-    # Also set ContextVar for test isolation (has priority over module-level).
-    _prov_session_id.set(session_id)
-    return {"session_id": session_id, "started_at": started_at, "joined": joined}
-
-
-async def log_decision(
-    decision_type: Annotated[
-        str,
-        "Category of decision (e.g. 'dv_selection', 'mesh_resolution', 'constraint_choice', 'result_interpretation')",
-    ],
-    reasoning: Annotated[str, "Explanation of why this decision was made"],
-    selected_action: Annotated[str, "The action or value chosen"],
-    prior_call_id: Annotated[
-        str | None,
-        "call_id from the _provenance field of a preceding tool result that informed this decision",
-    ] = None,
-    confidence: Annotated[
-        str, "Confidence level: 'high', 'medium', or 'low'"
-    ] = "medium",
-) -> dict:
-    """Record a reasoning/decision step in the provenance log.
-
-    Use this before major steps (choosing design variables, setting mesh
-    resolution, interpreting unexpected results) to create an audit trail.
-    Returns ``{decision_id}``.
-    """
-    session_id = _get_session_id()
-    decision_id = str(uuid.uuid4())
-    seq = _next_seq(session_id)
-    record_decision(
-        decision_id=decision_id,
-        session_id=session_id,
-        seq=seq,
-        decision_type=decision_type,
-        reasoning=reasoning,
-        prior_call_id=prior_call_id,
-        selected_action=selected_action,
-        confidence=confidence,
-    )
-    return {"decision_id": decision_id}
-
-
-async def link_cross_tool_result(
-    source_call_id: Annotated[
-        str,
-        "call_id from the source tool's _provenance field",
-    ],
-    source_tool: Annotated[
-        str,
-        "Name of the source tool server (e.g. 'oas', 'ocp', 'pyc')",
-    ],
-    target_tool: Annotated[
-        str,
-        "Name of the target tool server that will consume this data",
-    ],
-    target_call_id: Annotated[
-        str | None,
-        "call_id from the target tool's _provenance field (if known)",
-    ] = None,
-    variables: Annotated[
-        dict | None,
-        "Data being passed between tools (e.g. {'CD': 0.032, 'structural_mass': 1500})",
-    ] = None,
-    notes: Annotated[
-        str,
-        "Description of the data handoff",
-    ] = "",
-) -> dict:
-    """Record a cross-tool data dependency in the provenance graph.
-
-    Call this when passing results from one tool server to another (e.g.,
-    using OAS drag output as input to OCP mission analysis). Creates a
-    visible edge in the provenance DAG connecting the two tool calls.
-
-    Returns ``{ref_id}``.
-    """
-    session_id = _get_session_id()
-    ref_id = str(uuid.uuid4())
-    record_cross_reference(
-        ref_id=ref_id,
-        session_id=session_id,
-        source_call_id=source_call_id,
-        source_tool=source_tool,
-        target_call_id=target_call_id,
-        target_tool=target_tool,
-        variables=variables,
-        notes=notes,
-    )
-    return {"ref_id": ref_id}
-
-
-async def export_session_graph(
-    session_id: Annotated[
-        str | None,
-        "Session ID to export (None = current session)",
-    ] = None,
-) -> dict:
-    """Export the provenance graph for a session as a JSON dict.
-
-    Returns ``{session_id, graph_path, viewer_url, node_count, edge_count}``
-    where *graph_path* is the auto-generated file in the artifact directory.
-    Load the JSON into the provenance viewer to visualise the DAG.
-    """
-    from hangar.sdk.provenance.flush import flush_session_graph
-
-    sid = session_id or _get_session_id()
-
-    user = get_current_user()
-    try:
-        session = _sessions.get(sid)
-        project = session.project
-    except Exception:
-        project = None
-
-    flush_result = flush_session_graph(sid, user=user, project=project)
-
-    viewer_url: str | None = None
-    try:
-        base = _get_viewer_base_url()
-        if base:
-            viewer_url = f"{base}/viewer?session_id={sid}"
-    except Exception:
-        pass
-
-    unified_viewer_url: str | None = None
-    try:
-        from hangar.sdk.helpers import _get_unified_viewer_url
-        ubase = _get_unified_viewer_url()
-        if ubase:
-            unified_viewer_url = f"{ubase}/viewer?session_id={sid}"
-    except Exception:
-        pass
-
-    return {
-        "session_id": sid,
-        "graph_path": flush_result.get("path"),
-        "viewer_url": viewer_url,
-        "unified_viewer_url": unified_viewer_url,
-        "node_count": flush_result.get("node_count", 0),
-        "edge_count": flush_result.get("edge_count", 0),
-    }
+# The four shared provenance tools, bound to this package's session manager.
+_prov = build_provenance_tools(_sessions)
+start_session = _prov.start_session
+log_decision = _prov.log_decision
+link_cross_tool_result = _prov.link_cross_tool_result
+export_session_graph = _prov.export_session_graph
 
 
 # ---------------------------------------------------------------------------

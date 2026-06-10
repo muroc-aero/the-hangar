@@ -9,6 +9,7 @@ import hashlib
 import logging
 import os
 from collections import deque
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from threading import Lock
 from typing import Any
@@ -66,24 +67,32 @@ class _RunLogBuffer:
     records: list[dict] = field(default_factory=list)
 
 
+# The active capture target is a ContextVar, not a module global: each
+# request/task (and anything it runs via asyncio.to_thread, which copies the
+# context) captures into its own buffer. A single global slot mixed log lines
+# from concurrent runs and, on a shared HTTP server, leaked one user's solver
+# output into another user's run.
+_active_run_buf: ContextVar[_RunLogBuffer | None] = ContextVar(
+    "_active_run_buf", default=None
+)
+
+
 class _RunLogHandler(logging.Handler):
     """In-memory handler that routes records to the active run buffer."""
 
     def __init__(self) -> None:
         super().__init__()
         self._lock = Lock()
-        self._active: _RunLogBuffer | None = None
         self._store: deque[_RunLogBuffer] = deque(maxlen=_MAX_RUNS)
         self._by_run_id: dict[str, _RunLogBuffer] = {}
 
     def set_active(self, buf: _RunLogBuffer) -> None:
-        with self._lock:
-            self._active = buf
+        _active_run_buf.set(buf)
 
     def clear_active(self, buf: _RunLogBuffer) -> None:
+        if _active_run_buf.get() is buf:
+            _active_run_buf.set(None)
         with self._lock:
-            if self._active is buf:
-                self._active = None
             # Evict oldest entry from _by_run_id before deque overwrites it
             if len(self._store) == self._store.maxlen:
                 evicted = self._store[0]
@@ -92,24 +101,25 @@ class _RunLogHandler(logging.Handler):
             self._by_run_id[buf.run_id] = buf
 
     def emit(self, record: logging.LogRecord) -> None:
-        with self._lock:
-            if self._active is not None:
-                from datetime import datetime, timezone
-                ts = datetime.fromtimestamp(record.created, tz=timezone.utc).strftime(
-                    "%Y-%m-%dT%H:%M:%S"
-                )
-                self._active.records.append({
-                    "time": ts,
-                    "level": record.levelname,
-                    "message": record.getMessage(),
-                    "logger": record.name,
-                })
+        buf = _active_run_buf.get()
+        if buf is not None:
+            from datetime import datetime, timezone
+            ts = datetime.fromtimestamp(record.created, tz=timezone.utc).strftime(
+                "%Y-%m-%dT%H:%M:%S"
+            )
+            buf.records.append({
+                "time": ts,
+                "level": record.levelname,
+                "message": record.getMessage(),
+                "logger": record.name,
+            })
 
     def get_logs(self, run_id: str) -> list[dict] | None:
+        active = _active_run_buf.get()
         with self._lock:
             buf = self._by_run_id.get(run_id)
-            if buf is None and self._active and self._active.run_id == run_id:
-                buf = self._active
+            if buf is None and active is not None and active.run_id == run_id:
+                buf = active
             return list(buf.records) if buf is not None else None
 
 
@@ -207,12 +217,12 @@ def make_telemetry(
     """
     telem: dict[str, Any] = {
         "elapsed_s": round(elapsed_s, 4),
-        "oas.cache.hit": cache_hit,
-        "oas.surface.count": surface_count,
+        "cache.hit": cache_hit,
+        "surface.count": surface_count,
     }
     if mesh_shape is not None:
-        telem["oas.mesh.nx"] = mesh_shape[0]
-        telem["oas.mesh.ny"] = mesh_shape[1]
+        telem["mesh.nx"] = mesh_shape[0]
+        telem["mesh.ny"] = mesh_shape[1]
     if extra:
         telem.update(extra)
     return telem

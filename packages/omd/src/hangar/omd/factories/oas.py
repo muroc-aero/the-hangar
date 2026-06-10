@@ -59,6 +59,46 @@ _DEFAULT_FLIGHT_CONDITIONS: dict[str, Any] = {
     "empty_cg": [0.35, 0.0, 0.0],
 }
 
+# Keys consumed by _generate_mesh and the geometric transforms.
+_MESH_CONFIG_KEYS: frozenset[str] = frozenset({
+    "name", "num_x", "num_y", "wing_type", "symmetry", "span", "root_chord",
+    "span_cos_spacing", "chord_cos_spacing", "offset", "num_twist_cp",
+    "sweep", "dihedral", "taper",
+})
+
+# Every surface-config key _plan_config_to_surface_dict knows how to forward
+# to OAS. Anything outside this set is silently ignored by the builder, so we
+# warn about it (typo'd keys used to vanish without a trace).
+_KNOWN_SURFACE_KEYS: frozenset[str] = (
+    _MESH_CONFIG_KEYS
+    | frozenset(_DEFAULT_AERO_SURFACE)
+    | frozenset(_DEFAULT_STRUCT_PROPS)
+    | frozenset({
+        "fem_model_type", "E", "G", "yield_stress", "mrho",
+        "twist_cp", "chord_cp", "thickness_cp",
+        "spar_thickness_cp", "skin_thickness_cp",
+        "data_x_upper", "data_x_lower", "data_y_upper", "data_y_lower",
+        "original_wingbox_airfoil_t_over_c", "Wf_reserve", "fuel_density",
+        "use_composite", "ply_angles", "ply_fractions",
+        "E1", "E2", "nu12", "G12",
+        "sigma_t1", "sigma_c1", "sigma_t2", "sigma_c2", "sigma_12max",
+        "n_point_masses", "groundplane",
+    })
+)
+
+
+def _warn_unknown_surface_keys(
+    surface_config: dict, known_keys: frozenset[str],
+) -> None:
+    """Warn about surface-config keys the factory will not forward to OAS."""
+    unknown = sorted(set(surface_config) - known_keys)
+    if unknown:
+        logging.getLogger(__name__).warning(
+            "Surface '%s': unrecognized config key(s) %s will be ignored. "
+            "Check for typos against the supported mesh/aero/structural keys.",
+            surface_config.get("name", "?"), unknown,
+        )
+
 
 # ---------------------------------------------------------------------------
 # Mesh generation
@@ -172,6 +212,8 @@ def _plan_config_to_surface_dict(surface_config: dict) -> dict:
     Returns:
         OAS-compatible surface dict with mesh and all required fields.
     """
+    _warn_unknown_surface_keys(surface_config, _KNOWN_SURFACE_KEYS)
+
     # Generate mesh
     mesh, default_twist_cp = _generate_mesh(surface_config)
 
@@ -249,6 +291,11 @@ def _plan_config_to_surface_dict(surface_config: dict) -> dict:
         surface["twist_cp"] = default_twist_cp
     else:
         surface["twist_cp"] = np.zeros(n_cp)
+
+    # Chord control points (optional -- needed for chord optimization; the
+    # factory advertises {name}.chord_cp in var_paths, so forward it)
+    if "chord_cp" in surface_config:
+        surface["chord_cp"] = np.array(surface_config["chord_cp"])
 
     if fem_model_type == "tube":
         if "thickness_cp" in surface_config:

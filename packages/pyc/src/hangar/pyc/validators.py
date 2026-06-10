@@ -66,7 +66,7 @@ def validate_design_variables(
 
 def validate_engine_exists(session, engine_name: str) -> dict:
     """Validate engine exists in session, return its config."""
-    engines = getattr(session, "engines", {})
+    engines = session.engines
     if engine_name not in engines:
         available = list(engines.keys())
         raise ValueError(

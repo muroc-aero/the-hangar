@@ -6,7 +6,7 @@ Migrated from: OpenAeroStruct/oas_mcp/core/artifacts.py
 from __future__ import annotations
 
 import json
-import os
+import logging
 import secrets
 import threading
 from datetime import datetime, timedelta, timezone
@@ -15,7 +15,7 @@ from typing import Any
 
 import re
 
-import numpy as np
+logger = logging.getLogger(__name__)
 
 _SAFE_NAME_RE = re.compile(r"^[a-zA-Z0-9_\-. @]+$")
 
@@ -51,19 +51,12 @@ def _default_data_dir() -> Path:
     return Path(_hangar_env("HANGAR_DATA_DIR", "OAS_DATA_DIR", default="./hangar_data"))
 
 
-class _NumpyEncoder(json.JSONEncoder):
-    """Extend JSONEncoder to handle numpy scalars and arrays."""
-
-    def default(self, obj: Any) -> Any:
-        if isinstance(obj, np.ndarray):
-            return obj.tolist()
-        if isinstance(obj, np.integer):
-            return int(obj)
-        if isinstance(obj, np.floating):
-            return float(obj)
-        if isinstance(obj, np.bool_):
-            return bool(obj)
-        return super().default(obj)
+# Canonical numpy-aware encoder (sanitizes inf/nan); kept under the old name
+# because hangar.sdk.artifacts re-exports it.
+from hangar.sdk.serialization import (  # noqa: E402
+    NumpyEncoder as _NumpyEncoder,
+    sanitize_for_json as _sanitize_for_json,
+)
 
 
 def _make_run_id() -> str:
@@ -131,7 +124,7 @@ class ArtifactStore:
         tmp = index_path.with_suffix(".tmp")
         try:
             with tmp.open("w") as f:
-                json.dump(index, f, indent=2, cls=_NumpyEncoder)
+                json.dump(_sanitize_for_json(index), f, indent=2, cls=_NumpyEncoder)
             tmp.replace(index_path)
         except OSError:
             tmp.unlink(missing_ok=True)
@@ -284,7 +277,9 @@ class ArtifactStore:
             artifact_path = self._artifact_path(user, project, session_id, run_id)
             artifact_path.parent.mkdir(parents=True, exist_ok=True)
             with artifact_path.open("w") as f:
-                json.dump(artifact, f, indent=2, cls=_NumpyEncoder)
+                # Sanitize first: the encoder's default() never fires for
+                # native floats, so bare inf/nan would emit invalid JSON.
+                json.dump(_sanitize_for_json(artifact), f, indent=2, cls=_NumpyEncoder)
 
             index = self._load_index(user, project, session_id)
             # Deduplicate: remove any existing entry with the same run_id
@@ -389,7 +384,10 @@ class ArtifactStore:
                         with path.open() as f:
                             return _migrate_artifact(json.load(f))
                     except (json.JSONDecodeError, OSError):
-                        return None
+                        # A corrupt file must not abort the whole search:
+                        # another session dir may hold a valid copy.
+                        logger.warning("Skipping corrupt artifact file %s", path)
+                        continue
         return None
 
     def get_summary(

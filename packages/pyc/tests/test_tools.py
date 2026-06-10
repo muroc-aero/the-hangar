@@ -239,3 +239,28 @@ class TestArtifactScoping:
         await reset()
         with pytest.raises(ValueError, match="not found"):
             await run_design_point(engine_name=turbojet_engine)
+
+
+# ---------------------------------------------------------------------------
+# Typed session state
+# ---------------------------------------------------------------------------
+
+
+class TestTypedSessionState:
+    async def test_session_is_pyc_session_with_engines_field(self):
+        from hangar.pyc.state import PycSession, sessions
+
+        await create_engine(archetype="turbojet", name="typed1")
+        session = sessions.get("default")
+        assert isinstance(session, PycSession)
+        assert "typed1" in session.engines
+        # No live OpenMDAO problem is stored in the engine config
+        assert "design_prob" not in session.engines["typed1"]
+
+    async def test_clear_resets_engines(self):
+        from hangar.pyc.state import sessions
+
+        await create_engine(archetype="turbojet", name="typed2")
+        session = sessions.get("default")
+        session.clear()
+        assert session.engines == {}

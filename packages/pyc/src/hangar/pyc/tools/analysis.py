@@ -7,7 +7,7 @@ import time
 from typing import Annotated
 
 from hangar.sdk.helpers import _suppress_output
-from hangar.sdk.state import sessions as _sessions
+from hangar.pyc.state import sessions as _sessions
 
 from hangar.pyc.archetypes import get_archetype
 from hangar.pyc.builders import build_design_problem, build_multipoint_problem
@@ -69,8 +69,10 @@ async def run_design_point(
 
     prob = await asyncio.to_thread(_suppress_output, _run)
 
-    # Store the solved problem for off-design reuse
-    engine_cfg["design_prob"] = prob
+    # Record the sizing, but not the Problem object: off-design builds a
+    # fresh multipoint problem (which re-solves the design point) every
+    # call, so a stored design problem was never reused -- it only pinned
+    # a large OpenMDAO model in session memory for the engine's lifetime.
     engine_cfg["design_solved"] = True
     engine_cfg["design_conditions"] = design_conditions
 

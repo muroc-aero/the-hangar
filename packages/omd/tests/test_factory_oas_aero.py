@@ -53,3 +53,20 @@ def test_build_oas_aeropoint_runs():
 def test_build_oas_aeropoint_missing_surfaces():
     with pytest.raises(ValueError, match="surfaces"):
         build_oas_aeropoint({}, {})
+
+
+def test_aero_unknown_surface_key_warns(caplog, monkeypatch):
+    import logging
+
+    from hangar.omd.factories.oas_aero import _plan_config_to_aero_surface
+
+    monkeypatch.setattr(logging.getLogger("hangar"), "propagate", True)
+
+    config = {
+        "name": "wing", "wing_type": "rect", "num_x": 2, "num_y": 5,
+        "span": 10.0, "root_chord": 1.0, "symmetry": True,
+        "chord_pc": [1.0, 1.0],  # typo for chord_cp
+    }
+    with caplog.at_level(logging.WARNING, logger="hangar.omd.factories.oas"):
+        _plan_config_to_aero_surface(config)
+    assert any("chord_pc" in r.message for r in caplog.records)

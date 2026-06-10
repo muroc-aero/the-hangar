@@ -7,15 +7,11 @@ from __future__ import annotations
 
 import json
 import logging
-import math
-import os
 import sqlite3
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-
-import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -29,46 +25,14 @@ _local = threading.local()
 
 
 # ---------------------------------------------------------------------------
-# JSON serialiser that handles numpy types
+# JSON serialiser that handles numpy types (canonical home: sdk.serialization)
 # ---------------------------------------------------------------------------
 
-
-def _sanitize_for_json(obj: Any) -> Any:
-    """Replace inf/nan with JSON-safe values, recursing into containers."""
-    if isinstance(obj, float):
-        if math.isinf(obj) or math.isnan(obj):
-            return None
-        return obj
-    if isinstance(obj, dict):
-        return {k: _sanitize_for_json(v) for k, v in obj.items()}
-    if isinstance(obj, (list, tuple)):
-        return [_sanitize_for_json(v) for v in obj]
-    return obj
-
-
-class _NumpyEncoder(json.JSONEncoder):
-    def default(self, obj: Any) -> Any:
-        if isinstance(obj, np.ndarray):
-            return _sanitize_for_json(obj.tolist())
-        if isinstance(obj, np.integer):
-            return int(obj)
-        if isinstance(obj, np.floating):
-            val = float(obj)
-            if math.isinf(val) or math.isnan(val):
-                return None
-            return val
-        if isinstance(obj, np.bool_):
-            return bool(obj)
-        # str() fallback for any other un-serialisable object
-        return str(obj)
-
-
-def _dumps(obj: Any) -> str:
-    # Sanitize inf/nan in plain Python containers before encoding — the
-    # encoder's default() only fires for non-native types, so plain
-    # float('inf') would otherwise slip through as the non-standard
-    # ``Infinity`` literal that breaks JSON.parse() in browsers.
-    return json.dumps(_sanitize_for_json(obj), cls=_NumpyEncoder)
+from hangar.sdk.serialization import (  # noqa: E402
+    NumpyEncoder as _NumpyEncoder,  # noqa: F401 -- re-export for callers
+    json_dumps as _dumps,
+    sanitize_for_json as _sanitize_for_json,  # noqa: F401 -- re-export for callers
+)
 
 
 # ---------------------------------------------------------------------------
@@ -167,6 +131,11 @@ CREATE TABLE IF NOT EXISTS requirements (
     recorded_at TEXT NOT NULL,
     PRIMARY KEY (session_id, seq),
     FOREIGN KEY (session_id) REFERENCES sessions(session_id)
+);
+
+CREATE TABLE IF NOT EXISTS seq_counters (
+    session_id TEXT PRIMARY KEY,
+    last_seq   INTEGER NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_tool_calls_session ON tool_calls(session_id, seq);
@@ -486,17 +455,33 @@ def get_conclusion(session_id: str) -> dict | None:
 
 
 def _next_seq(session_id: str) -> int:
-    """Return the next sequence number for *session_id* (MAX across both tables + 1)."""
+    """Atomically claim the next sequence number for *session_id*.
+
+    Uses a per-session counter row claimed via a single UPSERT statement, so
+    concurrent claimants (threads, or processes sharing the DB file) cannot
+    read the same MAX(seq) and collide. The counter seeds itself from the
+    existing tool_calls/decisions rows so legacy DBs continue where they
+    left off.
+    """
     conn = _get_conn()
-    row_tc = conn.execute(
-        "SELECT MAX(seq) FROM tool_calls WHERE session_id=?", (session_id,)
-    ).fetchone()
-    row_d = conn.execute(
-        "SELECT MAX(seq) FROM decisions WHERE session_id=?", (session_id,)
-    ).fetchone()
-    max_tc = row_tc[0] if row_tc[0] is not None else -1
-    max_d = row_d[0] if row_d[0] is not None else -1
-    return max(max_tc, max_d) + 1
+    with conn:
+        row = conn.execute(
+            """
+            INSERT INTO seq_counters (session_id, last_seq)
+            VALUES (
+                :sid,
+                (SELECT COALESCE(MAX(s), -1) + 1 FROM (
+                    SELECT MAX(seq) AS s FROM tool_calls WHERE session_id = :sid
+                    UNION ALL
+                    SELECT MAX(seq) AS s FROM decisions WHERE session_id = :sid
+                ))
+            )
+            ON CONFLICT(session_id) DO UPDATE SET last_seq = last_seq + 1
+            RETURNING last_seq
+            """,
+            {"sid": session_id},
+        ).fetchone()
+    return int(row[0])
 
 
 def get_session_graph(session_id: str) -> dict:

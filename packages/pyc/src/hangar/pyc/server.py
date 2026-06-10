@@ -44,7 +44,7 @@ from hangar.pyc.tools.session import (
 )
 
 # Re-export for tests
-from hangar.sdk.state import sessions as _sessions, artifacts as _artifacts  # noqa: F401
+from hangar.pyc.state import sessions as _sessions, artifacts as _artifacts  # noqa: F401
 
 # ---------------------------------------------------------------------------
 # Register pyCycle plot types with the SDK viewer infrastructure
@@ -102,7 +102,8 @@ RESPONSE ENVELOPE (all analysis tools):
     * validation:  physics and numerics checks -- check "passed" before trusting
     * telemetry:   timing and cache info
     * run_id:      use for get_run(), pin_run(), get_artifact()
-    * error:       present when the tool failed
+    * error:       present when the tool failed; check error.code for action to take
+  Error codes: USER_INPUT_ERROR, SOLVER_CONVERGENCE_ERROR, CACHE_EVICTED_ERROR, INTERNAL_ERROR
 
 KEY OUTPUTS:
   * TSFC  -- thrust-specific fuel consumption (lbm/hr/lbf); lower = more efficient
@@ -136,7 +137,10 @@ VISUALIZATION:
     * ts_diagram           -- T-s diagram of the Brayton cycle
     * performance_summary  -- table card with all key engine metrics
     * component_bars       -- bar chart comparing component PR, efficiency, power
-    * design_vs_offdesign  -- paired bars comparing design vs off-design (off-design only)""",
+    * design_vs_offdesign  -- paired bars comparing design vs off-design (off-design only)
+
+Use the prompts (design_point, off_design_study, compare_engines) for guided
+workflows, and the resources (pyc://reference, pyc://workflows) for quick lookup.""",
 )
 
 # ---------------------------------------------------------------------------
@@ -190,6 +194,45 @@ mcp.tool()(_prov_tools.log_decision)
 mcp.tool()(_prov_tools.link_cross_tool_result)
 mcp.tool()(_prov_tools.export_session_graph)
 
+# ---------------------------------------------------------------------------
+# Register MCP resources
+# ---------------------------------------------------------------------------
+
+from hangar.pyc.tools.resources import (  # noqa: E402
+    artifact_by_run_id,
+    reference_guide,
+    workflow_guide,
+)
+
+mcp.resource("pyc://reference", description="Parameter reference for all pyc MCP tools")(reference_guide)
+mcp.resource("pyc://workflows", description="Step-by-step workflows for common analysis tasks")(workflow_guide)
+mcp.resource("pyc://artifacts/{run_id}", description="Retrieve a saved analysis artifact by run_id")(artifact_by_run_id)
+
+# ---------------------------------------------------------------------------
+# Register MCP prompts
+# ---------------------------------------------------------------------------
+
+from hangar.pyc.tools.prompts import (  # noqa: E402
+    prompt_compare_engines,
+    prompt_design_point,
+    prompt_off_design_study,
+)
+
+mcp.prompt(
+    name="design_point",
+    description="Guided turbojet design-point sizing workflow",
+)(prompt_design_point)
+
+mcp.prompt(
+    name="off_design_study",
+    description="Design + off-design throttle/altitude study",
+)(prompt_off_design_study)
+
+mcp.prompt(
+    name="compare_engines",
+    description="Two-engine component sensitivity comparison",
+)(prompt_compare_engines)
+
 
 # ---------------------------------------------------------------------------
 # Entry point
@@ -197,101 +240,17 @@ mcp.tool()(_prov_tools.export_session_graph)
 
 
 def main():
-    """Console-script entry point for pyc-server.
+    """Console-script entry point for pyc-server."""
+    from hangar.sdk.server_main import run_server_main
 
-    Supports stdio (default) and HTTP transports.
-    """
-    import argparse
-    from hangar.sdk.provenance.db import init_db as _prov_init_db, record_session as _prov_record_session
-
-    parser = argparse.ArgumentParser(description="pyCycle MCP Server")
-    parser.add_argument(
-        "--transport",
-        choices=["stdio", "http"],
-        default=os.environ.get("PYC_TRANSPORT", "stdio"),
+    run_server_main(
+        mcp,
+        tool="pyc",
+        env_prefix="PYC",
+        # 8000=oas, 8001=ocp, 8002=pyc (matches the docker-compose host ports)
+        default_port=8002,
+        description="pyCycle MCP Server",
     )
-    parser.add_argument(
-        "--host",
-        default=os.environ.get("PYC_HOST", "127.0.0.1"),
-    )
-    parser.add_argument(
-        "--port",
-        type=int,
-        default=int(os.environ.get("PYC_PORT", "8001")),
-    )
-    args = parser.parse_args()
-
-    # Provenance setup
-    from hangar.sdk.provenance.middleware import set_tool_name, set_default_session_id
-    set_tool_name("pyc")
-    _prov_init_db()
-    import uuid as _uuid
-    _auto_sid = f"auto-{_uuid.uuid4().hex[:8]}"
-    # Seed the per-process fallback so tool calls from users who never call
-    # start_session land somewhere. Per-user active sessions (start_session)
-    # override this; the ContextVar stays reserved for test isolation.
-    set_default_session_id(_auto_sid)
-    _prov_record_session(_auto_sid, notes="Auto-created on pyCycle server startup")
-
-    if args.transport == "stdio":
-        # Legacy daemon thread viewer for local dev (localhost only, no auth)
-        try:
-            import sys as _sys
-            from hangar.sdk.viz.viewer_server import start_viewer_server as _start_viewer
-            _prov_port = _start_viewer()
-            if _prov_port:
-                _sep = "\u2500" * 54
-                print(f"\n{_sep}", file=_sys.stderr)
-                print("  PYC Provenance Viewer", file=_sys.stderr)
-                print(_sep, file=_sys.stderr)
-                print(f"  Viewer    http://localhost:{_prov_port}/viewer", file=_sys.stderr)
-                print(f"  Sessions  http://localhost:{_prov_port}/sessions", file=_sys.stderr)
-                print(f"  Plot API  http://localhost:{_prov_port}/plot?run_id=<id>&plot_type=<type>", file=_sys.stderr)
-                print(_sep + "\n", file=_sys.stderr)
-        except Exception:
-            pass
-        mcp.run()
-    else:
-        try:
-            import uvicorn
-        except ImportError as exc:
-            raise ImportError(
-                "uvicorn required for HTTP transport. Install hangar-sdk[http]."
-            ) from exc
-
-        import sys as _sys
-        from hangar.sdk.viz.viewer_routes import build_viewer_app
-
-        mcp_asgi = mcp.streamable_http_app()
-        viewer_app, auth_mode = build_viewer_app()
-
-        if viewer_app is not None:
-            # Run OIDC discovery before starting the server (if OIDC mode).
-            if auth_mode == "oidc":
-                import asyncio as _asyncio
-                from hangar.sdk.viz.viewer_auth import discover_oidc_endpoints
-                _asyncio.run(discover_oidc_endpoints(viewer_app.state.oidc_config))
-
-            from hangar.sdk.viz.viewer_routes import make_fallback_app
-            app = make_fallback_app(viewer_app, mcp_asgi)
-            _sep = "\u2500" * 54
-            print(f"\n{_sep}", file=_sys.stderr)
-            print("  PYC Provenance Viewer (HTTP transport)", file=_sys.stderr)
-            print(_sep, file=_sys.stderr)
-            print(f"  Viewer    http://{args.host}:{args.port}/viewer", file=_sys.stderr)
-            if auth_mode == "oidc":
-                print(f"            Protected by OIDC ({viewer_app.state.oidc_config.issuer_url})", file=_sys.stderr)
-            else:
-                print("            Protected by Basic Auth", file=_sys.stderr)
-            print(_sep + "\n", file=_sys.stderr)
-        else:
-            app = mcp_asgi
-
-        # Add unauthenticated /healthz endpoint
-        from hangar.sdk.health import add_healthz
-        app = add_healthz(app, server_name="pyc")
-
-        uvicorn.run(app, host=args.host, port=args.port)
 
 
 if __name__ == "__main__":

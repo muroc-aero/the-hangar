@@ -73,7 +73,7 @@ def build_ocp_registry() -> dict[str, Callable]:
 def main():
     """CLI entry point."""
     from hangar.sdk.cli.runner import set_registry_builder, set_setup_tools
-    from hangar.sdk.cli.main import main as _cli_main
+    from hangar.sdk.cli.main import main as _cli_main, viewer_command
 
     set_registry_builder(build_ocp_registry)
     set_setup_tools([
@@ -82,12 +82,9 @@ def main():
         "set_propulsion_architecture",
         "configure_mission",
     ])
-    def _start_viewer(port: int = 7654, db: str | None = None):
-        from hangar.sdk.viz.viewer_server import start_viewer_server
-        start_viewer_server(port=port, db_path=db)
 
     _cli_main(
         prog="ocp-cli",
         description="OpenConcept CLI -- run conceptual design tools from the command line.",
-        viewer_callback=_start_viewer,
+        viewer_callback=viewer_command,
     )

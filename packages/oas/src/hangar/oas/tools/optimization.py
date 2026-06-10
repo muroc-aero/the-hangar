@@ -34,9 +34,59 @@ from hangar.oas.tools._helpers import (
     _finalize_analysis,
     _from_oas_order,
     _is_cp_dv,
-    _to_oas_order,
 )
 from hangar.sdk.helpers import _suppress_output
+
+
+def _multi_surface_scope_finding(
+    surfaces: list[str],
+    design_variables: list,
+    constraints: list[dict],
+):
+    """Warn when a multi-surface optimization silently targets surfaces[0] only.
+
+    Surface-scoped DVs (twist, chord, thickness, ...) and constraints whose
+    OpenMDAO path embeds a surface name are resolved against the first surface
+    in the list; the remaining surfaces are analysed but never optimised.
+    Returns a ValidationFinding, or None when nothing is surface-scoped.
+    """
+    if len(surfaces) <= 1:
+        return None
+
+    from hangar.oas.builders import _CONSTRAINT_PATH_MAP_AEROSTRUCT, _SCALAR_DVS
+    from hangar.sdk.validation.checks import ValidationFinding
+
+    def _dv_name(dv) -> str:
+        name = dv["name"] if isinstance(dv, dict) else dv
+        return name[:-3] if name.endswith("_cp") else name
+
+    surface_scoped = sorted(
+        {n for n in (_dv_name(dv) for dv in design_variables) if n not in _SCALAR_DVS}
+        | {
+            c["name"] for c in constraints
+            if "{name}" in _CONSTRAINT_PATH_MAP_AEROSTRUCT.get(c["name"], "")
+        }
+    )
+    if not surface_scoped:
+        return None
+
+    return ValidationFinding(
+        check_id="setup.multi_surface_dv_scope",
+        category="constraints",
+        severity="warning",
+        confidence="high",
+        passed=False,
+        message=(
+            f"Surface-scoped design variables/constraints {surface_scoped} "
+            f"were applied to {surfaces[0]!r} only; the other surface(s) "
+            f"{surfaces[1:]} were analysed but not optimised."
+        ),
+        remediation=(
+            "Per-surface DV targeting is not supported. Optimise one "
+            "surface at a time, or treat the extra surfaces as fixed "
+            "geometry."
+        ),
+    )
 
 
 async def run_optimization(
@@ -315,6 +365,9 @@ async def run_optimization(
         "objective_scaler": objective_scaler,
         "design_variables": [dv if isinstance(dv, dict) else {"name": dv} for dv in design_variables],
     })
+    scope_finding = _multi_surface_scope_finding(surfaces, design_variables, constraints)
+    if scope_finding is not None:
+        findings.append(scope_finding)
     return await _finalize_analysis(
         tool_name="run_optimization", run_id=run_id,
         session=session, session_id=session_id, surfaces=surfaces,

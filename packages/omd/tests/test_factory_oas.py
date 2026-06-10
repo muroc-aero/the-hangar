@@ -138,3 +138,56 @@ def test_build_oas_aerostruct_runs():
 def test_build_oas_aerostruct_missing_surfaces():
     with pytest.raises(ValueError, match="surfaces"):
         build_oas_aerostruct({}, {})
+
+
+# ---------------------------------------------------------------------------
+# Unknown surface-config keys + chord_cp forwarding
+# ---------------------------------------------------------------------------
+
+_BASE_SURFACE_CONFIG = {
+    "name": "wing",
+    "wing_type": "rect",
+    "num_x": 2,
+    "num_y": 5,
+    "span": 10.0,
+    "root_chord": 1.0,
+    "symmetry": True,
+    "fem_model_type": "tube",
+    "E": 70.0e9,
+    "G": 30.0e9,
+    "yield_stress": 500.0e6,
+    "mrho": 3000.0,
+}
+
+
+def test_unknown_surface_key_warns(caplog, monkeypatch):
+    import logging
+
+    # hangar.sdk.telemetry sets propagate=False on the "hangar" logger;
+    # restore propagation so caplog's root handler sees the warning.
+    monkeypatch.setattr(logging.getLogger("hangar"), "propagate", True)
+    config = dict(_BASE_SURFACE_CONFIG)
+    config["twist_pc"] = [0.0, 0.0]  # typo for twist_cp
+    with caplog.at_level(logging.WARNING, logger="hangar.omd.factories.oas"):
+        _plan_config_to_surface_dict(config)
+    assert any("twist_pc" in r.message for r in caplog.records)
+
+
+def test_known_surface_keys_do_not_warn(caplog, monkeypatch):
+    import logging
+
+    monkeypatch.setattr(logging.getLogger("hangar"), "propagate", True)
+    config = dict(_BASE_SURFACE_CONFIG)
+    config["twist_cp"] = [0.0, 0.0, 0.0]
+    config["chord_cp"] = [1.0, 1.0, 1.0]
+    with caplog.at_level(logging.WARNING, logger="hangar.omd.factories.oas"):
+        _plan_config_to_surface_dict(config)
+    assert not [r for r in caplog.records if "unrecognized" in r.message]
+
+
+def test_chord_cp_forwarded_to_surface_dict():
+    """chord_cp is advertised in var_paths, so the builder must forward it."""
+    config = dict(_BASE_SURFACE_CONFIG)
+    config["chord_cp"] = [1.0, 0.9, 0.8]
+    surface = _plan_config_to_surface_dict(config)
+    assert np.allclose(surface["chord_cp"], [1.0, 0.9, 0.8])
