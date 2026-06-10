@@ -25,7 +25,10 @@ uv run omd-cli --help
 | `omd-cli assemble <plan_dir>` | Merge modular YAML files into canonical plan.yaml |
 | `omd-cli validate <plan.yaml>` | Check plan against JSON Schema |
 | `omd-cli run <plan.yaml>` | Materialize and execute (analysis or optimize) |
+| `omd-cli polar <plan.yaml>` | Sweep angle of attack on an OAS plan, return CL/CD/L_over_D arrays |
 | `omd-cli results <run_id>` | Query results from analysis DB |
+| `omd-cli summary <run_id>` | One-page HTML summary of a completed run |
+| `omd-cli plot <run_id>` | Generate plots (`--type all` or a specific type, `--list-types`) |
 | `omd-cli conclude <run_id>` | Record the conclusion (verdict vs requirements) for a final run |
 | `omd-cli export <plan.yaml>` | Generate standalone Python script |
 | `omd-cli provenance <plan_id>` | View provenance timeline or DAG |

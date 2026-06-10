@@ -11,6 +11,40 @@ Use this skill when the user wants to:
 - Follow a disciplined analysis process with provenance tracking
 - Explore a design space systematically rather than ad hoc
 
+## Tool routing
+
+The same analyses are reachable three ways; pick one per study and stay
+with it so run_ids and provenance land in one place:
+
+- **MCP tool servers** (`mcp__OpenAeroStruct__*`, `mcp__OpenConcept__*`,
+  `mcp__pyCycle__*`, `mcp__omd__*`) -- agent-driven sessions; see
+  `hangar-mcp-guide` for transports and the canonical per-server workflow.
+- **Local CLIs** (`oas-cli`, `ocp-cli`, `pyc-cli`, `omd-cli`) -- identical
+  tool surface, scriptable and reproducible from a terminal; see the
+  per-tool CLI guides.
+- **omd plans** -- when the study is multi-tool (slot composition) or you
+  want requirements, runs, and conclusions captured in one declarative
+  plan with versioned provenance. See `omd-cli-guide`.
+
+## The requirements -> run -> conclusion lifecycle
+
+Every study should close the loop, not just produce numbers:
+
+1. **Requirements first.** Encode the acceptance targets before running:
+   - Tool servers: `set_requirements([{path, operator, value, label}])` --
+     each subsequent analysis response checks them in its validation block.
+   - omd plans: `plan_add_requirement` (or a `requirements:` block) with
+     `acceptance_criteria: [{metric, comparator, threshold}]`.
+2. **Run** the baseline and variations (phases below).
+3. **Conclude.** `record_conclusion(run_id, narrative)` on the chosen run.
+   Per-requirement verdicts are auto-derived from the recorded results, so
+   they cannot drift from the numbers; the overall verdict is
+   `meets` / `fails` / `partial` / `open`. In omd this is
+   `record_conclusion` / `omd-cli conclude`.
+
+A study without requirements gets no verdicts; a study without a
+conclusion never flips to "concluded" in the dashboard. Do both.
+
 ## Workflow phases
 
 ### Phase 1 -- Problem definition
@@ -21,6 +55,8 @@ Before touching any tools:
 3. Define constraints (structural limits, target CL, stability requirements)
 4. Establish flight conditions (Mach, altitude, weight)
 5. Choose the analysis fidelity (aero-only vs aerostructural, mesh resolution)
+6. Encode the constraints from step 3 as requirements
+   (`set_requirements` / `plan_add_requirement`, see the lifecycle above)
 
 Document these decisions before proceeding.
 
@@ -92,15 +128,26 @@ Typical variation strategies:
    )
    ```
 
-### Phase 5 -- Reporting
+### Phase 5 -- Conclusion and reporting
 
-Summarize the study with:
-- Objective and constraints
-- Baseline performance
-- Variations explored and their results
-- Best design point with justification
-- Limitations and caveats (e.g. TTBW strut limitation, mesh sensitivity)
-- Provenance graph export for audit trail
+1. **Required:** Record the conclusion on the selected run:
+   ```
+   record_conclusion(
+       run_id=<selected_run_id>,
+       narrative="Sweep=30 meets the L/D and structural requirements with
+                  margin; selected as the recommended design point."
+   )
+   ```
+   The per-requirement verdicts come from the run's recorded results, not
+   from the narrative. Check the returned `verdict` and surface any
+   `fails` / `partial` honestly in the report.
+2. Summarize the study with:
+   - Objective and requirements, with their verdicts
+   - Baseline performance
+   - Variations explored and their results
+   - Best design point with justification
+   - Limitations and caveats (e.g. TTBW strut limitation, mesh sensitivity)
+   - Provenance graph export for audit trail
 
 ### Phase 6 -- Export provenance
 

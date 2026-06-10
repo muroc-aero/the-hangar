@@ -115,10 +115,12 @@ Set requirements checked against every analysis result.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `requirements` | list[dict] | **required** | `[{label, path, operator, target}]` |
+| `requirements` | list[dict] | **required** | `[{label, path, operator, value}]` |
 
 `path` uses dot notation into results (e.g. `"performance.TSFC"`).
 `operator`: `"<"`, `"<="`, `">"`, `">="`, `"=="`, `"!="`.
+The threshold key is `value` (not `target`); a requirement written with
+`target` is silently compared against `None` and never passes.
 
 ## Artifact management tools
 

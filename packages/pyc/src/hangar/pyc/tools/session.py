@@ -57,9 +57,10 @@ async def configure_session(
 async def set_requirements(
     requirements: Annotated[
         list[dict],
-        "List of requirements: [{label, path, operator, target}, ...]. "
+        "List of requirements: [{label, path, operator, value}, ...]. "
         "path uses dot notation into results (e.g. 'performance.TSFC'). "
-        "operator: '<', '<=', '>', '>=', '==', '!='.",
+        "operator: '<', '<=', '>', '>=', '==', '!='. "
+        "Example: [{\"path\": \"performance.TSFC\", \"operator\": \"<\", \"value\": 1.0}]",
     ],
     session_id: Annotated[str, "Session ID"] = "default",
 ) -> dict:

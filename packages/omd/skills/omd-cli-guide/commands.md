@@ -61,6 +61,22 @@ Run complete: run-20260403T130457-6f5287cc
 - `solver` -- above + nonlinear solver iterations
 - `full` -- everything including residuals (largest)
 
+## polar
+
+Compute a drag polar by sweeping angle of attack on an OAS plan.
+
+```bash
+omd-cli polar <plan_path> [--alpha-start A] [--alpha-end B] [--num N] [--output PATH]
+```
+
+**Options:**
+- `--alpha-start` / `--alpha-end` -- sweep bounds in degrees
+- `--num` -- number of alpha points to evaluate
+- `--output`, `-o` -- write the sweep result to a JSON file
+
+Returns `alpha_deg` / `CL` / `CD` / `L_over_D` arrays plus `best_L_over_D`.
+Only meaningful for plans whose component exposes CL/CD (`oas/*`).
+
 ## results
 
 Query results for a completed run.
@@ -73,6 +89,42 @@ omd-cli results <run_id> [--summary] [--variables v1,v2,...] [--db PATH]
 - `--summary` -- return only the final case with condensed output
 - `--variables`, `-v` -- filter to specific variable names
 - `--db` -- path to analysis DB
+
+## summary
+
+Produce a one-page HTML summary of a completed run (key metrics, DV table,
+plot gallery, links to N2 and provenance).
+
+```bash
+omd-cli summary <run_id> [--output PATH] [--no-plots]
+```
+
+**Options:**
+- `--output`, `-o` -- output HTML path (default: `plots/{run_id}/summary.html`)
+- `--no-plots` -- skip on-demand plot generation; only embed existing PNGs
+
+`run` already renders the summary eagerly at the end of each run; use this
+command to regenerate it (e.g. after `plot` produced new figures).
+
+## plot
+
+Generate analysis plots from a completed run.
+
+```bash
+omd-cli plot <run_id> [--type TYPE|all] [--output DIR] [--surface NAME] [--list-types]
+omd-cli plot --recorder-db <path.sql> --type all
+```
+
+**Options:**
+- `--type` -- one plot type, or `all` for everything that applies
+- `--list-types` -- list the plot types available for this run, then exit
+- `--output`, `-o` -- output directory for PNGs (default: `plots/{run_id}/`)
+- `--surface` -- surface name filter (multi-surface OAS plans)
+- `--recorder-db` -- direct path to a recorder `.sql` file instead of a run_id
+
+Generic types (`convergence`, `dv_evolution`, `n2`) work for every run;
+factory-specific types (planform, lift, twist, struct, station_properties,
+...) depend on the component family. Always check `--list-types` first.
 
 ## conclude
 

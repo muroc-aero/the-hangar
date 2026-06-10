@@ -67,8 +67,13 @@ This copies the CLI-guide skills from each package into `.claude/skills/` where 
 | `hangar-oas` | `hangar.oas` | OpenAeroStruct aerostructural analysis server | `oas-cli`, `oas-server` |
 | `hangar-ocp` | `hangar.ocp` | OpenConcept aircraft conceptual design and mission analysis server | `ocp-cli`, `ocp-server` |
 | `hangar-pyc` | `hangar.pyc` | pyCycle gas turbine cycle analysis server | `pyc-cli`, `pyc-server` |
-| `hangar-omd` | `hangar.omd` | General-purpose OpenMDAO plan runner -- YAML plans, factory registry, multi-tool composition, provenance graph | `omd-cli` |
+| `hangar-omd` | `hangar.omd` | General-purpose OpenMDAO plan runner -- YAML plans, factory registry, multi-tool composition, provenance graph | `omd-cli`, `omd-server` |
+| `hangar-results-reader` | `hangar.results_reader` | Read-only access to omd run results for downstream consumers (e.g. dashboards) | -- |
 | `hangar-viewer` | `hangar.viewer` | Unified provenance viewer for Hangar tool servers | `hangar-viewer` |
+
+`packages/range-safety/` is a git submodule pointing at a private repo
+(range-safety validators and study dashboard); it is absent on a plain
+clone and not required for any of the public packages.
 
 These packages are not on PyPI. Install from the repo:
 
@@ -96,6 +101,11 @@ the-hangar/
 │   │   └── src/hangar/ocp/
 │   ├── pyc/                    # hangar-pyc (pyCycle)
 │   │   └── src/hangar/pyc/
+│   ├── omd/                    # hangar-omd (OpenMDAO plan runner)
+│   │   └── src/hangar/omd/
+│   ├── results-reader/         # hangar-results-reader (omd results access)
+│   │   └── src/hangar/results_reader/
+│   ├── range-safety/           # private submodule (absent on plain clones)
 │   └── viewer/                 # hangar-viewer (provenance viewer)
 │       └── src/hangar/viewer/
 ├── skills/                     # cross-tool workflow skills
@@ -119,15 +129,18 @@ uv sync
 uv run oas-server
 uv run ocp-server
 uv run pyc-server
+uv run omd-server
 
 # Run a CLI
 uv run oas-cli interactive
 uv run ocp-cli interactive
 uv run pyc-cli interactive
+uv run omd-cli run plan.yaml --mode analysis
 
 # Run tests (all packages; skip slow integration tests with -m "not slow")
 uv run pytest
 uv run pytest -m "not slow"
+uv run pytest packages/omd/tests/   # by package
 
 # Docker
 docker compose -f docker/docker-compose.yml up --build

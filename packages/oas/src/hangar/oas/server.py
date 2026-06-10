@@ -143,7 +143,9 @@ VISUALIZATION OUTPUT MODES:
 
 PARAMETER TIPS:
   • Cruise conditions: velocity=248 m/s, Mach_number=0.84, density=0.38 kg/m³, re=1e6
-  • Good starting mesh: num_x=2, num_y=7 (fast); use num_y=15 for higher fidelity
+  • Mesh tiers (num_y must stay odd): scoping/debugging num_y=7-11 (num_x=2);
+    real trade study num_y=21-31 (num_x=3-5); production sizing num_y=41+ (num_x=5+).
+    Mesh-converge (objective <1-2% change between levels) before quoting production numbers.
   • wing_type="CRM" produces a realistic transport wing with built-in twist;
     wing_type="rect" produces a flat untwisted planform — simpler but less realistic
   • failure = stress/allowable - 1: failure > 0 means STRUCTURAL FAILURE; failure < 0 = OK

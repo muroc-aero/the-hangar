@@ -134,5 +134,5 @@ DB under session `"default"`, but they won't be grouped into a named session.
 
 - **CLI**: `oas-cli viewer` starts the viewer server on localhost:7654
 - **Browser**: Open `http://localhost:7654/viewer?session_id=<id>`
-- **Offline**: Open `oas_mcp/provenance/viewer/index.html` and drop the
-  exported JSON file onto the page
+- **Offline**: Open `packages/sdk/src/hangar/sdk/viz/viewer/index.html` and
+  drop the exported JSON file onto the page

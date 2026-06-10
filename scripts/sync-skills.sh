@@ -35,9 +35,11 @@ clean_synced() {
         echo "  clean: $d"
         rm -rf "$d"
     done
-    # Remove marked files (commands)
+    # Remove marked files (commands). The marker is now the last line (a
+    # line-1 marker becomes the command's visible description in Claude
+    # Code); still check line 1 to clean files synced by older versions.
     find "$dir" -maxdepth 1 -name "*.md" | while read -r f; do
-        if head -1 "$f" 2>/dev/null | grep -q "synced-by-sync-skills"; then
+        if { head -1 "$f"; tail -1 "$f"; } 2>/dev/null | grep -q "synced-by-sync-skills"; then
             echo "  clean: $f"
             rm -f "$f"
         fi
@@ -80,9 +82,11 @@ sync_source() {
         base="$(basename "$f")"
         dst_name="$(prefixed_name "$pkg" "$base")"
         local dst="$COMMANDS_DST/$dst_name"
-        # Prepend marker comment so we can clean it later
-        printf '%s\n' "<!-- synced-by-sync-skills from ${f#"$REPO_ROOT"/} -->" > "$dst"
-        cat "$f" >> "$dst"
+        # Append marker comment (so we can clean it later) as the LAST line:
+        # Claude Code surfaces the first line as the command description, so
+        # a prepended marker would clobber it.
+        cat "$f" > "$dst"
+        printf '\n%s\n' "<!-- synced-by-sync-skills from ${f#"$REPO_ROOT"/} -->" >> "$dst"
         echo "  command: $dst_name"
         synced_commands=$((synced_commands + 1))
     done
@@ -110,7 +114,7 @@ echo "Syncing from packages..."
 for pkg_dir in "$REPO_ROOT"/packages/*/; do
     [[ -d "$pkg_dir" ]] || continue
     pkg_name="$(basename "$pkg_dir")"
-    sync_source "$pkg_dir/skills" "$pkg_name"
+    sync_source "${pkg_dir%/}/skills" "$pkg_name"
 done
 
 # --- Sync from root skills/ ---
