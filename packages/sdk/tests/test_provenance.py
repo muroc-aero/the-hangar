@@ -16,19 +16,15 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-import pytest_asyncio
 
 from hangar.sdk.provenance.middleware import (
-    _FLUSH_EVERY,
-    _flush_counter,
     _prov_session_id,
     _safe_json,
     capture_tool,
-    set_server_session_id,
+    set_default_session_id,
 )
 from hangar.sdk.provenance.db import (
     build_session_elements,
-    _next_seq,
     get_requirements,
     get_session_graph,
     get_session_meta,
@@ -377,19 +373,20 @@ async def test_capture_decorator_injects_provenance(tmp_path):
 
 @pytest.mark.asyncio
 async def test_start_session_overrides_startup_seeded_default(tmp_path):
-    """start_session must win over a module-level default seeded at server startup.
+    """start_session must win over a process default seeded at server startup.
 
     Regression: the OAS/OCP/pyc servers used to seed _prov_session_id (ContextVar)
     at startup with an "auto-XXXX" session.  Because the ContextVar has priority
-    over the module-level _server_session_id, every later tool call in the main
-    asyncio task wrote to the auto session even after start_session(). Servers
-    now seed via set_server_session_id() so start_session() can override.
+    over the module-level state, every later tool call in the main asyncio task
+    wrote to the auto session even after start_session(). Servers now seed via
+    set_default_session_id() so start_session() (which records the per-user
+    active session) can override.
     """
     import sqlite3
 
     init_db(tmp_path / "prov.db")
-    # Simulate server startup: seed only the module-level default.
-    set_server_session_id("auto-deadbeef")
+    # Simulate server startup: seed only the per-process fallback.
+    set_default_session_id("auto-deadbeef")
     record_session("auto-deadbeef")
 
     # User starts a real session.
@@ -663,7 +660,6 @@ def test_init_db_default_uses_data_dir(tmp_path, monkeypatch):
 
 def test_init_db_legacy_fallback(tmp_path, monkeypatch):
     """If legacy DB exists but new default doesn't, use legacy and warn."""
-    import logging
 
     fake_home = tmp_path / "fakehome"
     legacy_dir = fake_home / ".oas_provenance"

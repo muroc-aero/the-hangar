@@ -358,15 +358,15 @@ def main():
     args = parser.parse_args()
 
     # --- Provenance setup ---
-    from hangar.sdk.provenance.middleware import set_tool_name, set_server_session_id
+    from hangar.sdk.provenance.middleware import set_tool_name, set_default_session_id
     set_tool_name("oas")
     _prov_init_db()
     import uuid as _uuid
     _auto_sid = f"auto-{_uuid.uuid4().hex[:8]}"
-    # Seed the module-level default so unstarted tool calls land somewhere.
-    # The ContextVar is reserved for test isolation; setting it here would
-    # shadow any later start_session() in the main asyncio task.
-    set_server_session_id(_auto_sid)
+    # Seed the per-process fallback so tool calls from users who never call
+    # start_session land somewhere. Per-user active sessions (start_session)
+    # override this; the ContextVar stays reserved for test isolation.
+    set_default_session_id(_auto_sid)
     _prov_record_session(_auto_sid, notes="Auto-created on server startup")
     if args.transport == "stdio":
         # Legacy daemon thread viewer for local dev (localhost only, no auth)
@@ -380,12 +380,12 @@ def main():
                 print("  OAS Provenance Viewer", file=_sys.stderr)
                 print(_sep, file=_sys.stderr)
                 print(f"  Viewer    http://localhost:{_prov_port}/viewer", file=_sys.stderr)
-                print(f"            Interactive DAG \u2014 load any session from the", file=_sys.stderr)
-                print(f"            drop-down or drop an exported JSON file.", file=_sys.stderr)
+                print("            Interactive DAG \u2014 load any session from the", file=_sys.stderr)
+                print("            drop-down or drop an exported JSON file.", file=_sys.stderr)
                 print(f"  Sessions  http://localhost:{_prov_port}/sessions", file=_sys.stderr)
-                print(f"            JSON list of all recorded provenance sessions.", file=_sys.stderr)
+                print("            JSON list of all recorded provenance sessions.", file=_sys.stderr)
                 print(f"  Plot API  http://localhost:{_prov_port}/plot?run_id=<id>&plot_type=<type>", file=_sys.stderr)
-                print(f"            Render a saved analysis run as a PNG image.", file=_sys.stderr)
+                print("            Render a saved analysis run as a PNG image.", file=_sys.stderr)
                 print(_sep + "\n", file=_sys.stderr)
         except Exception:
             pass
@@ -427,7 +427,7 @@ def main():
             if auth_mode == "oidc":
                 print(f"            Protected by OIDC ({viewer_app.state.oidc_config.issuer_url})", file=_sys.stderr)
             else:
-                print(f"            Protected by Basic Auth (OAS_VIEWER_USER/PASSWORD)", file=_sys.stderr)
+                print("            Protected by Basic Auth (OAS_VIEWER_USER/PASSWORD)", file=_sys.stderr)
             print(_sep + "\n", file=_sys.stderr)
         else:
             app = mcp_asgi
