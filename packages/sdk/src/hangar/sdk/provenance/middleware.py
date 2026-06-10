@@ -154,42 +154,51 @@ def capture_tool(fn):
             return result
         finally:
             duration_s = time.perf_counter() - t0
-            try:
-                from hangar.sdk.provenance.db import _db_path, _ensure_session
-                if _db_path is not None:
-                    # Ensure session exists with user attribution before
-                    # recording the tool call (INSERT OR IGNORE — no-op if
-                    # start_session already created the row).
-                    try:
-                        from hangar.sdk.auth.oidc import get_current_user
-                        _ensure_session(session_id, user=get_current_user(), tool=_tool_name)
-                    except Exception:
-                        _ensure_session(session_id, tool=_tool_name)
-                    seq = _next_seq(session_id)
-                    record_tool_call(
-                        call_id,
-                        session_id,
-                        seq,
-                        tool_name,
-                        inputs_json,
-                        outputs_json,
-                        status,
-                        error_msg,
-                        started_at,
-                        duration_s,
-                        tool=_tool_name,
-                    )
 
-                    # Periodic graph flush
-                    count = _flush_counter.get(session_id, 0) + 1
-                    _flush_counter[session_id] = count
-                    if count >= _FLUSH_EVERY:
-                        _flush_counter[session_id] = 0
-                        try:
-                            from hangar.sdk.provenance.flush import flush_session_graph
-                            flush_session_graph(session_id)
-                        except Exception:
-                            pass
+            def _record() -> None:
+                from hangar.sdk.provenance.db import _db_path, _ensure_session
+                if _db_path is None:
+                    return
+                # Ensure session exists with user attribution before
+                # recording the tool call (INSERT OR IGNORE — no-op if
+                # start_session already created the row).
+                try:
+                    from hangar.sdk.auth.oidc import get_current_user
+                    _ensure_session(session_id, user=get_current_user(), tool=_tool_name)
+                except Exception:
+                    _ensure_session(session_id, tool=_tool_name)
+                seq = _next_seq(session_id)
+                record_tool_call(
+                    call_id,
+                    session_id,
+                    seq,
+                    tool_name,
+                    inputs_json,
+                    outputs_json,
+                    status,
+                    error_msg,
+                    started_at,
+                    duration_s,
+                    tool=_tool_name,
+                )
+
+                # Periodic graph flush
+                count = _flush_counter.get(session_id, 0) + 1
+                _flush_counter[session_id] = count
+                if count >= _FLUSH_EVERY:
+                    _flush_counter[session_id] = 0
+                    try:
+                        from hangar.sdk.provenance.flush import flush_session_graph
+                        flush_session_graph(session_id)
+                    except Exception:
+                        pass
+
+            try:
+                # Off the event loop: SQLite writes (WAL or not) can block on
+                # the file lock, and this runs after every tool call.
+                import asyncio
+
+                await asyncio.to_thread(_record)
             except Exception:
                 pass  # Never swallow the original exception
 

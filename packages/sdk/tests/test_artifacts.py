@@ -515,3 +515,45 @@ def test_cleanup_respects_protected_run_ids(store):
     assert len(deleted) == 2  # still deletes 2 to reach max_count=3
     # Protected run still exists
     assert store.get(sorted_ids[0], session_id="s1") is not None
+
+
+class TestJsonSafety:
+    def test_inf_nan_sanitized_in_artifact_file(self, tmp_path):
+        """inf/nan must not produce the invalid Infinity/NaN JSON literals."""
+        store = ArtifactStore(data_dir=tmp_path)
+        run_id = store.save(
+            session_id="s1",
+            analysis_type="aero",
+            tool_name="t",
+            surfaces=["wing"],
+            parameters={"alpha": float("inf")},
+            results={"CD": float("nan"), "arr": np.array([1.0, float("inf")])},
+        )
+        path = next((tmp_path / "default" / "default" / "s1").glob(f"{run_id}.json"))
+        raw = path.read_text()
+        assert "Infinity" not in raw
+        assert "NaN" not in raw
+        loaded = json.loads(raw)  # strict parser must accept it
+        assert loaded["results"]["CD"] is None
+        assert loaded["results"]["arr"] == [1.0, None]
+
+    def test_get_continues_past_corrupt_file(self, tmp_path):
+        """A corrupt artifact in one session dir must not hide a valid one elsewhere."""
+        store = ArtifactStore(data_dir=tmp_path)
+        run_id = store.save(
+            session_id="s2",
+            analysis_type="aero",
+            tool_name="t",
+            surfaces=[],
+            parameters={},
+            results={"CL": 0.5},
+        )
+        # Plant a corrupt file with the same run_id in a session dir that
+        # sorts earlier than s2.
+        bad_dir = tmp_path / "default" / "default" / "a_corrupt"
+        bad_dir.mkdir(parents=True)
+        (bad_dir / f"{run_id}.json").write_text("{not valid json")
+
+        artifact = store.get(run_id)
+        assert artifact is not None
+        assert artifact["results"]["CL"] == 0.5

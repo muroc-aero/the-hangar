@@ -758,3 +758,36 @@ async def test_capture_tool_periodic_flush(tmp_path, monkeypatch):
     finally:
         _prov_session_id.reset(token)
         mw._flush_counter.clear()
+
+
+def test_next_seq_is_atomic_under_concurrency(tmp_path):
+    """Concurrent claimants must never receive the same sequence number."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    from hangar.sdk.provenance.db import _next_seq
+
+    init_db(tmp_path / "prov.db")
+    sid = _make_session()
+    record_session(sid)
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        seqs = list(pool.map(lambda _: _next_seq(sid), range(64)))
+
+    assert len(set(seqs)) == 64
+    assert sorted(seqs) == list(range(64))
+
+
+def test_next_seq_seeds_from_legacy_rows(tmp_path):
+    """First counter claim on a pre-existing session continues after MAX(seq)."""
+    from hangar.sdk.provenance.db import _next_seq
+
+    init_db(tmp_path / "prov.db")
+    sid = _make_session()
+    record_session(sid)
+    record_tool_call(
+        _make_call_id(), sid, 7, "legacy_tool", "{}", "{}", "ok", None,
+        "2026-01-01T00:00:00", 0.1,
+    )
+
+    assert _next_seq(sid) == 8
+    assert _next_seq(sid) == 9
