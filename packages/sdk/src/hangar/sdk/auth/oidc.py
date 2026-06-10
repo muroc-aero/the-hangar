@@ -11,10 +11,13 @@ import json
 import os
 import threading
 import urllib.request
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from hangar.sdk.env import _hangar_env
 from hangar.sdk.telemetry import logger
+
+if TYPE_CHECKING:
+    from mcp.server.auth.provider import AccessToken
 
 # Contextvar that holds the authenticated username for the current async request.
 # Set by OIDCTokenVerifier.verify_token() on each successful JWT validation.
@@ -162,6 +165,9 @@ class OIDCTokenVerifier:
             algorithms=["RS256"],
             audience=self._client_id,
             issuer=self._issuer_url,
+            # PyJWT only checks exp when the claim is present; without this a
+            # token minted with no exp would never expire.
+            options={"require": ["exp"]},
         )
         return payload
 
@@ -306,15 +312,19 @@ def build_auth_settings() -> Any:
 
 
 def build_token_verifier() -> OIDCTokenVerifier | None:
-    """Return an :class:`OIDCTokenVerifier` if ``OIDC_ISSUER_URL`` (or legacy ``KEYCLOAK_ISSUER_URL``) is set."""
+    """Return an :class:`OIDCTokenVerifier` if ``OIDC_ISSUER_URL`` (or legacy ``KEYCLOAK_ISSUER_URL``) is set.
+
+    Raises ``RuntimeError`` if the issuer is set but ``OIDC_CLIENT_ID`` is not:
+    an empty audience would make every token fail validation in a way that is
+    hard to diagnose, so refuse to start instead.
+    """
     issuer_url = _env("OIDC_ISSUER_URL", "KEYCLOAK_ISSUER_URL")
     if not issuer_url:
         return None
     client_id = _env("OIDC_CLIENT_ID", "KEYCLOAK_CLIENT_ID")
     if not client_id:
-        logger.warning(
-            "OIDC_ISSUER_URL is set but OIDC_CLIENT_ID is not — "
-            "token audience validation will fail. "
+        raise RuntimeError(
+            "OIDC_ISSUER_URL is set but OIDC_CLIENT_ID is not. "
             "Set OIDC_CLIENT_ID to the tool's client ID (e.g. 'oas-mcp')."
         )
     return OIDCTokenVerifier(
