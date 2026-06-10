@@ -4,11 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Annotated, Any
+from typing import Annotated
 
 from hangar.sdk.helpers import _suppress_output
 from hangar.sdk.state import sessions as _sessions
-from hangar.sdk.provenance.middleware import _get_session_id
 
 from hangar.pyc.archetypes import get_archetype
 from hangar.pyc.builders import build_design_problem, build_multipoint_problem
@@ -43,7 +42,6 @@ async def run_design_point(
     """
     t0 = time.perf_counter()
     session = _sessions.get(session_id)
-    prov_session_id = _get_session_id()
 
     engine_cfg = validate_engine_exists(session, engine_name)
     validate_flight_conditions(alt, MN)
@@ -92,11 +90,14 @@ async def run_design_point(
         **{k: v for k, v in params.items() if k != "_overrides"},
     }
 
+    # Save under the tool-container session_id (the `session_id` kwarg), not
+    # the provenance session id; oas/ocp do the same, and cross-tool artifact
+    # lookups rely on it.
     return await _finalize_analysis(
         tool_name="run_design_point",
         run_id=run_id,
         session=session,
-        session_id=prov_session_id,
+        session_id=session_id,
         engine_name=engine_name,
         analysis_type="design",
         inputs=inputs,
@@ -129,7 +130,6 @@ async def run_off_design(
     """
     t0 = time.perf_counter()
     session = _sessions.get(session_id)
-    prov_session_id = _get_session_id()
 
     engine_cfg = validate_engine_exists(session, engine_name)
     if not engine_cfg.get("design_solved"):
@@ -185,7 +185,7 @@ async def run_off_design(
         tool_name="run_off_design",
         run_id=run_id,
         session=session,
-        session_id=prov_session_id,
+        session_id=session_id,
         engine_name=engine_name,
         analysis_type="off_design",
         inputs=inputs,
