@@ -375,3 +375,41 @@ def test_enriched_fixture_validates(fixtures_dir):
 
     result = assemble_plan(fixtures_dir / "oas_aerostruct_enriched")
     assert result["errors"] == [], result["errors"]
+
+
+# ---------------------------------------------------------------------------
+# Solvers: single-scope and targeted-list forms
+# ---------------------------------------------------------------------------
+
+
+def test_solvers_single_scope_valid():
+    plan = dict(MINIMAL_PLAN)
+    plan["solvers"] = {
+        "nonlinear": {"type": "NewtonSolver", "options": {"maxiter": 10}},
+        "linear": {"type": "DirectSolver"},
+    }
+    assert validate_plan(plan) == []
+
+
+def test_solvers_targeted_list_valid():
+    """The materializer's list-of-scopes form must pass schema validation."""
+    plan = dict(MINIMAL_PLAN)
+    plan["solvers"] = [
+        {
+            "target": "mission.analysis",
+            "nonlinear": {"type": "NewtonSolver", "options": {"maxiter": 20}},
+            "linear": {"type": "DirectSolver"},
+        },
+        {
+            "target": "oas_wing.aero_point_0.coupled",
+            "nonlinear": {"type": "NonlinearBlockGS", "options": {"maxiter": 50}},
+        },
+    ]
+    assert validate_plan(plan) == []
+
+
+def test_solvers_unknown_scope_key_rejected():
+    plan = dict(MINIMAL_PLAN)
+    plan["solvers"] = {"bogus_key": {"type": "NewtonSolver"}}
+    errors = validate_plan(plan)
+    assert errors

@@ -22,7 +22,17 @@ from hangar.omd.factories.oas import (
     _apply_sweep,
     _apply_dihedral,
     _apply_taper,
+    _warn_unknown_surface_keys,
     _DEFAULT_AERO_SURFACE,
+    _MESH_CONFIG_KEYS,
+)
+
+# Surface-config keys the aero-only builder forwards to OAS (no structural
+# properties here -- those belong to oas/AerostructPoint surfaces).
+_KNOWN_AERO_SURFACE_KEYS: frozenset[str] = (
+    _MESH_CONFIG_KEYS
+    | frozenset(_DEFAULT_AERO_SURFACE)
+    | frozenset({"twist_cp", "chord_cp", "groundplane"})
 )
 
 
@@ -50,6 +60,8 @@ def _plan_config_to_aero_surface(surface_config: dict) -> dict:
 
     No structural properties, no fem_model_type.
     """
+    _warn_unknown_surface_keys(surface_config, _KNOWN_AERO_SURFACE_KEYS)
+
     mesh, default_twist_cp = _generate_mesh(surface_config)
 
     sweep = surface_config.get("sweep", 0.0)

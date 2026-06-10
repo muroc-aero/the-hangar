@@ -8,7 +8,6 @@ and optimization, extensible to other component types.
 from __future__ import annotations
 
 import copy
-import json
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +17,35 @@ import yaml
 # ---------------------------------------------------------------------------
 # Plan JSON Schema
 # ---------------------------------------------------------------------------
+
+# One solver scope: nonlinear/linear solver configs with an optional `target`
+# subsystem path. The materializer accepts either a single scope or a list of
+# scopes (see _configure_solvers).
+_SOLVER_SCOPE_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "target": {"type": "string", "minLength": 1},
+        "nonlinear": {
+            "type": "object",
+            "required": ["type"],
+            "additionalProperties": False,
+            "properties": {
+                "type": {"type": "string"},
+                "options": {"type": "object"},
+            },
+        },
+        "linear": {
+            "type": "object",
+            "required": ["type"],
+            "additionalProperties": False,
+            "properties": {
+                "type": {"type": "string"},
+                "options": {"type": "object"},
+            },
+        },
+    },
+}
 
 PLAN_SCHEMA: dict[str, Any] = {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -308,28 +336,14 @@ PLAN_SCHEMA: dict[str, Any] = {
             "items": {"type": "string", "minLength": 1},
         },
         "solvers": {
-            "type": "object",
-            "additionalProperties": False,
-            "properties": {
-                "nonlinear": {
-                    "type": "object",
-                    "required": ["type"],
-                    "additionalProperties": False,
-                    "properties": {
-                        "type": {"type": "string"},
-                        "options": {"type": "object"},
-                    },
+            "oneOf": [
+                _SOLVER_SCOPE_SCHEMA,
+                {
+                    "type": "array",
+                    "items": _SOLVER_SCOPE_SCHEMA,
+                    "minItems": 1,
                 },
-                "linear": {
-                    "type": "object",
-                    "required": ["type"],
-                    "additionalProperties": False,
-                    "properties": {
-                        "type": {"type": "string"},
-                        "options": {"type": "object"},
-                    },
-                },
-            },
+            ],
         },
         "design_variables": {
             "type": "array",

@@ -143,3 +143,35 @@ def test_ocp_short_names_recognized():
     plan["components"] = [{"id": "c0", "type": "ocp/BasicMission", "config": {}}]
     plan["constraints"] = [{"name": "fuel_burn"}, {"name": "MTOW"}]
     assert validate_var_paths(plan) == []
+
+
+# ---------------------------------------------------------------------------
+# MCP validate_plan tool runs the semantic preflight
+# ---------------------------------------------------------------------------
+
+
+async def test_mcp_validate_plan_reports_semantic_findings(tmp_path):
+    """The MCP tool must catch what `omd-cli validate` catches, not just schema."""
+    import yaml
+
+    from hangar.omd.server import validate_plan as mcp_validate_plan
+
+    plan = {
+        "metadata": {"id": "p", "name": "p", "version": 1},
+        "components": [{
+            "id": "paraboloid", "type": "paraboloid/Paraboloid", "config": {},
+        }],
+        "operating_points": {"x": 0.0, "y": 0.0},
+        # DVs without an objective: schema-valid, semantically broken
+        "design_variables": [{"name": "x", "lower": -50.0, "upper": 50.0}],
+    }
+    plan_path = tmp_path / "plan.yaml"
+    plan_path.write_text(yaml.dump(plan))
+
+    result = await mcp_validate_plan(str(plan_path))
+    assert result["valid"] is False
+    assert any("objective" in e["message"] for e in result["errors"])
+
+    # Schema-only mode still passes (semantic checks skipped)
+    result = await mcp_validate_plan(str(plan_path), semantic=False)
+    assert result["valid"] is True

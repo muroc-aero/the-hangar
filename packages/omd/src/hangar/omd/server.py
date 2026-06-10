@@ -8,7 +8,6 @@ functions as the CLI.
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 from typing import Annotated
 
@@ -23,7 +22,7 @@ mcp = FastMCP(
         "OpenMDAO problems, runs them, and records results with provenance.\n\n"
         "WORKFLOW:\n"
         "  1. assemble -- merge modular YAML plan directory into canonical plan\n"
-        "  2. validate_plan -- check plan against schema\n"
+        "  2. validate_plan -- check plan against schema + semantic preflight\n"
         "  3. run_analysis -- materialize and execute the plan\n"
         "  4. get_results -- query results from the analysis DB\n"
         "  5. get_provenance -- view the plan's provenance DAG\n"
@@ -36,13 +35,33 @@ mcp = FastMCP(
 @capture_tool
 async def validate_plan(
     plan_path: Annotated[str, "Path to plan YAML file"],
+    semantic: Annotated[bool, "Also run semantic checks (component types, DV/constraint name resolution)"] = True,
 ) -> dict:
-    """Validate an analysis plan YAML against the schema."""
+    """Validate an analysis plan YAML against the schema and semantic checks."""
     from hangar.omd.plan_schema import load_and_validate
 
     plan, errors = load_and_validate(Path(plan_path))
     if errors:
         return {"valid": False, "errors": errors}
+
+    if semantic and plan is not None:
+        from hangar.omd.plan_validate import validate_plan_semantic
+        from hangar.omd.registry import list_factories
+
+        findings = validate_plan_semantic(plan, registry_types=set(list_factories()))
+        if findings:
+            return {
+                "valid": False,
+                "errors": [
+                    {
+                        "path": f.path,
+                        "message": f.message,
+                        "suggestions": f.suggestions,
+                    }
+                    for f in findings
+                ],
+            }
+
     return {"valid": True, "plan_id": plan.get("metadata", {}).get("id")}
 
 

@@ -515,15 +515,37 @@ def _configure_solvers(
         if nl_config:
             solver_type = nl_config["type"]
             options = nl_config.get("options", {})
-            if solver_type in _NONLINEAR_SOLVERS:
-                spec["nl"] = {"type": solver_type, "options": options}
+            if solver_type not in _NONLINEAR_SOLVERS:
+                from hangar.sdk.errors import UserInputError
+
+                raise UserInputError(
+                    f"Unknown nonlinear solver type {solver_type!r}. "
+                    f"Options: {sorted(_NONLINEAR_SOLVERS)}",
+                    details={
+                        "field": "solvers.nonlinear.type",
+                        "value": solver_type,
+                        "options": sorted(_NONLINEAR_SOLVERS),
+                    },
+                )
+            spec["nl"] = {"type": solver_type, "options": options}
 
         lin_config = entry.get("linear")
         if lin_config:
             solver_type = lin_config["type"]
             options = lin_config.get("options", {})
-            if solver_type in _LINEAR_SOLVERS:
-                spec["lin"] = {"type": solver_type, "options": options}
+            if solver_type not in _LINEAR_SOLVERS:
+                from hangar.sdk.errors import UserInputError
+
+                raise UserInputError(
+                    f"Unknown linear solver type {solver_type!r}. "
+                    f"Options: {sorted(_LINEAR_SOLVERS)}",
+                    details={
+                        "field": "solvers.linear.type",
+                        "value": solver_type,
+                        "options": sorted(_LINEAR_SOLVERS),
+                    },
+                )
+            spec["lin"] = {"type": solver_type, "options": options}
 
         if spec:
             solver_specs.append(spec)
@@ -565,15 +587,19 @@ def apply_solvers_post_setup(prob: om.Problem, metadata: dict) -> None:
         for spec in solver_specs:
             target_path = spec.get("target")
             if target_path:
-                # Explicit target path
+                # Explicit target path. _get_subsystem returns None (rather
+                # than raising) when the path does not exist.
                 try:
-                    target_groups = [prob.model._get_subsystem(target_path)]
+                    target = prob.model._get_subsystem(target_path)
                 except Exception:
+                    target = None
+                if target is None:
                     logger.warning(
                         "Solver target '%s' not found after setup; skipping",
                         target_path,
                     )
                     continue
+                target_groups = [target]
             else:
                 # Default: use the OAS coupled group or model root
                 target_groups = _resolve_default_solver_targets(prob, metadata)
@@ -675,7 +701,23 @@ def _configure_driver(
     opt_options = optimizer_config.get("options", {})
 
     driver = om.ScipyOptimizeDriver()
-    driver.options["optimizer"] = _OPTIMIZERS.get(opt_type, opt_type)
+    try:
+        # Unknown names pass through so any scipy optimizer OpenMDAO accepts
+        # still works; OpenMDAO's options validation rejects real typos.
+        driver.options["optimizer"] = _OPTIMIZERS.get(opt_type, opt_type)
+    except Exception as exc:
+        from hangar.sdk.errors import UserInputError
+
+        raise UserInputError(
+            f"Unknown optimizer type {opt_type!r}. Plan aliases: "
+            f"{sorted(_OPTIMIZERS)}; any scipy optimizer name accepted by "
+            f"OpenMDAO's ScipyOptimizeDriver also works.",
+            details={
+                "field": "optimizer.type",
+                "value": opt_type,
+                "aliases": sorted(_OPTIMIZERS),
+            },
+        ) from exc
     driver.options["disp"] = False
     for key, val in opt_options.items():
         if key in ("maxiter", "maxfev"):
@@ -767,7 +809,20 @@ def _configure_driver(
         # For multipoint, use per-point constraint targeting
         if point_names and "point" in con:
             pt_idx = con["point"]
-            pt = point_names[pt_idx] if pt_idx < len(point_names) else point_names[0]
+            if not isinstance(pt_idx, int) or not 0 <= pt_idx < len(point_names):
+                from hangar.sdk.errors import UserInputError
+
+                raise UserInputError(
+                    f"Constraint {con_name!r}: point index {pt_idx!r} is out of "
+                    f"range for this plan's {len(point_names)} analysis point(s) "
+                    f"(valid: 0..{len(point_names) - 1}).",
+                    details={
+                        "field": "constraints.point",
+                        "value": pt_idx,
+                        "point_names": list(point_names),
+                    },
+                )
+            pt = point_names[pt_idx]
         else:
             pt = point_name
         path = _resolve_var_path(con_name, pt, surface_names, component_type,
