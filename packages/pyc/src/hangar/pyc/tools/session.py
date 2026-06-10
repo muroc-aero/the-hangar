@@ -12,13 +12,12 @@ from datetime import datetime, timezone
 from typing import Annotated
 
 from hangar.sdk.auth import get_current_user
-from hangar.sdk.helpers import _get_viewer_base_url, _resolve_run_id, _suppress_output
+from hangar.sdk.helpers import _get_viewer_base_url, _resolve_run_id
 from hangar.sdk.state import artifacts as _artifacts, sessions as _sessions
 from hangar.sdk.telemetry import get_run_logs
 from hangar.sdk.provenance.middleware import _get_session_id, _prov_session_id, set_server_session_id
 from hangar.sdk.provenance.db import (
     _next_seq,
-    list_sessions,
     record_cross_reference,
     record_decision,
     record_requirements,
@@ -271,35 +270,62 @@ async def list_artifacts(
     analysis_type: Annotated[str | None, "Filter: 'design', 'off_design', 'sweep'"] = None,
     project: Annotated[str | None, "Filter by project"] = None,
 ) -> dict:
-    """Browse saved analysis runs."""
-    items = _artifacts.list(
-        session_id=session_id,
-        analysis_type=analysis_type,
-        project=project,
+    """Browse saved analysis runs.
+
+    Results are scoped to the authenticated user --- you cannot list other users' artifacts.
+    """
+    user = get_current_user()
+    items = await asyncio.to_thread(
+        _artifacts.list, session_id, analysis_type, user, project,
     )
     return {"count": len(items), "artifacts": items}
 
 
 async def get_artifact(
     run_id: Annotated[str, "Run ID from a previous analysis"],
+    session_id: Annotated[
+        str | None, "Session that owns this artifact --- speeds up lookup when provided"
+    ] = None,
 ) -> dict:
-    """Retrieve full metadata + results for a past run."""
-    return _artifacts.get(run_id)
+    """Retrieve full metadata + results for a past run.
+
+    Scoped to the authenticated user --- you cannot access other users' artifacts.
+    """
+    user = get_current_user()
+    artifact = await asyncio.to_thread(_artifacts.get, run_id, session_id, user)
+    if artifact is None:
+        raise ValueError(f"Artifact '{run_id}' not found")
+    return artifact
 
 
 async def get_artifact_summary(
     run_id: Annotated[str, "Run ID from a previous analysis"],
+    session_id: Annotated[str | None, "Session that owns this artifact"] = None,
 ) -> dict:
-    """Retrieve metadata only (lightweight) for a past run."""
-    return _artifacts.get(run_id, summary_only=True)
+    """Retrieve metadata only (lightweight) for a past run.
+
+    Scoped to the authenticated user.
+    """
+    user = get_current_user()
+    summary = await asyncio.to_thread(_artifacts.get_summary, run_id, session_id, user)
+    if summary is None:
+        raise ValueError(f"Artifact '{run_id}' not found")
+    return summary
 
 
 async def delete_artifact(
     run_id: Annotated[str, "Run ID to delete"],
+    session_id: Annotated[str | None, "Session that owns this artifact"] = None,
 ) -> dict:
-    """Remove a saved artifact."""
-    _artifacts.delete(run_id)
-    return {"deleted": run_id}
+    """Permanently delete a saved artifact from disk.
+
+    Scoped to the authenticated user --- you cannot delete other users' artifacts.
+    """
+    user = get_current_user()
+    deleted = await asyncio.to_thread(_artifacts.delete, run_id, session_id, user)
+    if not deleted:
+        raise ValueError(f"Artifact '{run_id}' not found")
+    return {"status": "deleted", "run_id": run_id}
 
 
 # ---------------------------------------------------------------------------
@@ -310,8 +336,12 @@ async def get_run(
     run_id: Annotated[str, "Run ID from a previous analysis"],
     session_id: Annotated[str | None, "Session hint (speeds lookup)"] = None,
 ) -> dict:
-    """Full manifest: inputs, outputs, validation, telemetry."""
-    artifact = _artifacts.get(run_id)
+    """Full manifest: inputs, outputs, validation, telemetry.
+
+    Scoped to the authenticated user.
+    """
+    user = get_current_user()
+    artifact = await asyncio.to_thread(_artifacts.get, run_id, session_id, user)
     if artifact is None:
         return {"error": f"Run {run_id} not found."}
     return {
@@ -355,7 +385,8 @@ async def get_detailed_results(
     components, and performance data.
     """
     run_id = await _resolve_run_id(run_id, session_id)
-    artifact = _artifacts.get(run_id)
+    user = get_current_user()
+    artifact = await asyncio.to_thread(_artifacts.get, run_id, session_id, user)
     if artifact is None:
         raise ValueError(f"Run '{run_id}' not found")
 
