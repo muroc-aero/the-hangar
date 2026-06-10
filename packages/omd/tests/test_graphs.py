@@ -45,7 +45,7 @@ def _edge_relations(graph: dict) -> list[str]:
 
 class TestPlanGraphOCP:
     def test_basic_mission(self):
-        plan = _load_plan(FIXTURES / "ocp_basic_mission/history/v1.yaml")
+        plan = _load_plan(FIXTURES / "assembled/ocp_basic_mission_v1.yaml")
         g = build_plan_graph(plan)
 
         ids = _node_ids(g)
@@ -54,7 +54,7 @@ class TestPlanGraphOCP:
         assert "mission_profile" in ids
 
     def test_basic_mission_has_architecture(self):
-        plan = _load_plan(FIXTURES / "ocp_basic_mission/history/v1.yaml")
+        plan = _load_plan(FIXTURES / "assembled/ocp_basic_mission_v1.yaml")
         g = build_plan_graph(plan)
 
         ids = _node_ids(g)
@@ -65,7 +65,7 @@ class TestPlanGraphOCP:
         assert len(arch_edges) >= 1
 
     def test_with_slots(self):
-        plan = _load_plan(FIXTURES / "ocp_pyc_prop_slot/history/v3.yaml")
+        plan = _load_plan(FIXTURES / "assembled/ocp_pyc_prop_slot_v3.yaml")
         g = build_plan_graph(plan)
 
         ids = _node_ids(g)
@@ -75,7 +75,7 @@ class TestPlanGraphOCP:
         assert slot["properties"]["provider"] == "pyc/turbojet"
 
     def test_with_drag_slot(self):
-        plan = _load_plan(FIXTURES / "ocp_vlm_drag_slot/history/v1.yaml")
+        plan = _load_plan(FIXTURES / "assembled/ocp_vlm_drag_slot_v1.yaml")
         g = build_plan_graph(plan)
 
         ids = _node_ids(g)
@@ -97,7 +97,7 @@ class TestPlanGraphOCP:
         assert ac["properties"].get("S_ref") is not None
 
     def test_solver_settings(self):
-        plan = _load_plan(FIXTURES / "ocp_pyc_prop_slot/history/v3.yaml")
+        plan = _load_plan(FIXTURES / "assembled/ocp_pyc_prop_slot_v3.yaml")
         g = build_plan_graph(plan)
 
         # OCP plans with solver_settings should get a solver node
@@ -109,7 +109,7 @@ class TestPlanGraphOCP:
         assert "mission_profile" in types
 
     def test_mission_profile_properties(self):
-        plan = _load_plan(FIXTURES / "ocp_basic_mission/history/v1.yaml")
+        plan = _load_plan(FIXTURES / "assembled/ocp_basic_mission_v1.yaml")
         g = build_plan_graph(plan)
 
         mp = _node_by_id(g, "mission_profile")
@@ -126,7 +126,7 @@ class TestPlanGraphOCP:
 
 class TestPlanGraphPyCycle:
     def test_turbojet(self):
-        plan = _load_plan(FIXTURES / "pyc_turbojet_design/history/v1.yaml")
+        plan = _load_plan(FIXTURES / "assembled/pyc_turbojet_design_v1.yaml")
         g = build_plan_graph(plan)
 
         ids = _node_ids(g)
@@ -139,7 +139,7 @@ class TestPlanGraphPyCycle:
         assert "elem-nozz" in ids
 
     def test_turbojet_flow_edges(self):
-        plan = _load_plan(FIXTURES / "pyc_turbojet_design/history/v1.yaml")
+        plan = _load_plan(FIXTURES / "assembled/pyc_turbojet_design_v1.yaml")
         g = build_plan_graph(plan)
 
         flow_edges = [(e["source"], e["target"]) for e in g["edges"]
@@ -150,14 +150,14 @@ class TestPlanGraphPyCycle:
         assert ("elem-turb", "elem-nozz") in flow_edges
 
     def test_turbojet_has_flight_condition(self):
-        plan = _load_plan(FIXTURES / "pyc_turbojet_design/history/v1.yaml")
+        plan = _load_plan(FIXTURES / "assembled/pyc_turbojet_design_v1.yaml")
         g = build_plan_graph(plan)
 
         ids = _node_ids(g)
         assert "flight" in ids
 
     def test_turbojet_engine_config_label(self):
-        plan = _load_plan(FIXTURES / "pyc_turbojet_design/history/v1.yaml")
+        plan = _load_plan(FIXTURES / "assembled/pyc_turbojet_design_v1.yaml")
         g = build_plan_graph(plan)
 
         ec = _node_by_id(g, "engine_config")
@@ -167,7 +167,7 @@ class TestPlanGraphPyCycle:
         assert "comp_PR" in ec["label"]
 
     def test_hbtf(self):
-        plan = _load_plan(FIXTURES / "pyc_hbtf_design/history/v1.yaml")
+        plan = _load_plan(FIXTURES / "assembled/pyc_hbtf_design_v1.yaml")
         g = build_plan_graph(plan)
 
         ids = _node_ids(g)
@@ -181,7 +181,7 @@ class TestPlanGraphPyCycle:
         assert "elem-byp_nozz" in ids
 
     def test_hbtf_bypass_edge(self):
-        plan = _load_plan(FIXTURES / "pyc_hbtf_design/history/v1.yaml")
+        plan = _load_plan(FIXTURES / "assembled/pyc_hbtf_design_v1.yaml")
         g = build_plan_graph(plan)
 
         flow_edges = [(e["source"], e["target"]) for e in g["edges"]
@@ -189,21 +189,21 @@ class TestPlanGraphPyCycle:
         assert ("elem-splitter", "elem-byp_nozz") in flow_edges
 
     def test_ab_turbojet(self):
-        plan = _load_plan(FIXTURES / "pyc_ab_turbojet_design/history/v1.yaml")
+        plan = _load_plan(FIXTURES / "assembled/pyc_ab_turbojet_design_v1.yaml")
         g = build_plan_graph(plan)
 
         ids = _node_ids(g)
         assert "elem-ab" in ids  # afterburner
 
     def test_single_turboshaft(self):
-        plan = _load_plan(FIXTURES / "pyc_single_turboshaft_design/history/v1.yaml")
+        plan = _load_plan(FIXTURES / "assembled/pyc_single_turboshaft_design_v1.yaml")
         g = build_plan_graph(plan)
 
         ids = _node_ids(g)
         assert "elem-pt" in ids  # power turbine
 
     def test_mixedflow(self):
-        plan = _load_plan(FIXTURES / "pyc_mixedflow_design/history/v1.yaml")
+        plan = _load_plan(FIXTURES / "assembled/pyc_mixedflow_design_v1.yaml")
         g = build_plan_graph(plan)
 
         ids = _node_ids(g)
@@ -218,7 +218,7 @@ class TestPlanGraphPyCycle:
 
 class TestPlanGraphOAS:
     def test_aero_analysis_unchanged(self):
-        plan = _load_plan(FIXTURES / "oas_aero_analysis/history/v1.yaml")
+        plan = _load_plan(FIXTURES / "assembled/oas_aero_analysis_v1.yaml")
         g = build_plan_graph(plan)
 
         types = _node_types(g)
@@ -392,7 +392,7 @@ class TestDisciplineGraphFallback:
 
 class TestSlotDecomposition:
     def test_vlm_slot_has_surface_and_mesh(self):
-        plan = _load_plan(FIXTURES / "ocp_vlm_drag_slot/history/v1.yaml")
+        plan = _load_plan(FIXTURES / "assembled/ocp_vlm_drag_slot_v1.yaml")
         g = build_plan_graph(plan)
 
         ids = _node_ids(g)
@@ -406,7 +406,7 @@ class TestSlotDecomposition:
         assert mesh["properties"].get("num_y") is not None
 
     def test_vlm_slot_mesh_label(self):
-        plan = _load_plan(FIXTURES / "ocp_vlm_drag_slot/history/v1.yaml")
+        plan = _load_plan(FIXTURES / "assembled/ocp_vlm_drag_slot_v1.yaml")
         g = build_plan_graph(plan)
 
         mesh = _node_by_id(g, "slot-drag-mesh")
@@ -414,7 +414,7 @@ class TestSlotDecomposition:
         assert "panels" in mesh["label"]
 
     def test_vlm_slot_has_configures_edge(self):
-        plan = _load_plan(FIXTURES / "ocp_vlm_drag_slot/history/v1.yaml")
+        plan = _load_plan(FIXTURES / "assembled/ocp_vlm_drag_slot_v1.yaml")
         g = build_plan_graph(plan)
 
         config_edges = [
@@ -426,7 +426,7 @@ class TestSlotDecomposition:
         assert len(config_edges) >= 1
 
     def test_pyc_direct_slot_has_elements(self):
-        plan = _load_plan(FIXTURES / "ocp_pyc_prop_slot/history/v3.yaml")
+        plan = _load_plan(FIXTURES / "assembled/ocp_pyc_prop_slot_v3.yaml")
         g = build_plan_graph(plan)
 
         ids = _node_ids(g)
@@ -439,7 +439,7 @@ class TestSlotDecomposition:
         assert "slot-propulsion-elem-nozz" in ids
 
     def test_pyc_direct_slot_has_flow_edges(self):
-        plan = _load_plan(FIXTURES / "ocp_pyc_prop_slot/history/v3.yaml")
+        plan = _load_plan(FIXTURES / "assembled/ocp_pyc_prop_slot_v3.yaml")
         g = build_plan_graph(plan)
 
         flow_edges = [

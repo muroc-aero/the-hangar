@@ -11,8 +11,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # Install OpenConcept from upstream at a pinned ref.
+# Default tracks scripts/upstream-pins.env (OCP_REF); bump both together.
 # Override at build time: --build-arg OCP_REF=<commit|tag|branch>
-ARG OCP_REF=main
+ARG OCP_REF=0d2adeb6f6855b3cbe77b1c1453c5cf22c7fe5ca
 RUN pip install --no-cache-dir "openconcept @ git+https://github.com/mdolab/openconcept.git@${OCP_REF}"
 
 # Copy SDK first (changes less often -> better layer caching)

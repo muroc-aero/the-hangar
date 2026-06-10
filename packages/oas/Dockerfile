@@ -11,8 +11,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # Install OpenAeroStruct from upstream at a pinned ref.
+# Default tracks scripts/upstream-pins.env (OAS_REF); bump both together.
 # Override at build time: --build-arg OAS_REF=<commit|tag|branch>
-ARG OAS_REF=main
+ARG OAS_REF=0a4d614f9494cbadaba4a6fa32a33d6e54e14f34
 RUN pip install --no-cache-dir "openaerostruct @ git+https://github.com/mdolab/OpenAeroStruct.git@${OAS_REF}"
 
 # Copy SDK first (changes less often -> better layer caching)

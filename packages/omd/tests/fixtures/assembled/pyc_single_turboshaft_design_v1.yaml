@@ -1,0 +1,22 @@
+metadata:
+  id: plan-pyc-single-turboshaft-design
+  name: pyCycle single-spool turboshaft design point
+  version: 1
+  content_hash: 5e20fb022ca3ebbe4530e4bcafd1180b175cb42fc917ed8520f6cc500ec62dff
+operating_points:
+  alt: 0.0
+  MN: 1.0e-06
+  T4_target: 2370.0
+  pwr_target: 4000.0
+  nozz_PR_target: 1.2
+components:
+- id: turboshaft
+  type: pyc/SingleTurboshaftDesign
+  config:
+    thermo_method: CEA
+    comp_PR: 13.5
+    comp_eff: 0.83
+    turb_eff: 0.86
+    pt_eff: 0.9
+    HP_Nmech: 8070.0
+    LP_Nmech: 5000.0

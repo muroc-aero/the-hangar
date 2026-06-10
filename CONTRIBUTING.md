@@ -21,7 +21,7 @@ git clone https://github.com/muroc-aero/the-hangar && cd the-hangar
 bash scripts/dev-setup.sh   # installs all packages + CLI entry points
 ```
 
-This installs every package (`hangar-sdk`, `hangar-oas`, `hangar-ocp`, `hangar-pyc`, `hangar-omd`, `hangar-viewer`) in editable mode and registers the CLIs (`oas-cli`, `ocp-cli`, `pyc-cli`, `omd-cli`).
+This clones the required upstream repos (OpenAeroStruct, OpenConcept, pyCycle) into `upstream/` at the refs pinned in `scripts/upstream-pins.env`, then installs every package (`hangar-sdk`, `hangar-oas`, `hangar-ocp`, `hangar-pyc`, `hangar-omd`, `hangar-viewer`) in editable mode and registers the CLIs (`oas-cli`, `ocp-cli`, `pyc-cli`, `omd-cli`). Run `scripts/setup-upstream.sh` (no flags) if you also want the reference-only OpenMDAO and AeroSandbox clones.
 
 Verify the setup:
 

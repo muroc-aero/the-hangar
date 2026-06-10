@@ -1,0 +1,25 @@
+metadata:
+  id: plan-pyc-mixedflow-design
+  name: pyCycle mixed-flow turbofan design point
+  version: 1
+  content_hash: 9c4f85b7f357eabbcc10b4d1ef09f57a96bca48b36662db932551e569cb600b3
+operating_points:
+  alt: 35000.0
+  MN: 0.8
+  Fn_target: 5500.0
+  T4_target: 3200.0
+  T_ab_target: 3400.0
+  BPR_target: 1.05
+components:
+- id: mixedflow
+  type: pyc/MixedFlowDesign
+  config:
+    thermo_method: CEA
+    fan_PR: 3.3
+    fan_eff: 0.8948
+    lpc_PR: 1.935
+    lpc_eff: 0.9243
+    hpc_PR: 4.9
+    hpc_eff: 0.8707
+    hpt_eff: 0.8888
+    lpt_eff: 0.8996

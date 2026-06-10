@@ -47,7 +47,7 @@ uv run pytest packages/oas/tests/
 
 | Test file | What it covers |
 |-----------|---------------|
-| `test_tools.py` | All MCP tools: create_surface, analysis, optimization, drag polar, stability, reset |
+| `test_oas_tools.py` | All MCP tools: create_surface, analysis, optimization, drag polar, stability, reset |
 | `test_golden_physics.py` | Physics invariants: CL/CD signs, monotonicity, structural mass, convergence |
 | `test_oas_validation.py` | OAS-specific validation: validate_aero, validate_aerostruct, validate_drag_polar |
 | `test_oas_cli.py` | OAS CLI: tool registry, one-shot mode, script mode, interactive mode |
@@ -246,7 +246,7 @@ the OAS pattern:
 ```
 packages/<tool>/tests/
 ├── conftest.py              # Shared fixtures, session isolation
-├── test_tools.py            # Integration tests for all MCP tools
+├── test_oas_tools.py        # Integration tests for all MCP tools
 ├── test_golden_physics.py   # Physics invariant checks
 └── test_<tool>_validation.py  # Tool-specific validation
 ```

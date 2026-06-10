@@ -248,3 +248,7 @@ deploy/landing-company/*_poster.*
 
 # Personal scratch: reference PDFs, draft design docs, prototype HTML
 notes/
+
+# Local review working list (not for commit)
+docs/REVIEW_BACKLOG.md
+docs/FEATURE_BACKLOG.md

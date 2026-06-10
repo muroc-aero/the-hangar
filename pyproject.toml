@@ -35,6 +35,21 @@ hangar-viewer = { workspace = true }
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# Default collection surface for a bare `uv run pytest`. Scoped to the open
+# packages' unit/integration tests so collection never recurses into
+# upstream/ clones or demo artifacts. Excluded on purpose:
+# - packages/*/examples/*/tests: parity suites with per-example sys.path
+#   setup (colliding `shared` modules); run each directory explicitly.
+# - packages/range-safety/tests: private submodule, tested in its own repo;
+#   its `tests` package name collides with packages/omd/tests.
+testpaths = [
+    "packages/sdk/tests",
+    "packages/oas/tests",
+    "packages/ocp/tests",
+    "packages/omd/tests",
+    "packages/pyc/tests",
+    "packages/viewer/tests",
+]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "golden_physics: physics-invariant golden tests",
