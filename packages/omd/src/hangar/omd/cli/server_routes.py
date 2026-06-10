@@ -875,3 +875,21 @@ cy.on('tap', function(evt) {{
 </html>"""
 
 
+
+
+def register_omd_viewer_routes() -> None:
+    """Register all omd routes with the SDK viewer server.
+
+    Called by both ``omd-cli viewer`` and the omd MCP server so the same
+    views are reachable from either entry point (stdio daemon viewer and
+    the HTTP transport's composed viewer app).
+    """
+    from hangar.sdk.viz.viewer_server import register_viewer_route
+
+    register_viewer_route("/omd-provenance", _omd_provenance_handler)
+    register_viewer_route("/omd-plan-diff", _omd_plan_diff_handler)
+    register_viewer_route("/omd-plots", _omd_plots_handler)
+    register_viewer_route("/omd-plot-img", _omd_plot_img_handler)
+    register_viewer_route("/omd-n2", _omd_n2_handler)
+    register_viewer_route("/omd-problem-dag", _omd_problem_dag_handler)
+    register_viewer_route("/omd-plan-detail", _omd_plan_detail_handler)

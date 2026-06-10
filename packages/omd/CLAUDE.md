@@ -87,7 +87,40 @@ All runtime data lives under `hangar_data/omd/` (configurable via `OMD_DATA_ROOT
 - `export.py` -- generates standalone Python scripts from plans
 - `provenance.py` -- provenance timeline and DAG visualization
 - `results.py` -- query results from analysis DB
-- `server.py` -- FastMCP server (thin wrapper over CLI functions)
+- `server.py` -- FastMCP server entry point (full omd-cli parity, port 8003)
+- `tools/` -- MCP tool implementations (authoring, execution, results_tools, plots,
+  resources, prompts); each tool calls the same implementation as the CLI
+
+## MCP server
+
+`python -m hangar.omd.server` (or `omd-server`) exposes the full omd-cli
+surface over MCP through the shared SDK envelope/provenance/auth stack:
+
+- **Tool surface**: plan authoring (`plan_init`, `plan_add_component`,
+  `plan_add_dv`, ..., `write_plan`/`read_plan` for direct YAML), validation
+  (`validate_plan` runs schema + semantic preflight), execution (`run_plan`
+  analysis/optimize, `run_polar` sweep), results (`get_results`,
+  `get_run_summary`, `record_conclusion`, `get_provenance`, `export_plan`),
+  plots (`generate_plots`, `list_plot_types`), URLs (`get_view_urls`), and
+  the four shared provenance tools.
+- **Workspace**: relative plan paths resolve to `hangar_data/omd/workspace`
+  so MCP-only agents (claude.ai) can author and run plans without
+  filesystem access.
+- **Envelopes**: `run_plan`/`run_polar` return the versioned envelope;
+  typed `HangarError`s become error envelopes via `capture_tool`.
+- **Views**: the server registers the omd viewer routes
+  (`/omd-provenance`, `/omd-problem-dag`, `/omd-plots`, `/omd-plot-img`,
+  `/omd-n2`, `/omd-plan-detail`, `/omd-plan-diff`) on both transports; tool
+  results carry a `urls` block built from `RESOURCE_SERVER_URL` (or the
+  local daemon viewer port).
+- **Range-safety dashboard**: deployments set `RS_DASHBOARD_URL`; locally
+  the server autostarts the dashboard on `RS_DASHBOARD_PORT` (default 7655)
+  when hangar-range-safety is installed. Disable with
+  `RS_DASHBOARD_AUTOSTART=off`.
+- **Resources/prompts**: `omd://reference` (parameter reference,
+  `src/hangar/omd/reference.md`), `omd://plan-schema`,
+  `omd://plans/{plan_id}`; prompts `author_plan_study`,
+  `run_existing_plan`. The omd-cli guide skill stays the deep reference.
 
 ## Component types
 | Type | Factory | Plot Provider | Description |

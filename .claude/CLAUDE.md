@@ -44,6 +44,8 @@ All packages use the `hangar.*` Python namespace (PEP 420 implicit namespace pac
 ### packages/omd/ -- hangar-omd general-purpose OpenMDAO plan runner
 See `packages/omd/CLAUDE.md` for detailed omd architecture.
 - `cli.py` -- omd-cli entry point (run, plot, results, assemble, validate, export, provenance)
+- `server.py` -- FastMCP entry point, tool registration (full omd-cli parity)
+- `tools/` -- MCP tool implementations (authoring, execution, results, plots)
 - `run.py` -- plan execution pipeline (load, materialize, execute, record, N2)
 - `materializer.py` -- converts plan YAML to OpenMDAO Problem with DVs/constraints/objective
 - `registry.py` -- factory + plot provider registry

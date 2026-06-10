@@ -237,9 +237,30 @@ def _build_oidc_routes(config):
 # App factory
 # ---------------------------------------------------------------------------
 
+def _adapt_custom_handler(handler):
+    """Adapt a ``(qs) -> (status, content_type, body)`` viewer handler to Starlette.
+
+    Custom routes (``register_viewer_route``) are written against the stdio
+    daemon viewer's handler contract; this wrapper lets the same handlers
+    serve on the HTTP transport.
+    """
+
+    async def endpoint(request: Request) -> Response:
+        qs = {k: request.query_params.getlist(k) for k in request.query_params.keys()}
+        try:
+            status, content_type, body = await asyncio.to_thread(handler, qs)
+        except Exception as exc:
+            return JSONResponse({"error": str(exc)}, status_code=500)
+        return Response(content=body, status_code=status, media_type=content_type)
+
+    return endpoint
+
+
 def _wrap_handlers(decorator):
     """Apply *decorator* to every content-serving handler and return a route list."""
-    return [
+    from hangar.sdk.viz.viewer_server import _CUSTOM_ROUTES
+
+    routes = [
         Route("/viewer", decorator(viewer_html)),
         Route("/viewer/", decorator(viewer_html)),
         Route("/sessions", decorator(sessions_endpoint)),
@@ -249,6 +270,13 @@ def _wrap_handlers(decorator):
         Route("/dashboard", decorator(dashboard_endpoint)),
         Route("/dashboard/", decorator(dashboard_endpoint)),
     ]
+    # Tool-specific routes (e.g. omd's /omd-provenance) registered before the
+    # app was built get the same auth treatment as the core viewer routes.
+    routes += [
+        Route(path, decorator(_adapt_custom_handler(handler)))
+        for path, handler in _CUSTOM_ROUTES.items()
+    ]
+    return routes
 
 
 def build_viewer_app() -> tuple[Starlette | None, str]:
@@ -357,10 +385,12 @@ def make_fallback_app(viewer_app: Starlette, fallback_app) -> Starlette:
     paths is also handled by the viewer app.
     """
 
+    from hangar.sdk.viz.viewer_server import _CUSTOM_ROUTES
+
     async def dispatcher(scope, receive, send):
         if scope["type"] in ("http", "websocket"):
             path = scope.get("path", "")
-            if path in _VIEWER_PATHS:
+            if path in _VIEWER_PATHS or path in _CUSTOM_ROUTES:
                 await viewer_app(scope, receive, send)
                 return
         await fallback_app(scope, receive, send)
