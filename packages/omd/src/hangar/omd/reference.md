@@ -74,6 +74,61 @@ multi-tool composition. The factory availability depends on which optional
 packages are installed; unknown types are reported by `validate_plan` with
 suggestions.
 
+## Component config keys (plan `components[].config`)
+
+### `ocp/*` missions (closed set, validated by preflight)
+
+Top-level config keys:
+
+| Key | Meaning |
+|-----|---------|
+| `aircraft_template` | Built-in aircraft: `caravan`, `b738`, `kingair`, `tbm850` |
+| `aircraft_data` | Inline aircraft data dict (alternative to a template) |
+| `architecture` | `turboprop`, `twin_turboprop`, `series_hybrid`, `twin_series_hybrid`, `twin_turbofan` |
+| `num_nodes` | Integration nodes per phase (must be odd; default 11) |
+| `mission_params` | Mission profile dict, see below |
+| `solver_settings` | Newton solver overrides (`maxiter`, `atol`, `rtol`, ...) |
+| `propulsion_overrides` | Propulsion parameter overrides |
+| `skip_fields` | Aircraft-data fields to omit |
+| `include_cost_model` | Adds promoted `doc_per_nmi` trip cost |
+| `slots` | Provider slots, see below |
+
+`mission_params` keys carry units in their suffix (`_NM`, `_ft`,
+`_ftmin`, `_kn`): `mission_range_NM`, `cruise_altitude_ft`,
+`climb_vs_ftmin`, `climb_Ueas_kn`, `cruise_vs_ftmin`, `cruise_Ueas_kn`,
+`descent_vs_ftmin`, `descent_Ueas_kn` (positive; negated internally),
+`payload_lb`, `battery_specific_energy`, `<phase>_hybridization`;
+`ocp/MissionWithReserve` adds `reserve_altitude_ft`,
+`reserve_{climb,cruise,descent}_{vs_ftmin,Ueas_kn}`, `loiter_vs_ftmin`,
+`loiter_Ueas_kn`; `ocp/FullMission` adds `v0v1_Utrue_kn`,
+`v1vr_Utrue_kn`, `v1v0_Utrue_kn`, `rotate_Utrue_kn`.
+
+Slot shape (per slot name `drag`, `propulsion`, `weight`, `maneuver`):
+
+```yaml
+config:
+  slots:
+    drag:
+      provider: oas/vlm        # or oas/vlm-direct, pyc/surrogate, ...
+      config:                  # provider-specific
+        num_x: 2
+        num_y: 7               # must be odd
+        num_twist: 4
+```
+
+### Other factories
+
+- `paraboloid/Paraboloid` takes **no config**; set run inputs (`x`, `y`)
+  via `operating_points` (preflight rejects config keys here).
+- `oas/*` config keys are forwarded to the OpenAeroStruct surface dict
+  (`span`, `taper`, `sweep`, `dihedral`, `root_chord`, `num_x`, `num_y`,
+  `num_twist_cp`, `wing_type`, `symmetry`, `fem_model_type`,
+  `wing_weight_ratio`, `use_composite`, ... plus any valid OAS surface
+  key); unknown keys are passed through, not validated.
+- `pyc/*` config keys are the cycle parameters (`comp_PR`, `comp_eff`,
+  `burner_FAR`, `turb_eff`, `nozz_Cv`, `initial_guesses`, ...); extras
+  pass through to the cycle builder.
+
 ## DV / constraint / objective short names
 
 The materializer resolves short names to full OpenMDAO paths per component

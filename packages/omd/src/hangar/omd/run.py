@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import signal
+import threading
 import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -26,6 +27,7 @@ from hangar.omd.db import (
     record_activity,
     add_prov_edge,
     project_headline,
+    query_entity,
     query_provenance_dag,
     query_run_results,
     resolve_scalar,
@@ -248,24 +250,48 @@ def _decompose_plan(
 def _wallclock_timeout(seconds: int | None):
     """Context manager that raises TimeoutError after *seconds* wallclock time.
 
-    Uses SIGALRM on Unix. If *seconds* is None, no timeout is applied.
+    Uses SIGALRM on the main thread. Off the main thread (MCP server
+    tools run via asyncio.to_thread) SIGALRM is unavailable, so a
+    watchdog timer injects TimeoutError into this thread instead; the
+    exception lands at the next Python bytecode boundary, which solver
+    iterations cross frequently. If *seconds* is None, no timeout is
+    applied.
     """
     if seconds is None:
         yield
         return
 
-    def _handler(signum, frame):
-        raise TimeoutError(
-            f"Execution exceeded wallclock limit of {seconds}s"
+    if threading.current_thread() is threading.main_thread():
+        def _handler(signum, frame):
+            raise TimeoutError(
+                f"Execution exceeded wallclock limit of {seconds}s"
+            )
+
+        old = signal.signal(signal.SIGALRM, _handler)
+        signal.alarm(int(seconds))
+        try:
+            yield
+        finally:
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, old)
+        return
+
+    import ctypes
+
+    target = threading.get_ident()
+
+    def _fire():
+        ctypes.pythonapi.PyThreadState_SetAsyncExc(
+            ctypes.c_ulong(target), ctypes.py_object(TimeoutError)
         )
 
-    old = signal.signal(signal.SIGALRM, _handler)
-    signal.alarm(int(seconds))
+    timer = threading.Timer(seconds, _fire)
+    timer.daemon = True
+    timer.start()
     try:
         yield
     finally:
-        signal.alarm(0)
-        signal.signal(signal.SIGALRM, old)
+        timer.cancel()
 
 
 def run_plan(
@@ -611,6 +637,14 @@ def run_plan(
 
     # Record assessment entity with convergence metadata
     _record_assessment(run_id, plan_id, status, mode, summary, recorder_info)
+
+    # Render summary.html eagerly (without plots) so viewers and read_plan
+    # see it right after the run; get_run_summary regenerates it with plots.
+    try:
+        from hangar.omd.cli.summary import generate_summary
+        generate_summary(run_id, ensure_plots=False)
+    except Exception as exc:
+        logger.warning("Failed to render run summary for %s: %s", run_id, exc)
 
     return {
         "run_id": run_id,
@@ -1383,6 +1417,40 @@ def _final_case(run_id: str) -> dict:
     return chosen.get("data") or {}
 
 
+def _conclusion_metric_data(run_id: str) -> dict:
+    """Final case data overlaid with the run's summary scalars.
+
+    Acceptance criteria are usually keyed on summary metric names
+    (``fuel_burn_kg``, ``CL``, ...) which do not exist in the recorder
+    case data for mission plans (fuel burn lives under
+    ``descent.fuel_used_final``), so criteria could not resolve and
+    passing runs were judged "open"/"partial". The assessment entity
+    snapshots the summary scalars at run time; merge them in so both
+    vocabularies resolve. Composite per-component summaries are
+    flattened to ``<comp_id>.<metric>``.
+    """
+    data = dict(_final_case(run_id))
+    entity = query_entity(f"assessment-{run_id}")
+    try:
+        meta = json.loads((entity or {}).get("metadata") or "{}")
+    except (json.JSONDecodeError, TypeError):
+        meta = {}
+
+    def _is_scalar(v) -> bool:
+        return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+    for key, val in meta.items():
+        if _is_scalar(val) and key not in ("case_count",):
+            data.setdefault(key, val)
+    for comp_id, comp_summary in (meta.get("components") or {}).items():
+        if not isinstance(comp_summary, dict):
+            continue
+        for key, val in comp_summary.items():
+            if _is_scalar(val):
+                data.setdefault(f"{comp_id}.{key}", val)
+    return data
+
+
 def _requirement_entity_ids(plan_id: str) -> dict[str, str]:
     """Map requirement id -> its provenance entity id (highest version wins)."""
     dag = query_provenance_dag(plan_id)
@@ -1428,7 +1496,7 @@ def record_conclusion(
     if db_path is not None:
         init_analysis_db(db_path)
 
-    final_data = _final_case(run_id)
+    final_data = _conclusion_metric_data(run_id)
     req_entities = _requirement_entity_ids(plan_id)
 
     req_results: list[dict] = []

@@ -86,24 +86,39 @@ def _extract_case_data(case) -> dict:
     Returns:
         Dict of variable_name -> value.
     """
-    import numpy as np
-
     data = {}
 
-    # Get all outputs
+    # All explicit component outputs, keyed by absolute name
+    # (e.g. "paraboloid.f_xy").
     try:
         outputs = case.list_outputs(out_stream=None, return_format="dict")
         for name, info in outputs.items():
             val = info.get("val", info.get("value"))
             if val is not None:
-                if isinstance(val, np.ndarray):
-                    if val.size == 1:
-                        data[name] = float(val.flat[0])
-                    else:
-                        data[name] = val.tolist()
-                else:
-                    data[name] = val
+                data[name] = _to_jsonable(val)
     except Exception as exc:
         logger.debug("Could not list outputs for case: %s", exc)
 
+    # Promoted-name outputs (case.outputs). This is the only place
+    # auto-IVC design variables appear -- list_outputs drops them, which
+    # made optimized DV values unreachable through the tool surface.
+    try:
+        for name in case.outputs or {}:
+            if name not in data:
+                val = case.outputs[name]
+                if val is not None:
+                    data[name] = _to_jsonable(val)
+    except Exception as exc:
+        logger.debug("Could not read promoted outputs for case: %s", exc)
+
     return data
+
+
+def _to_jsonable(val):
+    import numpy as np
+
+    if isinstance(val, np.ndarray):
+        if val.size == 1:
+            return float(val.flat[0])
+        return val.tolist()
+    return val
