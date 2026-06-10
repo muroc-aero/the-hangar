@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import html as _html
 import json
-import os
 import threading
 from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -550,18 +549,35 @@ def start_viewer_server() -> int | None:
     """Start the viewer HTTP server in a background daemon thread.
 
     Returns the port number on success, or None if the port was busy.
-    Disabled when ``HANGAR_PROV_VIEWER=off`` (recommended for production).
+    Disabled when ``HANGAR_PROV_VIEWER=off``.
+
+    This server has no authentication and no per-user scoping: it serves
+    every user's provenance sessions and artifacts to anyone who can reach
+    it. It exists for single-user local dev on the stdio transport, so it
+    only binds loopback by default. Binding a non-loopback
+    ``HANGAR_PROV_HOST`` requires the explicit opt-in ``HANGAR_PROV_VIEWER=on``;
+    HTTP deployments should use the authenticated ``/viewer`` routes from
+    ``viewer_routes.build_viewer_app`` instead.
     """
     from hangar.sdk.env import _hangar_env
+    from hangar.sdk.telemetry import logger
 
-    if _hangar_env("HANGAR_PROV_VIEWER", "OAS_PROV_VIEWER").lower() == "off":
+    toggle = _hangar_env("HANGAR_PROV_VIEWER", "OAS_PROV_VIEWER").lower()
+    if toggle == "off":
         return None
     port = int(
         _hangar_env("HANGAR_PROV_PORT", "OAS_PROV_PORT", default=str(_DEFAULT_PORT))
     )
-    # Default to localhost in production; set HANGAR_PROV_HOST=0.0.0.0 explicitly
-    # if Docker port mapping is needed in dev.
     bind_host = _hangar_env("HANGAR_PROV_HOST", "OAS_PROV_HOST", default="127.0.0.1")
+    if bind_host not in ("127.0.0.1", "localhost", "::1") and toggle != "on":
+        logger.warning(
+            "Refusing to start the unauthenticated provenance viewer on "
+            "non-loopback host %r. It serves all users' data without auth; "
+            "set HANGAR_PROV_VIEWER=on to expose it anyway, or use the "
+            "authenticated /viewer routes on the HTTP transport.",
+            bind_host,
+        )
+        return None
     try:
         server = HTTPServer((bind_host, port), _ProvHandler)
     except OSError:

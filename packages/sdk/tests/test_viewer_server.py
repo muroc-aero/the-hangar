@@ -265,3 +265,61 @@ def test_generate_plot_png_singlepoint_unchanged(tmp_path):
     assert pr["surfaces"]["wing"]["CL"] == 0.5
     # No invented final_results key for single-point.
     assert "final_results" not in pr
+
+
+# ---------------------------------------------------------------------------
+# start_viewer_server bind gate
+# ---------------------------------------------------------------------------
+
+
+class TestStartViewerServerGate:
+    """The daemon viewer is unauthenticated; non-loopback binds must opt in."""
+
+    @staticmethod
+    def _clear_env(monkeypatch):
+        for var in (
+            "HANGAR_PROV_VIEWER", "OAS_PROV_VIEWER",
+            "HANGAR_PROV_HOST", "OAS_PROV_HOST",
+            "HANGAR_PROV_PORT", "OAS_PROV_PORT",
+        ):
+            monkeypatch.delenv(var, raising=False)
+
+    def test_off_disables(self, monkeypatch):
+        from hangar.sdk.viz.viewer_server import start_viewer_server
+
+        self._clear_env(monkeypatch)
+        monkeypatch.setenv("HANGAR_PROV_VIEWER", "off")
+        with patch("hangar.sdk.viz.viewer_server.HTTPServer") as MockServer:
+            assert start_viewer_server() is None
+        MockServer.assert_not_called()
+
+    def test_nonloopback_refused_without_optin(self, monkeypatch):
+        from hangar.sdk.viz.viewer_server import start_viewer_server
+
+        self._clear_env(monkeypatch)
+        monkeypatch.setenv("HANGAR_PROV_HOST", "0.0.0.0")
+        with patch("hangar.sdk.viz.viewer_server.HTTPServer") as MockServer:
+            assert start_viewer_server() is None
+        MockServer.assert_not_called()
+
+    def test_nonloopback_allowed_with_optin(self, monkeypatch):
+        from hangar.sdk.viz.viewer_server import start_viewer_server
+
+        self._clear_env(monkeypatch)
+        monkeypatch.setenv("HANGAR_PROV_HOST", "0.0.0.0")
+        monkeypatch.setenv("HANGAR_PROV_VIEWER", "on")
+        monkeypatch.setenv("HANGAR_PROV_PORT", "7991")
+        with patch("hangar.sdk.viz.viewer_server.HTTPServer") as MockServer, \
+             patch("hangar.sdk.viz.viewer_server.threading.Thread"):
+            assert start_viewer_server() == 7991
+        assert MockServer.call_args[0][0] == ("0.0.0.0", 7991)
+
+    def test_loopback_default_starts(self, monkeypatch):
+        from hangar.sdk.viz.viewer_server import start_viewer_server
+
+        self._clear_env(monkeypatch)
+        with patch("hangar.sdk.viz.viewer_server.HTTPServer") as MockServer, \
+             patch("hangar.sdk.viz.viewer_server.threading.Thread"):
+            port = start_viewer_server()
+        assert port is not None
+        assert MockServer.call_args[0][0][0] == "127.0.0.1"
