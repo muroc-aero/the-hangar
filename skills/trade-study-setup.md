@@ -22,8 +22,23 @@ Identify:
   fuel burn, L/D)
 - **Fixed conditions:** flight point, constraints, other geometry parameters
   that remain constant
+- **Acceptance targets:** which metric thresholds a winning design must
+  meet (these become requirements in step 2)
+
+Also pick the execution route and stay with it for the whole trade:
+MCP tool servers for agent sessions, the local CLIs (`oas-cli`,
+`ocp-cli`, `pyc-cli`, `omd-cli`) for scripted runs, or an omd plan when
+the trade couples tools (slots) or you want plan-versioned provenance.
+See `design-study-workflow` for the routing details.
 
 ### 2. Establish the baseline
+
+Encode the acceptance targets first, so every run is checked against them:
+
+- Tool servers: `set_requirements([{path, operator, value, label}])` --
+  violations appear as error findings in each run's validation block.
+- omd plans: `plan_add_requirement` with
+  `acceptance_criteria: [{metric, comparator, threshold}]`.
 
 Run a single analysis at the nominal design point. Record all metrics.
 This is the reference against which all variations are compared.
@@ -108,7 +123,22 @@ When objectives conflict (e.g. lower drag vs lower weight):
   )
   ```
 
-### 7. Document assumptions and limitations
+### 7. Record the conclusion
+
+**Required:** Close the loop on the recommended configuration:
+```
+record_conclusion(
+    run_id=<recommended_config_run_id>,
+    narrative="Config D balances drag and mass on the Pareto front and
+               meets all acceptance targets; recommended."
+)
+```
+Per-requirement verdicts are auto-derived from the run's results against
+the requirements set in step 2 (overall `meets` / `fails` / `partial` /
+`open`). In omd this is `record_conclusion` / `omd-cli conclude`. Report
+the verdicts, including any that fail.
+
+### 8. Document assumptions and limitations
 
 Every trade study should note:
 - Analysis fidelity level (VLM, panel, tube FEM vs wingbox)
