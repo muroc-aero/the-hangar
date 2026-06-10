@@ -7,15 +7,14 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Any
 
 import numpy as np
 
 from hangar.sdk.artifacts.store import _make_run_id  # noqa: F401 -- re-export for convenience
 from hangar.sdk.auth import get_current_user
 from hangar.sdk.envelope.response import make_envelope
-from hangar.sdk.viz.plotting import PLOT_TYPES, generate_plot
-from hangar.sdk.validation.requirements import check_requirements
+from hangar.sdk.viz.plotting import generate_plot
+from hangar.sdk.validation.requirements import requirements_findings
 from hangar.sdk.telemetry import make_telemetry
 from hangar.sdk.state import artifacts as _artifacts
 
@@ -26,7 +25,7 @@ from hangar.oas.summary import (
     summarize_optimization,
     summarize_stability,
 )
-from hangar.oas.validation import ValidationFinding, findings_to_dict
+from hangar.oas.validation import findings_to_dict
 from hangar.sdk.helpers import _sanitize_surface_dicts
 
 
@@ -124,44 +123,7 @@ async def _finalize_analysis(
 ) -> dict:
     """Shared post-analysis: validate requirements, build telemetry, save artifact, build envelope."""
     # Inject failed requirements as validation findings
-    if session.requirements:
-        req_report = check_requirements(session.requirements, results)
-        for outcome in req_report.get("results", []):
-            if outcome.get("passed"):
-                continue
-            err = outcome.get("error", "")
-            path_missing = err.startswith("Path ") and "not found" in err
-            if path_missing:
-                findings.append(ValidationFinding(
-                    check_id=f"requirements.{outcome['label']}",
-                    category="constraints",
-                    severity="warning",
-                    confidence="high",
-                    passed=False,
-                    message=(
-                        f"Requirement '{outcome['label']}' skipped: path "
-                        f"'{outcome['path']}' is not present in this run's results"
-                    ),
-                    remediation=(
-                        "This requirement targets a value the current tool/surface "
-                        "does not produce. Scope the requirement to runs that include "
-                        "this path, or remove it from the session config."
-                    ),
-                ))
-            else:
-                findings.append(ValidationFinding(
-                    check_id=f"requirements.{outcome['label']}",
-                    category="constraints",
-                    severity="error",
-                    confidence="high",
-                    passed=False,
-                    message=(
-                        f"Requirement '{outcome['label']}': {outcome['path']} "
-                        f"{outcome['operator']} {outcome['target']} "
-                        f"(actual: {outcome.get('actual')})"
-                    ),
-                    remediation="Adjust design or requirements.",
-                ))
+    findings.extend(requirements_findings(session.requirements, results))
 
     validation = findings_to_dict(findings)
     elapsed = time.perf_counter() - t0

@@ -55,10 +55,12 @@ def test_build_oas_aeropoint_missing_surfaces():
         build_oas_aeropoint({}, {})
 
 
-def test_aero_unknown_surface_key_warns(caplog):
+def test_aero_unknown_surface_key_warns(caplog, monkeypatch):
     import logging
 
     from hangar.omd.factories.oas_aero import _plan_config_to_aero_surface
+
+    monkeypatch.setattr(logging.getLogger("hangar"), "propagate", True)
 
     config = {
         "name": "wing", "wing_type": "rect", "num_x": 2, "num_y": 5,

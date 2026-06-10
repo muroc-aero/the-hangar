@@ -201,11 +201,15 @@ def test_unknown_optimizer_type_errors(tmp_path):
                     recorder_path=tmp_path / "rec.sql")
 
 
-def test_typod_solver_target_warns_and_skips(tmp_path, caplog):
+def test_typod_solver_target_warns_and_skips(tmp_path, caplog, monkeypatch):
     """A solver target that doesn't exist must warn, not crash."""
     import logging
 
     from hangar.omd.materializer import apply_solvers_post_setup
+
+    # hangar.sdk.telemetry sets propagate=False on the "hangar" logger;
+    # restore propagation so caplog's root handler sees the warning.
+    monkeypatch.setattr(logging.getLogger("hangar"), "propagate", True)
 
     plan = _paraboloid_plan(solvers=[{
         "target": "nope.missing",

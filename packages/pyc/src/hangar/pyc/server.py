@@ -240,102 +240,17 @@ mcp.prompt(
 
 
 def main():
-    """Console-script entry point for pyc-server.
+    """Console-script entry point for pyc-server."""
+    from hangar.sdk.server_main import run_server_main
 
-    Supports stdio (default) and HTTP transports.
-    """
-    import argparse
-    from hangar.sdk.provenance.db import init_db as _prov_init_db, record_session as _prov_record_session
-
-    parser = argparse.ArgumentParser(description="pyCycle MCP Server")
-    parser.add_argument(
-        "--transport",
-        choices=["stdio", "http"],
-        default=os.environ.get("PYC_TRANSPORT", "stdio"),
-    )
-    parser.add_argument(
-        "--host",
-        default=os.environ.get("PYC_HOST", "127.0.0.1"),
-    )
-    parser.add_argument(
-        "--port",
-        type=int,
+    run_server_main(
+        mcp,
+        tool="pyc",
+        env_prefix="PYC",
         # 8000=oas, 8001=ocp, 8002=pyc (matches the docker-compose host ports)
-        default=int(os.environ.get("PYC_PORT", "8002")),
+        default_port=8002,
+        description="pyCycle MCP Server",
     )
-    args = parser.parse_args()
-
-    # Provenance setup
-    from hangar.sdk.provenance.middleware import set_tool_name, set_default_session_id
-    set_tool_name("pyc")
-    _prov_init_db()
-    import uuid as _uuid
-    _auto_sid = f"auto-{_uuid.uuid4().hex[:8]}"
-    # Seed the per-process fallback so tool calls from users who never call
-    # start_session land somewhere. Per-user active sessions (start_session)
-    # override this; the ContextVar stays reserved for test isolation.
-    set_default_session_id(_auto_sid)
-    _prov_record_session(_auto_sid, notes="Auto-created on pyCycle server startup")
-
-    if args.transport == "stdio":
-        # Legacy daemon thread viewer for local dev (localhost only, no auth)
-        try:
-            import sys as _sys
-            from hangar.sdk.viz.viewer_server import start_viewer_server as _start_viewer
-            _prov_port = _start_viewer()
-            if _prov_port:
-                _sep = "\u2500" * 54
-                print(f"\n{_sep}", file=_sys.stderr)
-                print("  PYC Provenance Viewer", file=_sys.stderr)
-                print(_sep, file=_sys.stderr)
-                print(f"  Viewer    http://localhost:{_prov_port}/viewer", file=_sys.stderr)
-                print(f"  Sessions  http://localhost:{_prov_port}/sessions", file=_sys.stderr)
-                print(f"  Plot API  http://localhost:{_prov_port}/plot?run_id=<id>&plot_type=<type>", file=_sys.stderr)
-                print(_sep + "\n", file=_sys.stderr)
-        except Exception:
-            pass
-        mcp.run()
-    else:
-        try:
-            import uvicorn
-        except ImportError as exc:
-            raise ImportError(
-                "uvicorn required for HTTP transport. Install hangar-sdk[http]."
-            ) from exc
-
-        import sys as _sys
-        from hangar.sdk.viz.viewer_routes import build_viewer_app
-
-        mcp_asgi = mcp.streamable_http_app()
-        viewer_app, auth_mode = build_viewer_app()
-
-        if viewer_app is not None:
-            # Run OIDC discovery before starting the server (if OIDC mode).
-            if auth_mode == "oidc":
-                import asyncio as _asyncio
-                from hangar.sdk.viz.viewer_auth import discover_oidc_endpoints
-                _asyncio.run(discover_oidc_endpoints(viewer_app.state.oidc_config))
-
-            from hangar.sdk.viz.viewer_routes import make_fallback_app
-            app = make_fallback_app(viewer_app, mcp_asgi)
-            _sep = "\u2500" * 54
-            print(f"\n{_sep}", file=_sys.stderr)
-            print("  PYC Provenance Viewer (HTTP transport)", file=_sys.stderr)
-            print(_sep, file=_sys.stderr)
-            print(f"  Viewer    http://{args.host}:{args.port}/viewer", file=_sys.stderr)
-            if auth_mode == "oidc":
-                print(f"            Protected by OIDC ({viewer_app.state.oidc_config.issuer_url})", file=_sys.stderr)
-            else:
-                print("            Protected by Basic Auth", file=_sys.stderr)
-            print(_sep + "\n", file=_sys.stderr)
-        else:
-            app = mcp_asgi
-
-        # Add unauthenticated /healthz endpoint
-        from hangar.sdk.health import add_healthz
-        app = add_healthz(app, server_name="pyc")
-
-        uvicorn.run(app, host=args.host, port=args.port)
 
 
 if __name__ == "__main__":

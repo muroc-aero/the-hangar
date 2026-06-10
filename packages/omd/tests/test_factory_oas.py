@@ -160,9 +160,12 @@ _BASE_SURFACE_CONFIG = {
 }
 
 
-def test_unknown_surface_key_warns(caplog):
+def test_unknown_surface_key_warns(caplog, monkeypatch):
     import logging
 
+    # hangar.sdk.telemetry sets propagate=False on the "hangar" logger;
+    # restore propagation so caplog's root handler sees the warning.
+    monkeypatch.setattr(logging.getLogger("hangar"), "propagate", True)
     config = dict(_BASE_SURFACE_CONFIG)
     config["twist_pc"] = [0.0, 0.0]  # typo for twist_cp
     with caplog.at_level(logging.WARNING, logger="hangar.omd.factories.oas"):
@@ -170,9 +173,10 @@ def test_unknown_surface_key_warns(caplog):
     assert any("twist_pc" in r.message for r in caplog.records)
 
 
-def test_known_surface_keys_do_not_warn(caplog):
+def test_known_surface_keys_do_not_warn(caplog, monkeypatch):
     import logging
 
+    monkeypatch.setattr(logging.getLogger("hangar"), "propagate", True)
     config = dict(_BASE_SURFACE_CONFIG)
     config["twist_cp"] = [0.0, 0.0, 0.0]
     config["chord_cp"] = [1.0, 1.0, 1.0]

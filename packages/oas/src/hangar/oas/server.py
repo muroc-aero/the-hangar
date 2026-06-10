@@ -17,7 +17,7 @@ import os
 
 from mcp.server.fastmcp import FastMCP
 
-from hangar.sdk.auth.oidc import build_auth_settings, build_token_verifier, _env as _auth_env
+from hangar.sdk.auth.oidc import build_auth_settings, build_token_verifier
 from hangar.sdk.provenance.middleware import capture_tool
 from hangar.oas.tools import session as _prov_tools
 
@@ -318,163 +318,19 @@ mcp.prompt(
 def main():
     """Console-script entry point for oas-mcp.
 
-    Supports two transports:
-
-    * ``stdio`` (default) — standard MCP stdio transport for Claude Desktop /
-      local clients.
-    * ``http`` — streamable HTTP transport for remote clients.  Requires the
-      ``[http]`` extra (``pip install 'openaerostruct[http]'``).  Reads host
-      and port from ``--host`` / ``--port`` CLI args or ``OAS_HOST`` /
-      ``OAS_PORT`` env vars.
-
-    Set the transport via ``--transport`` or the ``OAS_TRANSPORT`` env var.
-
-    Environment variables are loaded from a ``.env`` file in the working
-    directory (or any parent) via ``python-dotenv`` at module import time,
-    before Keycloak settings and FastMCP are initialised.  Variables already
-    set in the process environment take precedence over the file.
+    Supports the stdio (default) and streamable HTTP transports; see
+    ``hangar.sdk.server_main.run_server_main`` for the shared behavior
+    (argparse, provenance seeding, viewer, auth warning). Reads
+    ``OAS_TRANSPORT`` / ``OAS_HOST`` / ``OAS_PORT`` env defaults.
     """
-    import argparse
-    from hangar.sdk.provenance.db import init_db as _prov_init_db, record_session as _prov_record_session
+    from hangar.sdk.server_main import run_server_main
 
-    parser = argparse.ArgumentParser(description="OpenAeroStruct MCP Server")
-    parser.add_argument(
-        "--transport",
-        choices=["stdio", "http"],
-        default=os.environ.get("OAS_TRANSPORT", "stdio"),
-        help="Transport protocol (default: stdio)",
-    )
-    parser.add_argument(
-        "--host",
-        default=os.environ.get("OAS_HOST", "127.0.0.1"),
-        help="Bind host for HTTP transport (default: 127.0.0.1)",
-    )
-    parser.add_argument(
-        "--port",
-        type=int,
-        default=int(os.environ.get("OAS_PORT", "8000")),
-        help="Bind port for HTTP transport (default: 8000)",
-    )
-    args = parser.parse_args()
-
-    # --- Provenance setup ---
-    from hangar.sdk.provenance.middleware import set_tool_name, set_default_session_id
-    set_tool_name("oas")
-    _prov_init_db()
-    import uuid as _uuid
-    _auto_sid = f"auto-{_uuid.uuid4().hex[:8]}"
-    # Seed the per-process fallback so tool calls from users who never call
-    # start_session land somewhere. Per-user active sessions (start_session)
-    # override this; the ContextVar stays reserved for test isolation.
-    set_default_session_id(_auto_sid)
-    _prov_record_session(_auto_sid, notes="Auto-created on server startup")
-    if args.transport == "stdio":
-        # Legacy daemon thread viewer for local dev (localhost only, no auth)
-        try:
-            import sys as _sys
-            from hangar.sdk.viz.viewer_server import start_viewer_server as _start_viewer
-            _prov_port = _start_viewer()
-            if _prov_port:
-                _sep = "\u2500" * 54
-                print(f"\n{_sep}", file=_sys.stderr)
-                print("  OAS Provenance Viewer", file=_sys.stderr)
-                print(_sep, file=_sys.stderr)
-                print(f"  Viewer    http://localhost:{_prov_port}/viewer", file=_sys.stderr)
-                print("            Interactive DAG \u2014 load any session from the", file=_sys.stderr)
-                print("            drop-down or drop an exported JSON file.", file=_sys.stderr)
-                print(f"  Sessions  http://localhost:{_prov_port}/sessions", file=_sys.stderr)
-                print("            JSON list of all recorded provenance sessions.", file=_sys.stderr)
-                print(f"  Plot API  http://localhost:{_prov_port}/plot?run_id=<id>&plot_type=<type>", file=_sys.stderr)
-                print("            Render a saved analysis run as a PNG image.", file=_sys.stderr)
-                print(_sep + "\n", file=_sys.stderr)
-        except Exception:
-            pass
-        mcp.run()
-    else:
-        # --- HTTP transport ---
-        try:
-            import uvicorn
-        except ImportError as exc:
-            raise ImportError(
-                "uvicorn is required for HTTP transport. "
-                "Install it with: pip install 'openaerostruct[http]'"
-            ) from exc
-
-        import sys as _sys
-        from hangar.sdk.viz.viewer_routes import build_viewer_app
-
-        _warn_if_unauthenticated(args.host, args.port)
-        mcp_asgi = mcp.streamable_http_app()
-        viewer_app, auth_mode = build_viewer_app()
-
-        if viewer_app is not None:
-            # Run OIDC discovery before starting the server (if OIDC mode).
-            if auth_mode == "oidc":
-                import asyncio as _asyncio
-                from hangar.sdk.viz.viewer_auth import discover_oidc_endpoints
-                _asyncio.run(discover_oidc_endpoints(viewer_app.state.oidc_config))
-
-            # Compose viewer + MCP: viewer handles its known paths,
-            # everything else falls through to the MCP ASGI app.
-            from hangar.sdk.viz.viewer_routes import make_fallback_app
-            app = make_fallback_app(viewer_app, mcp_asgi)
-            # Print viewer info
-            _sep = "\u2500" * 54
-            print(f"\n{_sep}", file=_sys.stderr)
-            print("  OAS Provenance Viewer (HTTP transport)", file=_sys.stderr)
-            print(_sep, file=_sys.stderr)
-            print(f"  Viewer    http://{args.host}:{args.port}/viewer", file=_sys.stderr)
-            if auth_mode == "oidc":
-                print(f"            Protected by OIDC ({viewer_app.state.oidc_config.issuer_url})", file=_sys.stderr)
-            else:
-                print("            Protected by Basic Auth (OAS_VIEWER_USER/PASSWORD)", file=_sys.stderr)
-            print(_sep + "\n", file=_sys.stderr)
-        else:
-            app = mcp_asgi
-
-        # Add unauthenticated /healthz endpoint
-        from hangar.sdk.health import add_healthz
-        app = add_healthz(app, server_name="oas")
-
-        uvicorn.run(app, host=args.host, port=args.port)
-    # --- End provenance setup ---
-
-
-def _warn_if_unauthenticated(host: str, port: int) -> None:
-    """Print a loud warning to stderr when HTTP transport runs without auth."""
-    import sys
-
-    issuer_url = _auth_env("OIDC_ISSUER_URL", "KEYCLOAK_ISSUER_URL")
-
-    if issuer_url:
-        print(
-            f"\n  OAS MCP \u2014 HTTP transport  |  auth: OIDC ({issuer_url})\n",
-            file=sys.stderr,
-        )
-        return
-
-    url = f"http://{host}:{port}/mcp"
-    print(
-        "\n"
-        "\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557\n"
-        "\u2551                  \u26a0  NO AUTHENTICATION ENABLED  \u26a0                \u2551\n"
-        "\u2560\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2563\n"
-        "\u2551  The server is accepting ALL requests on:                        \u2551\n"
-        f"\u2551    {url:<60}  \u2551\n"
-        "\u2551                                                                  \u2551\n"
-        "\u2551  Anyone who can reach this port can call every tool, run         \u2551\n"
-        "\u2551  optimizations, and read/delete all stored artifacts.            \u2551\n"
-        "\u2551                                                                  \u2551\n"
-        "\u2551  This is fine for local development.  For any deployment that    \u2551\n"
-        "\u2551  is reachable over a network, set:                               \u2551\n"
-        "\u2551                                                                  \u2551\n"
-        "\u2551    OIDC_ISSUER_URL=https://<provider>/...                        \u2551\n"
-        "\u2551    OIDC_CLIENT_ID=oas-mcp                                        \u2551\n"
-        "\u2551    OIDC_CLIENT_SECRET=<secret>                                    \u2551\n"
-        "\u2551                                                                  \u2551\n"
-        "\u2551  Works with any OIDC provider (Authentik, Keycloak, Auth0, \u2026).  \u2551\n"
-        "\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d\n",
-        file=sys.stderr,
+    run_server_main(
+        mcp,
+        tool="oas",
+        env_prefix="OAS",
+        default_port=8000,
+        description="OpenAeroStruct MCP Server",
     )
 
 

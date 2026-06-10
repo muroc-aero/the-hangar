@@ -57,16 +57,36 @@ implicit namespace packages.
 Use the SDK infrastructure throughout:
 
 - `@capture_tool` decorator for provenance tracking on every tool
-- `make_envelope()` / `make_error_envelope()` for response wrapping
-- `ValidationFinding` for physics and numerics checks
+  (it also converts typed `HangarError`s into the error envelope)
+- `make_envelope()` for response wrapping
+- `ValidationFinding` for physics and numerics checks, plus
+  `requirements_findings()` from `hangar.sdk.validation.requirements`
+  inside your `_finalize_analysis` (do not re-implement the
+  requirements-to-findings loop)
 - `ArtifactStore` for run result persistence
-- `SessionManager` for in-memory state and caching
+- `SessionManager` for in-memory state and caching; pass a
+  `session_factory` (a `Session` subclass) if the tool needs typed
+  per-session state (see `hangar.pyc.state.PycSession`)
+
+The shared server plumbing lives in the SDK -- do NOT copy it from
+another package:
+
+- `main()` is a thin wrapper over
+  `hangar.sdk.server_main.run_server_main(mcp, tool=..., env_prefix=...,
+  default_port=..., description=...)`, which handles argparse, provenance
+  seeding, the stdio viewer banner, the HTTP transport + authenticated
+  viewer routes, the no-auth warning, and `/healthz`. Pick the next free
+  default port (8000=oas, 8001=ocp, 8002=pyc).
+- The four provenance tools come from
+  `hangar.sdk.provenance.tools.build_provenance_tools(_sessions)`;
+  assign `start_session` / `log_decision` / `link_cross_tool_result` /
+  `export_session_graph` from the returned namespace in `tools/session.py`.
 
 Follow the patterns in `packages/oas/` and `packages/ocp/` for:
 
 - `pyproject.toml` -- set `name = "hangar-<pkg>"`, depend on `hangar-sdk`
-- `server.py` -- FastMCP entry point with arg parsing, transport selection
-- `tools/session.py` -- standard session/provenance/artifact tools
+- `server.py` -- FastMCP construction, tool/resource/prompt registration
+- `tools/session.py` -- session/artifact/observability tools
 - `config/defaults.py` -- default parameter values
 
 Add the package to the root `pyproject.toml` workspace members.
@@ -74,12 +94,13 @@ Add the upstream clone to `scripts/setup-upstream.sh`.
 
 ## 3. Integrate the viewer
 
-Set up the provenance viewer integration matching the other packages:
+The stdio daemon-thread viewer and the authenticated HTTP viewer routes are
+already wired by `run_server_main`; just verify:
 
-- In `server.py`, add the daemon-thread viewer launch for stdio transport
-  (see OAS/OCP `server.py` for the pattern)
-- Wire up the `HANGAR_PROV_DB` and `HANGAR_DATA_DIR` env vars
-- Verify the viewer Cytoscape DAG shows tool calls after a test session
+- `HANGAR_PROV_DB` and `HANGAR_DATA_DIR` env vars reach the server
+- The viewer Cytoscape DAG shows tool calls after a test session
+- `register_plot_types()` / `register_plot_generator()` are called at
+  import time in `server.py` for the package's plot types
 
 ## 4. Set up the CLI
 
