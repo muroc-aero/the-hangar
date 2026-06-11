@@ -121,6 +121,10 @@ def _build_case_plan(spec: dict, ctx: dict) -> dict:
     meta["study"] = ctx["study_id"]
     meta["case_id"] = ctx["case_id"]
     meta.pop("content_hash", None)
+    # A case plan's lineage is the study (partOf edge), not the base
+    # plan's version history; an inherited parent_version would create a
+    # dangling wasDerivedFrom edge under the new plan id.
+    meta.pop("parent_version", None)
     return plan
 
 

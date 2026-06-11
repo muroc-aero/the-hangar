@@ -32,9 +32,12 @@ cases:
       axes:
         range:  {linspace: [300, 800, 11]}
         energy: {values: [250, 500, 750]}
-      bind:                         # every axis MUST bind to >=1 plan path
-        range:  [components[mission].config.mission_params.mission_range_NM]
-        energy: [components[mission].config.mission_params.battery_specific_energy]
+      bind:                         # every axis MUST bind to >=1 plan path.
+        range:                      # NOTE: use block lists (or quote the
+          - components[mission].config.mission_params.mission_range_NM
+        energy:                     # strings) -- bare [id] selectors break
+          - components[mission].config.mission_params.battery_specific_energy
+                                    # YAML flow-sequence parsing.
   - case:                           # manual insertion of an arbitrary case
       id: reference-cell
       params: {range: 500, energy: 450}
