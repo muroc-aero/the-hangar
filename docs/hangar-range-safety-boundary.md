@@ -54,6 +54,12 @@ modules as the public surface; internal helpers are not contracts.
 - `hangar.sdk.provenance.db` -- `sessions`, `tool_calls`, `decisions`,
   `cross_references` tables; `get_session_graph(session_id) -> dict`
   returns `{nodes, edges}` (node types `tool_call`, `decision`).
+- `hangar.sdk.provenance.db.build_session_elements(session_id) -> dict`
+  -- the same graph as normalized Cytoscape elements (`{"data": {...}}`
+  dicts with `kind` + `label`, each a superset of the raw node/edge).
+  This is what the sdk viewer `/graph` endpoints serve and what the
+  dashboard renders; `graph_to_elements(graph)` is the underlying
+  normalizer for already-merged graphs (multi-DB reader).
 
 ### Session requirements + conclusions (read-only)
 The sdk session servers (oas / ocp / pyc) persist the gather/conclude data the
@@ -101,16 +107,15 @@ dashboard's `SdkSessionSource` renders for those stages:
   `DESIGN_data_contract.md` in range-safety).
 
 ### Plot rendering
-- Target contract (per the split branch `claude/hangar-repo-separation-KoJOR`):
-  `hangar.viewer.embedded.generate_plot_png(run_id, plot_type) -> bytes`
-  and the open registry `hangar.sdk.viz.plot_registry`
-  (`register_plot_types`, `register_plot_generator`,
-  `register_viewer_route`).
-- On current `main` the equivalent lives in
-  `hangar.sdk.viz.viewer_server`. `range-safety` calls it behind a thin
-  one-file adapter so the import re-points when the split lands. The
-  split branch is a reference draft; it may not merge verbatim, but the
-  dashboard targets its intended boundaries.
+- Contract: `hangar.viewer.embedded.generate_plot_png(run_id, plot_type)
+  -> bytes`. This shim exists and re-exports the implementation, which
+  still lives in `hangar.sdk.viz.viewer_server` until the deferred
+  sdk/viz relocation (repo-review P4 item 20 deferral). The open registry
+  `hangar.sdk.viz.plot_registry` (`register_plot_types`,
+  `register_plot_generator`, `register_viewer_route`) is unchanged.
+- `range-safety` calls it behind a thin one-file adapter that probes
+  `hangar.viewer.embedded` first and falls back to `hangar.sdk.viz`, so
+  no dashboard change is needed when the implementation moves.
 
 ### Multi-tool provenance reader (target contract)
 - `hangar.viewer.reader.MultiDBProvenanceReader` (split branch) merges

@@ -363,7 +363,18 @@ let _graphData = null;
 let _fsmMode = false;
 
 // ── Render graph ─────────────────────────────────────────────────────────
+function normalizeGraph(g) {
+  // The /graph endpoints serve Cytoscape-native elements
+  // ({nodes: [{data: {...}}], edges: [{data: {...}}]}, each data dict a
+  // superset of the raw node/edge); exported session-graph JSON files and
+  // older servers use the raw {nodes, edges} shape. Unwrap to raw dicts so
+  // the rendering below handles both.
+  const unwrap = arr => (arr || []).map(el => (el && el.data && (el.data.id || el.data.source)) ? el.data : el);
+  return { ...g, nodes: unwrap(g.nodes), edges: unwrap(g.edges) };
+}
+
 function renderGraph(data) {
+  data = normalizeGraph(data);
   _graphData = data;
   document.getElementById('empty-state').style.display = 'none';
 
