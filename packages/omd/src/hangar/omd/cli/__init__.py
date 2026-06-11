@@ -472,15 +472,11 @@ def viewer_cmd(port: int, db_path: str | None) -> None:
 
     _prov_init_db()
 
-    from hangar.sdk.viz.viewer_server import register_viewer_route, start_viewer_server
+    from hangar.sdk.viz.viewer_server import start_viewer_server
 
-    register_viewer_route("/omd-provenance", _omd_provenance_handler)
-    register_viewer_route("/omd-plan-diff", _omd_plan_diff_handler)
-    register_viewer_route("/omd-plots", _omd_plots_handler)
-    register_viewer_route("/omd-plot-img", _omd_plot_img_handler)
-    register_viewer_route("/omd-n2", _omd_n2_handler)
-    register_viewer_route("/omd-problem-dag", _omd_problem_dag_handler)
-    register_viewer_route("/omd-plan-detail", _omd_plan_detail_handler)
+    from hangar.omd.cli.server_routes import register_omd_viewer_routes
+
+    register_omd_viewer_routes()
 
     actual_port = start_viewer_server()
     if actual_port is None:

@@ -65,6 +65,29 @@ services:
       HANGAR_DATA_DIR: /data
       HANGAR_PROV_DB: /data/provenance.db
 
+  omd:
+    build:
+      context: ..
+      dockerfile: packages/omd/Dockerfile
+    ports:
+      - "8003:8000"
+    volumes:
+      - ./hangar_data/omd:/data
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      OMD_TRANSPORT: http
+      OMD_HOST: 0.0.0.0
+      # In-container port must match the container side of the ports mapping
+      # (the server's native default is 8003).
+      OMD_PORT: 8000
+      HANGAR_DATA_DIR: /data
+      HANGAR_PROV_DB: /data/provenance.db
+      # The dashboard runs as its own service in deployments; no in-container
+      # autostart (hangar-range-safety is not installed in this image).
+      RS_DASHBOARD_AUTOSTART: "off"
+
   viewer:
     build:
       context: ..
@@ -75,5 +98,6 @@ services:
       - ./hangar_data/oas:/data/oas:ro
       - ./hangar_data/ocp:/data/ocp:ro
       - ./hangar_data/pyc:/data/pyc:ro
+      - ./hangar_data/omd:/data/omd:ro
     environment:
-      HANGAR_VIEWER_DBS: "oas=/data/oas/provenance.db,ocp=/data/ocp/provenance.db,pyc=/data/pyc/provenance.db"
+      HANGAR_VIEWER_DBS: "oas=/data/oas/provenance.db,ocp=/data/ocp/provenance.db,pyc=/data/pyc/provenance.db,omd=/data/omd/provenance.db"

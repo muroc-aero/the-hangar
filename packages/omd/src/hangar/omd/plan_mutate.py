@@ -215,6 +215,26 @@ def _validate_partial(plan_dir: Path) -> None:
         )
 
 
+def _write_validated(plan_dir: Path, target: Path, data: Any) -> None:
+    """Write a section file, validate the partial plan, roll back on failure.
+
+    A rejected mutation must leave the plan directory exactly as it was;
+    a half-persisted entry forces the corrected retry through the
+    duplicate-id guard with ``replace=True`` (blind Lane C run,
+    2026-06-11).
+    """
+    prior = target.read_text() if target.exists() else None
+    _write_yaml(target, data)
+    try:
+        _validate_partial(plan_dir)
+    except UserInputError:
+        if prior is None:
+            target.unlink(missing_ok=True)
+        else:
+            target.write_text(prior)
+        raise
+
+
 def _collect_var_paths(plan_dir: Path) -> set[str]:
     """Union of short DV names across components declared in the plan.
 
@@ -350,13 +370,7 @@ def add_component(
         )
 
     component = {"id": comp_id, "type": comp_type, "config": config}
-    _write_yaml(target, component)
-
-    try:
-        _validate_partial(plan_dir)
-    except UserInputError:
-        target.unlink(missing_ok=True)
-        raise
+    _write_validated(plan_dir, target, component)
 
     _capture_decision(
         plan_dir,
@@ -389,7 +403,25 @@ def add_requirement(
     if not isinstance(req_id, str) or not req_id:
         raise UserInputError("req.id must be a non-empty string")
     if "text" not in req or not req["text"]:
-        raise UserInputError("req.text must be a non-empty string")
+        alias = next(
+            (k for k in ("statement", "description", "requirement") if k in req),
+            None,
+        )
+        hint = (
+            f" (found '{alias}' -- the schema field for the requirement "
+            "statement is 'text')" if alias else ""
+        )
+        raise UserInputError(f"req.text must be a non-empty string{hint}")
+    criteria = req.get("acceptance_criteria")
+    if criteria is not None and not (
+        isinstance(criteria, list)
+        and all(isinstance(c, dict) for c in criteria)
+    ):
+        raise UserInputError(
+            "req.acceptance_criteria must be a LIST of criterion mappings, "
+            "e.g. [{'metric': 'fuel_burn_kg', 'comparator': '<=', "
+            "'threshold': 150.0}] -- wrap a single criterion in a list"
+        )
 
     existing = _load_section(plan_dir, "requirements", "requirements") or []
     if not isinstance(existing, list):
@@ -410,8 +442,7 @@ def add_requirement(
     else:
         existing.append(req)
 
-    _write_yaml(plan_dir / "requirements.yaml", existing)
-    _validate_partial(plan_dir)
+    _write_validated(plan_dir, plan_dir / "requirements.yaml", existing)
 
     _capture_decision(
         plan_dir,
@@ -491,8 +522,7 @@ def add_dv(
         dvs.append(dv)
 
     opt["design_variables"] = dvs
-    _write_yaml(plan_dir / "optimization.yaml", opt)
-    _validate_partial(plan_dir)
+    _write_validated(plan_dir, plan_dir / "optimization.yaml", opt)
 
     _capture_decision(
         plan_dir,
@@ -542,8 +572,7 @@ def set_objective(
         objective["units"] = units
 
     opt["objective"] = objective
-    _write_yaml(plan_dir / "optimization.yaml", opt)
-    _validate_partial(plan_dir)
+    _write_validated(plan_dir, plan_dir / "optimization.yaml", opt)
 
     _capture_decision(
         plan_dir,
@@ -576,8 +605,7 @@ def add_decision(plan_dir: Path, *, decision: dict) -> dict:
         decision = {**decision, "id": _next_auto_decision_id(decisions)}
 
     decisions.append(decision)
-    _write_yaml(plan_dir / "decisions.yaml", decisions)
-    _validate_partial(plan_dir)
+    _write_validated(plan_dir, plan_dir / "decisions.yaml", decisions)
     return decision
 
 
@@ -608,8 +636,7 @@ def set_operating_point(
         )
 
     current = {**current, **fields}
-    _write_yaml(plan_dir / "operating_points.yaml", current)
-    _validate_partial(plan_dir)
+    _write_validated(plan_dir, plan_dir / "operating_points.yaml", current)
 
     _capture_decision(
         plan_dir,
@@ -657,8 +684,7 @@ def set_solver(
             block["options"] = linear_options
         current["linear"] = block
 
-    _write_yaml(plan_dir / "solvers.yaml", current)
-    _validate_partial(plan_dir)
+    _write_validated(plan_dir, plan_dir / "solvers.yaml", current)
 
     summary_parts: list[str] = []
     if nonlinear is not None:
@@ -712,8 +738,7 @@ def set_analysis_strategy(
         phase_entries.append(entry)
 
     analysis_plan = {"phases": phase_entries}
-    _write_yaml(plan_dir / "analysis_plan.yaml", analysis_plan)
-    _validate_partial(plan_dir)
+    _write_validated(plan_dir, plan_dir / "analysis_plan.yaml", analysis_plan)
 
     _capture_decision(
         plan_dir,
@@ -795,8 +820,7 @@ def add_shared_var(
     else:
         shared_list.append(entry)
 
-    _write_yaml(plan_dir / "shared_vars.yaml", shared_list)
-    _validate_partial(plan_dir)
+    _write_validated(plan_dir, plan_dir / "shared_vars.yaml", shared_list)
 
     _capture_decision(
         plan_dir,
@@ -829,7 +853,6 @@ def set_composition_policy(
             f"policy must be 'explicit' or 'auto' (got {policy!r})"
         )
 
-    _write_yaml(plan_dir / "composition_policy.yaml", policy)
     if no_auto_share is not None:
         if not isinstance(no_auto_share, list):
             raise UserInputError("no_auto_share must be a list of strings")
@@ -839,9 +862,23 @@ def set_composition_policy(
                     f"no_auto_share entries must be non-empty strings "
                     f"(got {n!r})"
                 )
-        _write_yaml(plan_dir / "no_auto_share.yaml", list(no_auto_share))
 
-    _validate_partial(plan_dir)
+    policy_path = plan_dir / "composition_policy.yaml"
+    if no_auto_share is None:
+        _write_validated(plan_dir, policy_path, policy)
+    else:
+        prior = policy_path.read_text() if policy_path.exists() else None
+        _write_yaml(policy_path, policy)
+        try:
+            _write_validated(
+                plan_dir, plan_dir / "no_auto_share.yaml", list(no_auto_share)
+            )
+        except UserInputError:
+            if prior is None:
+                policy_path.unlink(missing_ok=True)
+            else:
+                policy_path.write_text(prior)
+            raise
 
     summary = f"composition_policy={policy}"
     if no_auto_share:

@@ -76,6 +76,40 @@ _KNOWN_SLOT_NAMES: dict[str, set[str]] = {
 }
 
 
+# Component config keys accepted per factory prefix. Only factories
+# with a closed config surface are enforced: oas/ factories forward
+# arbitrary surface keys to OpenAeroStruct and pyc/ factories pass
+# extra keys through to the cycle builder, so they stay permissive.
+#
+# Keep in sync with:
+#   - factories/ocp/builder.py (config.get calls)
+#   - factories/ocp/mission_values.py + defaults.py (mission_params)
+_OCP_CONFIG_KEYS = {
+    "aircraft_template", "aircraft_data", "architecture", "num_nodes",
+    "mission_params", "solver_settings", "propulsion_overrides",
+    "skip_fields", "include_cost_model", "slots",
+}
+
+_OCP_MISSION_PARAM_KEYS = {
+    "cruise_altitude_ft", "mission_range_NM",
+    "climb_vs_ftmin", "climb_Ueas_kn",
+    "cruise_vs_ftmin", "cruise_Ueas_kn",
+    "descent_vs_ftmin", "descent_Ueas_kn",
+    "reserve_altitude_ft",
+    "reserve_climb_vs_ftmin", "reserve_climb_Ueas_kn",
+    "reserve_cruise_vs_ftmin", "reserve_cruise_Ueas_kn",
+    "reserve_descent_vs_ftmin", "reserve_descent_Ueas_kn",
+    "loiter_vs_ftmin", "loiter_Ueas_kn",
+    "v0v1_Utrue_kn", "v1vr_Utrue_kn", "v1v0_Utrue_kn", "rotate_Utrue_kn",
+    "payload_lb", "battery_specific_energy",
+}
+
+_CONFIG_KEYS_BY_PREFIX: dict[str, set[str]] = {
+    "ocp/": _OCP_CONFIG_KEYS,
+    "paraboloid/": set(),
+}
+
+
 def _known_names_for(components: list[dict]) -> set[str]:
     """Collect plausible short names across all components in a plan."""
     names: set[str] = set(_GENERIC_PROMOTED)
@@ -383,6 +417,76 @@ def validate_slot_names(plan: dict) -> list[ValidationFinding]:
     return findings
 
 
+def validate_component_config(plan: dict) -> list[ValidationFinding]:
+    """Reject unknown component config keys for closed-config factories.
+
+    Catches the two blind-agent failure modes: ``template:`` instead of
+    ``aircraft_template:`` (only failed at materialize time inside
+    run_plan) and paraboloid config ``{x, y}`` (silently ignored; run
+    inputs only apply via ``operating_points``). Factories that
+    intentionally forward unknown keys (oas/, pyc/) are not enforced.
+    """
+    findings: list[ValidationFinding] = []
+    for i, comp in enumerate(plan.get("components") or []):
+        if not isinstance(comp, dict):
+            continue
+        ctype = comp.get("type")
+        if not isinstance(ctype, str):
+            continue
+        enforced: set[str] | None = None
+        for prefix, keys in _CONFIG_KEYS_BY_PREFIX.items():
+            if ctype.startswith(prefix):
+                enforced = keys
+                break
+        if enforced is None:
+            continue
+        config = comp.get("config") or {}
+        if not isinstance(config, dict):
+            continue
+
+        for key in config:
+            if not isinstance(key, str) or key in enforced:
+                continue
+            if not enforced:
+                findings.append(ValidationFinding(
+                    path=f"components[{i}].config.{key}",
+                    message=(
+                        f"Component type '{ctype}' takes no config keys, so "
+                        f"'{key}' would be silently ignored. Set run inputs "
+                        f"via operating_points instead."
+                    ),
+                ))
+            else:
+                findings.append(ValidationFinding(
+                    path=f"components[{i}].config.{key}",
+                    message=(
+                        f"Unknown config key '{key}' for component type "
+                        f"'{ctype}'. Known keys: {sorted(enforced)}."
+                    ),
+                    suggestions=_suggest(key, enforced),
+                ))
+
+        if ctype.startswith("ocp/"):
+            mission_params = config.get("mission_params") or {}
+            if isinstance(mission_params, dict):
+                for key in mission_params:
+                    if not isinstance(key, str):
+                        continue
+                    if key in _OCP_MISSION_PARAM_KEYS:
+                        continue
+                    if key.endswith("_hybridization"):
+                        continue
+                    findings.append(ValidationFinding(
+                        path=f"components[{i}].config.mission_params.{key}",
+                        message=(
+                            f"Unknown mission_params key '{key}' for "
+                            f"component type '{ctype}'."
+                        ),
+                        suggestions=_suggest(key, _OCP_MISSION_PARAM_KEYS),
+                    ))
+    return findings
+
+
 def validate_optimization_config(plan: dict) -> list[ValidationFinding]:
     """Catch plans with design_variables but no objective (or vice versa).
 
@@ -435,6 +539,7 @@ def validate_plan_semantic(plan: dict, registry_types: set[str] | None = None) -
     findings += validate_var_paths(plan)
     findings += validate_shared_vars(plan)
     findings += validate_slot_names(plan)
+    findings += validate_component_config(plan)
     findings += validate_factory_contracts(plan)
     findings += validate_optimization_config(plan)
     return findings
@@ -450,6 +555,7 @@ def format_findings(findings: list[ValidationFinding]) -> str:
 
 
 __all__ = [
+    "validate_component_config",
     "validate_factory_contracts",
     "validate_optimization_config",
     "validate_plan_semantic",

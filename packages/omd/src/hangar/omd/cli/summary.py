@@ -241,22 +241,22 @@ def _render_html(
 """
 
 
-@cli.command("summary")
-@click.argument("run_id")
-@click.option("--output", "-o", type=click.Path(), default=None,
-              help="Output HTML path (default: plots/{run_id}/summary.html).")
-@click.option("--no-plots", is_flag=True, default=False,
-              help="Skip on-demand plot generation; only use existing PNGs.")
-def summary_cmd(run_id: str, output: str | None, no_plots: bool) -> None:
-    """Produce a one-page HTML summary of a completed run."""
+def generate_summary(run_id: str, output: str | None = None,
+                     ensure_plots: bool = True) -> Path:
+    """Write the one-page HTML summary for *run_id* and return its path.
+
+    Shared by ``omd-cli summary`` and the MCP ``get_run_summary`` tool.
+    Raises ``UserInputError`` when the run is unknown.
+    """
+    from hangar.sdk.errors import UserInputError
+
     from hangar.omd.db import init_analysis_db, omd_data_root, query_entity, n2_dir
     from hangar.omd.results import get_results
 
     init_analysis_db()
     entity = query_entity(run_id)
     if entity is None:
-        click.echo(f"Run not found: {run_id}", err=True)
-        raise SystemExit(1)
+        raise UserInputError(f"Run not found: {run_id}")
 
     meta: dict = {}
     try:
@@ -278,10 +278,10 @@ def summary_cmd(run_id: str, output: str | None, no_plots: bool) -> None:
 
     plots_dir = omd_data_root() / "plots" / run_id
     plots_dir.mkdir(parents=True, exist_ok=True)
-    if no_plots:
-        plot_files = sorted(plots_dir.glob("*.png"))
-    else:
+    if ensure_plots:
         plot_files = _ensure_plots(run_id, plots_dir, component_type)
+    else:
+        plot_files = sorted(plots_dir.glob("*.png"))
 
     # Copy N2 next to summary.html so the relative link works
     out_path = Path(output) if output else plots_dir / "summary.html"
@@ -317,4 +317,22 @@ def summary_cmd(run_id: str, output: str | None, no_plots: bool) -> None:
         n2_link=n2_link,
     )
     out_path.write_text(html)
+    return out_path
+
+
+@cli.command("summary")
+@click.argument("run_id")
+@click.option("--output", "-o", type=click.Path(), default=None,
+              help="Output HTML path (default: plots/{run_id}/summary.html).")
+@click.option("--no-plots", is_flag=True, default=False,
+              help="Skip on-demand plot generation; only use existing PNGs.")
+def summary_cmd(run_id: str, output: str | None, no_plots: bool) -> None:
+    """Produce a one-page HTML summary of a completed run."""
+    from hangar.sdk.errors import UserInputError
+
+    try:
+        out_path = generate_summary(run_id, output=output, ensure_plots=not no_plots)
+    except UserInputError as exc:
+        click.echo(str(exc), err=True)
+        raise SystemExit(1)
     click.echo(f"Summary written to {out_path}")

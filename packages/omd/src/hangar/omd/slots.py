@@ -137,6 +137,32 @@ def _register_builtins() -> None:
 # ---------------------------------------------------------------------------
 
 
+def _force_spawn_training_pool() -> None:
+    """Make OpenConcept's surrogate-training mp.Pool() safe in threaded hosts.
+
+    OpenConcept trains the VLM / aerostruct drag surrogates with a bare
+    ``mp.Pool()``, which forks. Forking a multithreaded process (the MCP
+    server runs ``run_plan`` on an ``asyncio.to_thread`` worker while the
+    event loop and other threads are live) leaves the pool children
+    deadlocked on locks they inherited mid-hold, and the pool join then
+    hangs the tool call forever. A spawn context is a drop-in replacement
+    here: the pooled workers are module-level functions over picklable
+    data. Patch the modules' ``mp`` alias before any training runs.
+    """
+    import multiprocessing
+
+    spawn = multiprocessing.get_context("spawn")
+    from openconcept.aerodynamics.openaerostruct import drag_polar
+
+    drag_polar.mp = spawn
+    try:
+        from openconcept.aerodynamics.openaerostruct import aerostructural
+
+        aerostructural.mp = spawn
+    except ImportError:
+        pass  # aerostruct extra not installed; drag_polar alone is fine
+
+
 def _oas_vlm_drag_provider(
     nn: int,
     flight_phase: str,
@@ -144,6 +170,8 @@ def _oas_vlm_drag_provider(
 ) -> tuple[om.Group, list[str], list[str]]:
     """Build a VLMDragPolar component for the drag slot."""
     from openconcept.aerodynamics import VLMDragPolar
+
+    _force_spawn_training_pool()
 
     num_x = config.get("num_x", 2)
     num_y = config.get("num_y", 6)
@@ -207,6 +235,8 @@ def _oas_aerostruct_drag_provider(
     from openconcept.aerodynamics.openaerostruct.aerostructural import (
         AerostructDragPolar,
     )
+
+    _force_spawn_training_pool()
 
     num_x = config.get("num_x", 2)
     num_y = config.get("num_y", 6)

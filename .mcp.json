@@ -20,6 +20,13 @@
       "env": {
         "HANGAR_DATA_DIR": "./hangar_data"
       }
+    },
+    "omd": {
+      "command": "uv",
+      "args": ["run", "--directory", ".", "python", "-m", "hangar.omd.server"],
+      "env": {
+        "HANGAR_DATA_DIR": "./hangar_data"
+      }
     }
   }
 }
