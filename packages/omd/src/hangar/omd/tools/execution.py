@@ -16,6 +16,10 @@ from hangar.omd.tools._helpers import resolve_plan_dir, resolve_plan_path, view_
 
 _RUN_MODES = ("analysis", "optimize")
 _RECORDING_LEVELS = ("minimal", "driver", "solver", "full")
+# Applied when the caller passes no timeout and the plan sets none. Generous
+# enough for surrogate training + coupled missions; finite so a wedged solve
+# cannot strand an MCP agent forever (pass timeout_seconds=0 to opt out).
+_DEFAULT_TIMEOUT_SECONDS = 3600
 
 
 def _semantic_findings(plan: dict) -> list[dict]:
@@ -107,7 +111,11 @@ async def run_plan(
     plan_path: Annotated[str, "Path to assembled plan YAML (workspace-relative or absolute)"],
     mode: Annotated[str, "Execution mode: 'analysis' (run once) or 'optimize' (run driver)"] = "analysis",
     recording_level: Annotated[str, "Recorder verbosity: minimal, driver, solver, full"] = "driver",
-    timeout_seconds: Annotated[int | None, "Wallclock timeout; the run aborts if exceeded"] = None,
+    timeout_seconds: Annotated[
+        int | None,
+        "Wallclock timeout; the run aborts if exceeded. Defaults to 3600 "
+        "server-side so no tool call can hang forever; pass 0 to disable.",
+    ] = None,
     stability: Annotated[bool, "Also compute stability derivatives after analysis (OAS aero plans)"] = False,
 ) -> dict:
     """Materialize and run an analysis plan (schema + semantic preflight included).
@@ -154,6 +162,18 @@ async def run_plan(
             details={"errors": semantic_errors}, inputs=inputs,
         )
     plan_id = ((plan or {}).get("metadata") or {}).get("id")
+
+    # Server-side timeout safety net: a hung solve (or anything stuck in C
+    # code) must never strand an MCP agent on a tool call that never
+    # returns. Explicit arg > plan-level option > server default; 0 opts
+    # out of the default (the plan-level option, if any, still applies).
+    if timeout_seconds is None:
+        plan_timeout = (
+            (plan or {}).get("optimizer", {}).get("options", {}).get("timeout_seconds")
+        )
+        timeout_seconds = plan_timeout or _DEFAULT_TIMEOUT_SECONDS
+    elif timeout_seconds <= 0:
+        timeout_seconds = None
 
     result = await asyncio.to_thread(
         _run_plan, path, mode=mode, recording_level=recording_level,

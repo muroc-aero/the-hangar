@@ -47,7 +47,9 @@ Two authoring styles:
 - `recording_level`: `minimal` (final values), `driver` (DVs + objective +
   constraints per iteration, default), `solver` (adds solver iterations),
   `full` (everything; large).
-- `timeout_seconds`: wallclock abort.
+- `timeout_seconds`: wallclock abort. Defaults to 3600 server-side (or the
+  plan's `optimizer.options.timeout_seconds` if set) so a hung solve cannot
+  strand the tool call; pass `0` to opt out of the default.
 - `stability`: also compute stability derivatives (OAS aero plans).
 - Schema + semantic preflight runs automatically; typos in component types
   or DV/constraint/objective names fail fast with suggestions.

@@ -145,3 +145,78 @@ def test_permissive_factories_not_enforced():
     assert findings == []
     findings = _findings_for({"anything_goes": 1}, ctype="pyc/TurbojetDesign")
     assert findings == []
+
+
+# ---------------------------------------------------------------------------
+# Slots: surrogate-training pool must use spawn, not fork
+# ---------------------------------------------------------------------------
+
+
+def test_training_pool_forced_to_spawn():
+    """OpenConcept trains VLM surrogates with mp.Pool(); a forked pool
+    deadlocks under the threaded MCP server (blind coupled Lane C run,
+    2026-06-10). The slot builders must repoint the module to a spawn
+    context."""
+    pytest.importorskip("openconcept")
+    from multiprocessing.context import SpawnContext
+
+    from hangar.omd.slots import _force_spawn_training_pool
+
+    _force_spawn_training_pool()
+
+    from openconcept.aerodynamics.openaerostruct import drag_polar
+
+    assert isinstance(drag_polar.mp, SpawnContext)
+    assert callable(drag_polar.mp.Pool)
+
+
+# ---------------------------------------------------------------------------
+# run_plan tool: server-side default timeout
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def _captured_run(monkeypatch, tmp_path):
+    """Stub the run pipeline and capture the timeout the tool resolves."""
+    import yaml
+
+    import hangar.omd.run as run_mod
+    from hangar.omd.tools import execution
+
+    captured = {}
+
+    def fake_run_plan(path, **kwargs):
+        captured.update(kwargs)
+        return {"run_id": "run-test", "status": "completed", "summary": {}}
+
+    monkeypatch.setattr(run_mod, "run_plan", fake_run_plan)
+    monkeypatch.setenv("OMD_DATA_ROOT", str(tmp_path / "omd_data"))
+
+    plan = {
+        "metadata": {"id": "timeout-probe", "name": "Timeout probe", "version": 1},
+        "components": [
+            {"id": "p", "type": "paraboloid/Paraboloid", "config": {}}
+        ],
+        "operating_points": {"x": 1.0, "y": 2.0},
+    }
+    plan_path = tmp_path / "plan.yaml"
+    plan_path.write_text(yaml.safe_dump(plan))
+    return execution, str(plan_path), captured
+
+
+async def test_run_plan_applies_default_timeout(_captured_run):
+    execution, plan_path, captured = _captured_run
+    await execution.run_plan(plan_path)
+    assert captured["timeout_seconds"] == execution._DEFAULT_TIMEOUT_SECONDS
+
+
+async def test_run_plan_explicit_timeout_wins(_captured_run):
+    execution, plan_path, captured = _captured_run
+    await execution.run_plan(plan_path, timeout_seconds=120)
+    assert captured["timeout_seconds"] == 120
+
+
+async def test_run_plan_zero_disables_default(_captured_run):
+    execution, plan_path, captured = _captured_run
+    await execution.run_plan(plan_path, timeout_seconds=0)
+    assert captured["timeout_seconds"] is None
