@@ -98,7 +98,8 @@ CREATE TABLE IF NOT EXISTS entities (
     plan_id TEXT,
     version INTEGER,
     content_hash TEXT,
-    storage_ref TEXT
+    storage_ref TEXT,
+    user TEXT
 );
 
 CREATE TABLE IF NOT EXISTS activities (
@@ -163,27 +164,39 @@ def _now() -> str:
 # ---------------------------------------------------------------------------
 
 
+def _resolve_db_path(db_path: Path | None) -> Path:
+    """Resolve the target DB path from the argument, env var, or default."""
+    if db_path is not None:
+        return Path(db_path)
+    env_path = os.environ.get("OMD_DB_PATH")
+    if env_path:
+        return Path(env_path)
+    return Path("hangar_data/omd/analysis.db")
+
+
 def init_analysis_db(db_path: Path | None = None) -> None:
     """Initialize the analysis database.
 
     Creates the database file and tables if they don't exist.
+
+    Idempotent when the resolved path is unchanged: tools call this on
+    every invocation, and rebinding the module-level ``threading.local()``
+    each time would orphan other threads' open connections (reopen/leak).
+    The thread-local connection cache is only reset when the path actually
+    changes (or the DB file disappeared, e.g. a test tmp dir was removed).
 
     Args:
         db_path: Path to the SQLite database file. If None, uses
             OMD_DB_PATH env var or defaults to hangar_data/omd/analysis.db.
     """
     global _db_path, _local
+
+    target = _resolve_db_path(db_path)
+    if _db_path is not None and target == _db_path and _db_path.exists():
+        return
+
     _local = threading.local()
-
-    if db_path is not None:
-        _db_path = Path(db_path)
-    else:
-        env_path = os.environ.get("OMD_DB_PATH")
-        if env_path:
-            _db_path = Path(env_path)
-        else:
-            _db_path = Path("hangar_data/omd/analysis.db")
-
+    _db_path = target
     _db_path.parent.mkdir(parents=True, exist_ok=True)
 
     conn = _get_conn()
@@ -196,6 +209,11 @@ def init_analysis_db(db_path: Path | None = None) -> None:
         pass  # column already exists
     try:
         conn.execute("ALTER TABLE entities ADD COLUMN parent_id TEXT")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # column already exists
+    try:
+        conn.execute("ALTER TABLE entities ADD COLUMN user TEXT")
         conn.commit()
     except sqlite3.OperationalError:
         pass  # column already exists
@@ -361,6 +379,60 @@ def query_entity_index(plan_id: str | None = None) -> list[dict]:
         sql += " AND plan_id = ?"
         params = (plan_id,)
     return [dict(r) for r in conn.execute(sql, params).fetchall()]
+
+
+# ---------------------------------------------------------------------------
+# Per-user scoping helpers
+# ---------------------------------------------------------------------------
+# Entities carry an optional ``user`` column (the authenticated OIDC user who
+# created them). Rows with a NULL user predate per-user scoping and stay
+# visible to everyone. ``user=None`` in these helpers means "no scoping"
+# (admin or single-user local mode).
+
+
+def entity_visible_to(entity: dict | None, user: str | None) -> bool:
+    """Return True when *entity* may be shown to *user*.
+
+    ``user=None`` (unscoped) and ownerless entities (``user`` NULL, i.e.
+    pre-scoping data) are always visible. Missing entities are treated as
+    visible so existence checks stay with the caller.
+    """
+    if user is None or entity is None:
+        return True
+    return entity.get("user") in (None, user)
+
+
+def query_plan_ids(user: str | None = None) -> list[str]:
+    """Return the sorted distinct plan ids visible to *user*.
+
+    A plan is visible when any of its entity rows is owned by *user* or has
+    no owner. ``user=None`` returns all plan ids.
+    """
+    conn = _get_conn()
+    if user is None:
+        rows = conn.execute(
+            "SELECT DISTINCT plan_id FROM entities WHERE plan_id IS NOT NULL"
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT DISTINCT plan_id FROM entities "
+            "WHERE plan_id IS NOT NULL AND (user IS NULL OR user = ?)",
+            (user,),
+        ).fetchall()
+    return sorted({r[0] for r in rows})
+
+
+def plan_visible_to(plan_id: str, user: str | None) -> bool:
+    """Return True when the plan may be shown to *user* (see query_plan_ids)."""
+    if user is None:
+        return True
+    conn = _get_conn()
+    row = conn.execute(
+        "SELECT 1 FROM entities WHERE (plan_id = ? OR entity_id = ?) "
+        "AND (user IS NULL OR user = ?) LIMIT 1",
+        (plan_id, plan_id, user),
+    ).fetchone()
+    return row is not None
 
 
 # ---------------------------------------------------------------------------

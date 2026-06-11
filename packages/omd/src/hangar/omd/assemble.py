@@ -120,33 +120,55 @@ def _compute_content_hash(plan: dict) -> str:
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
-def _auto_version(plan_dir: Path, plan: dict) -> int:
-    """Determine next version number and archive to history/.
+def _max_version(directory: Path) -> int:
+    """Return the highest vN.yaml version in *directory* (0 if none)."""
+    max_version = 0
+    if directory.is_dir():
+        for f in directory.glob("v*.yaml"):
+            try:
+                max_version = max(max_version, int(f.stem[1:]))
+            except ValueError:
+                continue
+    return max_version
 
-    Reads existing history/ directory to find the highest version,
-    increments by one, and copies the assembled plan there.
 
-    Args:
-        plan_dir: Plan directory path.
-        plan: Assembled plan dict (metadata.version will be updated).
+def _allocate_version(plan_dir: Path, plan_id: str) -> tuple[int, Path | None]:
+    """Atomically allocate the next version number for *plan_id*.
 
-    Returns:
-        The new version number.
+    Scans both the plan directory's history/ and the central plan store for
+    the highest existing version, then reserves the next number by
+    exclusively creating ``{store}/{plan_id}/vN.yaml``. The store is the
+    contention point shared across users/processes, so the create-exclusive
+    there closes the read-then-write race of concurrent ``assemble_plan``
+    calls on the same plan id.
+
+    Returns ``(version, reserved_store_path)``; the store path is ``None``
+    when the store is unavailable (falls back to the unreserved scan, the
+    pre-existing single-user behavior).
     """
+    import os
+
+    from hangar.omd.db import plan_store_dir
+
     history_dir = plan_dir / "history"
     history_dir.mkdir(exist_ok=True)
+    start = _max_version(history_dir)
 
-    # Find highest existing version
-    max_version = 0
-    for hist_file in history_dir.glob("v*.yaml"):
-        try:
-            v = int(hist_file.stem[1:])
-            max_version = max(max_version, v)
-        except ValueError:
-            continue
-
-    new_version = max_version + 1
-    return new_version
+    try:
+        store_dir = plan_store_dir() / plan_id
+        store_dir.mkdir(parents=True, exist_ok=True)
+        start = max(start, _max_version(store_dir))
+        version = start + 1
+        while True:
+            dest = store_dir / f"v{version}.yaml"
+            try:
+                fd = os.open(dest, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                os.close(fd)
+                return version, dest
+            except FileExistsError:
+                version += 1
+    except OSError:
+        return start + 1, None
 
 
 def assemble_plan(
@@ -199,8 +221,9 @@ def assemble_plan(
     # Compute content hash
     content_hash = _compute_content_hash(plan)
 
-    # Auto-version
-    new_version = _auto_version(plan_dir, plan)
+    # Auto-version (atomically reserved in the central plan store)
+    plan_id = plan.get("metadata", {}).get("id", "unknown")
+    new_version, reserved_store_path = _allocate_version(plan_dir, plan_id)
     if "metadata" in plan:
         plan["metadata"]["version"] = new_version
         plan["metadata"]["content_hash"] = content_hash
@@ -219,9 +242,10 @@ def assemble_plan(
     history_dir.mkdir(exist_ok=True)
     shutil.copy2(output, history_dir / f"v{new_version}.yaml")
 
-    # Copy to central plan store
-    plan_id = plan.get("metadata", {}).get("id", "unknown")
-    store_path = _copy_to_plan_store(plan_id, new_version, output)
+    # Fill the reserved central plan store slot
+    store_path = _copy_to_plan_store(
+        plan_id, new_version, output, reserved=reserved_store_path
+    )
 
     # Record decision entities in provenance DB
     plan_entity_id = f"{plan_id}/v{new_version}"
@@ -445,18 +469,39 @@ def _record_analysis_plan(
         pass
 
 
-def _copy_to_plan_store(plan_id: str, version: int, source: Path) -> Path | None:
+def _copy_to_plan_store(
+    plan_id: str, version: int, source: Path, reserved: Path | None = None,
+) -> Path | None:
     """Copy assembled plan to the central plan store.
 
-    Returns the store path, or None if the copy failed.
+    When ``reserved`` is given (the empty slot created by
+    ``_allocate_version``), the content is written atomically over it via a
+    temp file + ``os.replace`` so concurrent readers never see a partial
+    plan. Returns the store path, or None if the copy failed.
     """
+    import os
+    import tempfile
+
     from hangar.omd.db import plan_store_dir
 
     try:
-        store_dir = plan_store_dir() / plan_id
-        store_dir.mkdir(parents=True, exist_ok=True)
-        dest = store_dir / f"v{version}.yaml"
-        shutil.copy2(source, dest)
+        if reserved is not None:
+            dest = reserved
+        else:
+            store_dir = plan_store_dir() / plan_id
+            store_dir.mkdir(parents=True, exist_ok=True)
+            dest = store_dir / f"v{version}.yaml"
+        fd, tmp_name = tempfile.mkstemp(dir=dest.parent, suffix=".tmp")
+        try:
+            with os.fdopen(fd, "wb") as f:
+                f.write(source.read_bytes())
+            os.replace(tmp_name, dest)
+        except BaseException:
+            try:
+                os.unlink(tmp_name)
+            except OSError:
+                pass
+            raise
         return dest
     except Exception:
         return None

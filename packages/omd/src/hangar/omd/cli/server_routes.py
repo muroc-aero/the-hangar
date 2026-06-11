@@ -4,13 +4,49 @@ Handlers are registered by viewer_cmd in __init__.py. Two of them
 (`_omd_problem_dag_handler`, `_omd_plan_detail_handler`) are also imported by
 external deploy scripts, so they stay importable from `hangar.omd.cli` via the
 package __init__ re-exports.
+
+All handlers accept an optional ``user`` keyword (the extended
+``register_viewer_route`` contract): the HTTP transport passes the
+authenticated viewer user and the handlers scope what they serve to entities
+owned by that user (or ownerless pre-scoping rows). ``user=None`` — admins,
+Basic Auth mode (one shared credential, no per-user identity), and the local
+stdio daemon viewer — serves everything.
 """
 
 from __future__ import annotations
 
+_NOT_FOUND_RUN = b'{"error":"Run not found"}'
+_NOT_FOUND_PLAN = b'{"error":"Plan not found"}'
+
+
+def _run_visible(run_id: str, user: str | None) -> bool:
+    """True when the run's entity is owned by *user*, ownerless, or unknown.
+
+    Foreign-owned runs read as 404 (existence is not revealed), matching the
+    SDK viewer's session-ownership behavior.
+    """
+    if user is None:
+        return True
+    from hangar.omd.db import entity_visible_to, init_analysis_db, query_entity
+
+    init_analysis_db()
+    return entity_visible_to(query_entity(run_id), user)
+
+
+def _plan_visible(plan_id: str, user: str | None) -> bool:
+    """True when any of the plan's entities is owned by *user* or ownerless."""
+    if user is None:
+        return True
+    from hangar.omd.db import init_analysis_db, plan_visible_to
+
+    init_analysis_db()
+    return plan_visible_to(plan_id, user)
+
 
 def _omd_provenance_handler(
     qs: dict[str, list[str]],
+    *,
+    user: str | None = None,
 ) -> tuple[int, str, bytes]:
     """Serve the omd provenance DAG as HTML via the SDK viewer server."""
     from hangar.omd.provenance import provenance_dag_html
@@ -18,16 +54,10 @@ def _omd_provenance_handler(
 
     plan_id = (qs.get("plan_id") or [None])[0]
     if not plan_id:
-        # Return a simple index listing available plan IDs
-        from hangar.omd.db import init_analysis_db, get_db_path
+        # Return a simple index listing the plan IDs visible to this user
+        from hangar.omd.db import init_analysis_db, query_plan_ids
         init_analysis_db()
-        import sqlite3
-        db = sqlite3.connect(str(get_db_path()))
-        rows = db.execute(
-            "SELECT DISTINCT plan_id FROM entities WHERE plan_id IS NOT NULL"
-        ).fetchall()
-        db.close()
-        plan_ids = sorted({r[0] for r in rows})
+        plan_ids = query_plan_ids(user)
         links = "".join(
             f'<li><a href="/omd-provenance?plan_id={pid}">{pid}</a></li>'
             for pid in plan_ids
@@ -49,6 +79,9 @@ def _omd_provenance_handler(
         )
         return 200, "text/html; charset=utf-8", html.encode()
 
+    if not _plan_visible(plan_id, user):
+        return 404, "application/json", _NOT_FOUND_PLAN
+
     # Generate the DAG HTML to a temporary path, read it back
     import tempfile
     with tempfile.NamedTemporaryFile(suffix=".html", delete=False) as tmp:
@@ -64,6 +97,8 @@ def _omd_provenance_handler(
 
 def _omd_plan_diff_handler(
     qs: dict[str, list[str]],
+    *,
+    user: str | None = None,
 ) -> tuple[int, str, bytes]:
     """Return JSON diff between a plan version and its predecessor."""
     import json as _json
@@ -77,6 +112,8 @@ def _omd_plan_diff_handler(
         return 400, "application/json", body.encode()
 
     init_analysis_db()
+    if not _plan_visible(plan_id, user):
+        return 404, "application/json", _NOT_FOUND_PLAN
     ver = int(version)
     if ver <= 1:
         # No prior version -- return the full plan content
@@ -100,6 +137,8 @@ def _omd_plan_diff_handler(
 
 def _omd_plots_handler(
     qs: dict[str, list[str]],
+    *,
+    user: str | None = None,
 ) -> tuple[int, str, bytes]:
     """Generate plots for a run and return list of available filenames."""
     import json as _json
@@ -111,6 +150,8 @@ def _omd_plots_handler(
         return 400, "application/json", b'{"error":"Missing run_id"}'
 
     init_analysis_db()
+    if not _run_visible(run_id, user):
+        return 404, "application/json", _NOT_FOUND_RUN
     plots_dir = omd_data_root() / "plots" / run_id
 
     # Generate plots on demand if they don't exist
@@ -151,6 +192,8 @@ def _omd_plots_handler(
 
 def _omd_plot_img_handler(
     qs: dict[str, list[str]],
+    *,
+    user: str | None = None,
 ) -> tuple[int, str, bytes]:
     """Serve a specific plot PNG for a run."""
     from pathlib import Path
@@ -160,6 +203,9 @@ def _omd_plot_img_handler(
     name = (qs.get("name") or [None])[0]
     if not run_id or not name:
         return 400, "application/json", b'{"error":"Missing run_id or name"}'
+
+    if not _run_visible(run_id, user):
+        return 404, "application/json", _NOT_FOUND_RUN
 
     # Sanitize name to prevent path traversal
     from pathlib import PurePosixPath
@@ -175,6 +221,8 @@ def _omd_plot_img_handler(
 
 def _omd_n2_handler(
     qs: dict[str, list[str]],
+    *,
+    user: str | None = None,
 ) -> tuple[int, str, bytes]:
     """Serve the N2 diagram HTML for a run."""
     from pathlib import Path
@@ -183,6 +231,9 @@ def _omd_n2_handler(
     run_id = (qs.get("run_id") or [None])[0]
     if not run_id:
         return 400, "application/json", b'{"error":"Missing run_id"}'
+
+    if not _run_visible(run_id, user):
+        return 404, "application/json", _NOT_FOUND_RUN
 
     n2_path = omd_data_root() / "n2" / f"{run_id}.html"
     if not n2_path.exists():
@@ -193,6 +244,8 @@ def _omd_n2_handler(
 
 def _omd_problem_dag_handler(
     qs: dict[str, list[str]],
+    *,
+    user: str | None = None,
 ) -> tuple[int, str, bytes]:
     """Serve a discipline-level analysis flow DAG."""
     import json as _json
@@ -203,6 +256,8 @@ def _omd_problem_dag_handler(
         return 400, "application/json", b'{"error":"Missing run_id"}'
 
     init_analysis_db()
+    if not _run_visible(run_id, user):
+        return 404, "application/json", _NOT_FOUND_RUN
     entity = query_entity(f"{run_id}/n2")
     if not entity or not entity.get("metadata"):
         return 404, "application/json", b'{"error":"Model structure not found"}'
@@ -533,6 +588,8 @@ cy.on('tap', function(evt) {{
 
 def _omd_plan_detail_handler(
     qs: dict[str, list[str]],
+    *,
+    user: str | None = None,
 ) -> tuple[int, str, bytes]:
     """Serve a plan detail page as a knowledge graph."""
     import json as _json
@@ -547,6 +604,8 @@ def _omd_plan_detail_handler(
         return 400, "application/json", b'{"error":"Missing plan_id"}'
 
     init_analysis_db()
+    if not _plan_visible(plan_id, user):
+        return 404, "application/json", _NOT_FOUND_PLAN
     conn = _get_conn()
 
     # Get all plan versions

@@ -247,12 +247,28 @@ def _adapt_custom_handler(handler):
     Custom routes (``register_viewer_route``) are written against the stdio
     daemon viewer's handler contract; this wrapper lets the same handlers
     serve on the HTTP transport.
+
+    Handlers that accept a ``user`` keyword receive the authenticated viewer
+    user (``None`` for admins and in Basic Auth mode — same semantics as
+    ``_effective_user``) so they can scope their data per user.
     """
+    import inspect
+
+    try:
+        accepts_user = "user" in inspect.signature(handler).parameters
+    except (TypeError, ValueError):
+        accepts_user = False
 
     async def endpoint(request: Request) -> Response:
         qs = {k: request.query_params.getlist(k) for k in request.query_params.keys()}
         try:
-            status, content_type, body = await asyncio.to_thread(handler, qs)
+            if accepts_user:
+                user = _effective_user(request)
+                status, content_type, body = await asyncio.to_thread(
+                    handler, qs, user=user
+                )
+            else:
+                status, content_type, body = await asyncio.to_thread(handler, qs)
         except Exception as exc:
             return JSONResponse({"error": str(exc)}, status_code=500)
         return Response(content=body, status_code=status, media_type=content_type)

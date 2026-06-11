@@ -68,6 +68,13 @@ def register_viewer_route(
     handler:
         Callable accepting ``(qs: dict[str, list[str]])`` and returning
         ``(status_code: int, content_type: str, body: bytes)``.
+
+        Handlers may additionally accept a ``user: str | None`` keyword to
+        scope their data per user. On the HTTP transport the authenticated
+        viewer user is passed (``None`` for admins and in Basic Auth mode,
+        which has one shared credential and therefore no per-user identity).
+        This local stdio daemon never passes ``user`` (single-user dev,
+        unscoped — see ``start_viewer_server``).
     """
     _CUSTOM_ROUTES[path] = handler
 

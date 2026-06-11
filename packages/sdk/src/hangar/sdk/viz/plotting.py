@@ -6,6 +6,7 @@ Migrated from: OpenAeroStruct/oas_mcp/core/plotting.py
 from __future__ import annotations
 
 import base64
+import functools
 import hashlib
 import io
 import json
@@ -17,6 +18,23 @@ from typing import Any
 import numpy as np
 
 from mcp.server.fastmcp.utilities.types import Image
+
+from hangar.sdk.viz.render_lock import MPL_RENDER_LOCK, atomic_write_bytes
+
+
+def _locked_render(func):
+    """Serialize a plot function on the process-wide matplotlib lock.
+
+    pyplot's global figure manager is not thread-safe; the lock must span
+    figure creation through savefig/close (see ``hangar.sdk.viz.render_lock``).
+    """
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        with MPL_RENDER_LOCK:
+            return func(*args, **kwargs)
+
+    return wrapper
 
 
 @dataclass
@@ -140,12 +158,13 @@ def _fig_to_response(
         ),
     }
 
-    # Persist PNG to disk when save_dir is provided
+    # Persist PNG to disk when save_dir is provided. Atomic so concurrent
+    # readers (viewer routes, dashboard) never see a torn file.
     if save_dir is not None:
         plots_dir = Path(save_dir) / "plots"
         plots_dir.mkdir(parents=True, exist_ok=True)
         file_path = plots_dir / f"{run_id}_{plot_type}.png"
-        file_path.write_bytes(png_bytes)
+        atomic_write_bytes(file_path, png_bytes)
         metadata["file_path"] = str(file_path.resolve())
 
     return PlotResult(image=img, metadata=metadata)
@@ -190,6 +209,7 @@ def _find_sectional(results: dict) -> dict | None:
 # ---------------------------------------------------------------------------
 
 
+@_locked_render
 def plot_lift_distribution(run_id: str, results: dict, case_name: str = "", *, save_dir: str | Path | None = None) -> PlotResult:
     """Plot spanwise lift loading distribution with elliptical overlay.
 
@@ -276,6 +296,7 @@ def _lift_fallback_bar(ax, results: dict):
 # ---------------------------------------------------------------------------
 
 
+@_locked_render
 def plot_drag_polar(run_id: str, results: dict, case_name: str = "", *, save_dir: str | Path | None = None) -> PlotResult:
     """Plot CL vs CD and L/D vs alpha side-by-side."""
     _require_mpl()
@@ -332,6 +353,7 @@ def plot_drag_polar(run_id: str, results: dict, case_name: str = "", *, save_dir
 # ---------------------------------------------------------------------------
 
 
+@_locked_render
 def plot_stress_distribution(run_id: str, results: dict, case_name: str = "", *, save_dir: str | Path | None = None) -> PlotResult:
     """Plot spanwise stress with failure reference line.
 
@@ -477,6 +499,7 @@ def plot_stress_distribution(run_id: str, results: dict, case_name: str = "", *,
 # ---------------------------------------------------------------------------
 
 
+@_locked_render
 def plot_convergence(run_id: str, convergence_data: dict, case_name: str = "", *, save_dir: str | Path | None = None) -> PlotResult:
     """Plot solver residual history.
 
@@ -527,6 +550,7 @@ def plot_convergence(run_id: str, convergence_data: dict, case_name: str = "", *
 # ---------------------------------------------------------------------------
 
 
+@_locked_render
 def plot_planform(run_id: str, mesh_data: dict, case_name: str = "", *, save_dir: str | Path | None = None) -> PlotResult:
     """Plot wing planform (top view) with optional deflection overlay.
 
@@ -596,6 +620,7 @@ def plot_planform(run_id: str, mesh_data: dict, case_name: str = "", *, save_dir
 # ---------------------------------------------------------------------------
 
 
+@_locked_render
 def plot_opt_history(run_id: str, optimization_history: dict, case_name: str = "", *, save_dir: str | Path | None = None) -> PlotResult:
     """Plot optimizer objective convergence history.
 
@@ -675,6 +700,7 @@ def plot_opt_history(run_id: str, optimization_history: dict, case_name: str = "
 # ---------------------------------------------------------------------------
 
 
+@_locked_render
 def plot_opt_dv_evolution(
     run_id: str, optimization_history: dict, case_name: str = "", *,
     save_dir: str | Path | None = None,
@@ -790,6 +816,7 @@ def plot_opt_dv_evolution(
 # ---------------------------------------------------------------------------
 
 
+@_locked_render
 def plot_opt_comparison(run_id: str, optimization_history: dict, case_name: str = "", *, save_dir: str | Path | None = None) -> PlotResult:
     """Plot before/after comparison of design variable values.
 
@@ -871,6 +898,7 @@ def plot_opt_comparison(run_id: str, optimization_history: dict, case_name: str 
 # ---------------------------------------------------------------------------
 
 
+@_locked_render
 def plot_deflection_profile(run_id: str, results: dict, case_name: str = "", *, save_dir: str | Path | None = None) -> PlotResult:
     """Plot spanwise vertical deflection profile.
 
@@ -924,6 +952,7 @@ def plot_deflection_profile(run_id: str, results: dict, case_name: str = "", *, 
 # ---------------------------------------------------------------------------
 
 
+@_locked_render
 def plot_weight_breakdown(run_id: str, results: dict, case_name: str = "", *, save_dir: str | Path | None = None) -> PlotResult:
     """Plot structural mass breakdown as a horizontal bar chart.
 
@@ -977,6 +1006,7 @@ def plot_weight_breakdown(run_id: str, results: dict, case_name: str = "", *, sa
 # ---------------------------------------------------------------------------
 
 
+@_locked_render
 def plot_failure_heatmap(
     run_id: str, results: dict, mesh_data: dict | None = None,
     case_name: str = "", *, save_dir: str | Path | None = None,
@@ -1072,6 +1102,7 @@ def plot_failure_heatmap(
 # ---------------------------------------------------------------------------
 
 
+@_locked_render
 def plot_twist_chord_overlay(
     run_id: str, results: dict, mesh_data: dict | None = None,
     case_name: str = "", *, save_dir: str | Path | None = None,
@@ -1241,6 +1272,7 @@ def _draw_wingbox_structure(ax, mesh, spar_thickness, skin_thickness, fem_origin
 # ---------------------------------------------------------------------------
 
 
+@_locked_render
 def plot_mesh_3d(
     run_id: str, mesh_data: dict, case_name: str = "", *,
     save_dir: str | Path | None = None,
@@ -1361,6 +1393,7 @@ def plot_mesh_3d(
 # ---------------------------------------------------------------------------
 
 
+@_locked_render
 def plot_multipoint_comparison(run_id: str, results: dict, case_name: str = "", *, save_dir: str | Path | None = None) -> PlotResult:
     """Plot side-by-side cruise vs maneuver comparison for multipoint results.
 

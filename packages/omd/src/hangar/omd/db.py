@@ -34,11 +34,14 @@ from hangar.results_reader.db import (  # noqa: F401
     KNOWN_PROV_RELATIONS,
     _get_conn,
     _now,
+    entity_visible_to,
     get_db_path,
     init_analysis_db,
+    plan_visible_to,
     project_headline,
     query_entity,
     query_entity_index,
+    query_plan_ids,
     query_provenance_dag,
     query_run_results,
     resolve_scalar,
@@ -133,6 +136,21 @@ def n2_dir() -> Path:
 # ---------------------------------------------------------------------------
 
 
+def _current_user() -> str | None:
+    """Resolve the user to stamp on new entities, or None when unavailable.
+
+    Uses the SDK's identity resolution: the OIDC username on the HTTP
+    transport, falling back to HANGAR_USER / the OS login elsewhere (CLI,
+    stdio), so CLI and server runs by the same person scope together.
+    """
+    try:
+        from hangar.sdk.auth import get_current_user
+
+        return get_current_user()
+    except Exception:
+        return None
+
+
 def record_entity(
     entity_id: str,
     entity_type: str,
@@ -143,6 +161,7 @@ def record_entity(
     storage_ref: str | None = None,
     metadata: str | None = None,
     parent_id: str | None = None,
+    user: str | None = None,
 ) -> None:
     """Record a versioned artifact entity.
 
@@ -159,15 +178,19 @@ def record_entity(
         metadata: Optional JSON string with extra metadata.
         parent_id: Containing entity ID for sub-entities (enables
             compound node grouping in the provenance DAG).
+        user: Owning user for per-user scoping. Defaults to the current
+            authenticated/OS user (see ``_current_user``).
     """
+    if user is None:
+        user = _current_user()
     conn = _get_conn()
     conn.execute(
         "INSERT OR REPLACE INTO entities "
         "(entity_id, entity_type, created_at, created_by, plan_id, version, "
-        "content_hash, storage_ref, metadata, parent_id) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "content_hash, storage_ref, metadata, parent_id, user) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (entity_id, entity_type, _now(), created_by, plan_id, version,
-         content_hash, storage_ref, metadata, parent_id),
+         content_hash, storage_ref, metadata, parent_id, user),
     )
     conn.commit()
 

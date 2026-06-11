@@ -103,9 +103,11 @@ surface over MCP through the shared SDK envelope/provenance/auth stack:
   `get_run_summary`, `record_conclusion`, `get_provenance`, `export_plan`),
   plots (`generate_plots`, `list_plot_types`), URLs (`get_view_urls`), and
   the four shared provenance tools.
-- **Workspace**: relative plan paths resolve to `hangar_data/omd/workspace`
-  so MCP-only agents (claude.ai) can author and run plans without
-  filesystem access.
+- **Workspace**: relative plan paths resolve to
+  `hangar_data/omd/workspace/{user}` so MCP-only agents (claude.ai) can
+  author and run plans without filesystem access. The per-user keying
+  (OIDC username on HTTP, `HANGAR_USER`/OS login elsewhere) keeps two
+  users' identically-named plans from clobbering each other.
 - **Envelopes**: `run_plan`/`run_polar` return the versioned envelope;
   typed `HangarError`s become error envelopes via `capture_tool`.
 - **Views**: the server registers the omd viewer routes
@@ -113,6 +115,13 @@ surface over MCP through the shared SDK envelope/provenance/auth stack:
   `/omd-n2`, `/omd-plan-detail`, `/omd-plan-diff`) on both transports; tool
   results carry a `urls` block built from `RESOURCE_SERVER_URL` (or the
   local daemon viewer port).
+- **Per-user scoping**: analysis-DB entities carry a `user` column (stamped
+  from `get_current_user()` by `record_entity`); the omd viewer routes
+  accept the authenticated viewer user via the extended
+  `register_viewer_route` contract and 404 foreign-owned plans/runs.
+  Ownerless rows (pre-scoping data) stay visible to everyone. Admins, the
+  local stdio daemon viewer, and Basic Auth mode (one shared credential —
+  no per-user identity) see everything.
 - **Range-safety dashboard**: deployments set `RS_DASHBOARD_URL`; locally
   the server autostarts the dashboard on `RS_DASHBOARD_PORT` (default 7655)
   when hangar-range-safety is installed. Disable with
