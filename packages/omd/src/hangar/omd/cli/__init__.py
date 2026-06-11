@@ -500,6 +500,8 @@ def viewer_cmd(port: int, db_path: str | None) -> None:
 from hangar.omd.cli import plan as _plan  # noqa: E402, F401
 # Import summary subcommand so its @cli.command decorator registers.
 from hangar.omd.cli import summary as _summary  # noqa: E402, F401
+# Import study subcommands so the @study_group.command decorators register.
+from hangar.omd.cli import study as _study  # noqa: E402, F401
 
 
 def main() -> None:

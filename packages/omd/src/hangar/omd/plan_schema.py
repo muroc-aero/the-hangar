@@ -65,6 +65,11 @@ PLAN_SCHEMA: dict[str, Any] = {
                 "description": {"type": "string"},
                 "content_hash": {"type": "string"},
                 "parent_version": {"type": "integer", "minimum": 1},
+                # Study membership: stamped onto generated case plans by the
+                # study runner (hangar.omd.study_runner); the range-safety
+                # dashboard groups plans by this id.
+                "study": {"type": "string", "minLength": 1},
+                "case_id": {"type": "string", "minLength": 1},
             },
         },
         "requirements": {

@@ -90,6 +90,24 @@ Wall time on 2 workers / WSL: ~5 h single-shot, ~9 h with multistart.
 Multistart runs each fig5 cell from both `low` and `high` DV brackets
 and keeps the better optimum -- recommended.
 
+### Study-layer spec (new)
+
+`study/fig5_study.yaml` expresses the same Fig 5 grid (plus a manual
+HybridTwinTestCase reference cell) through the study layer
+(`docs/STUDIES.md`): matrix expansion, low/high multistart, checkpointed
+incremental runs, and a spreadsheet case table replace the bespoke
+`pipeline/sweep.py` mechanics.
+
+```bash
+omd-cli study review packages/omd/demos/brelje_2018a/study/fig5_study.yaml
+omd-cli study run    packages/omd/demos/brelje_2018a/study/fig5_study.yaml --max-cases 4
+omd-cli study results brelje-2018a-fig5
+```
+
+The CSV pipeline below remains the verified full-reproduction path until
+the study layer grows the retry heuristics and fig6 warm-from (see the
+deferred list in `docs/STUDIES.md`).
+
 ### Modular steps
 
 The wrapper above just chains these:

@@ -64,6 +64,10 @@ KNOWN_ENTITY_TYPES: frozenset[str] = frozenset({
     # Agent-recorded conclusion artifact (concluding stage): ties the chosen
     # run to the requirements it resolves (satisfies / violates edges).
     "conclusion",
+    # Study grouping: a study entity collects many case runs (partOf edges).
+    # Study state itself lives under hangar_data/studies/; this entity is
+    # the provenance anchor.
+    "study",
 })
 
 KNOWN_PROV_RELATIONS: frozenset[str] = frozenset({
@@ -83,6 +87,8 @@ KNOWN_PROV_RELATIONS: frozenset[str] = frozenset({
     "precedes",
     "has_check",
     "executes",
+    # Study grouping: case run_record -> study entity.
+    "partOf",
 })
 
 # ---------------------------------------------------------------------------
@@ -148,7 +154,16 @@ def _get_conn() -> sqlite3.Connection:
     conn = getattr(_local, "conn", None)
     if conn is None:
         conn = sqlite3.connect(str(_db_path), timeout=30)
-        conn.execute("PRAGMA journal_mode=WAL")
+        try:
+            conn.execute("PRAGMA journal_mode=WAL")
+        except sqlite3.OperationalError:
+            # Switching journal modes needs an exclusive lock and can return
+            # SQLITE_BUSY immediately (without consulting the busy handler)
+            # when other connections are active -- e.g. parallel study
+            # workers connecting at once. The mode is persistent in the DB
+            # file and was set by whichever connection created it, so it is
+            # safe to continue on this connection.
+            pass
         conn.execute("PRAGMA busy_timeout=30000")
         conn.row_factory = sqlite3.Row
         _local.conn = conn
