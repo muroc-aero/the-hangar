@@ -151,29 +151,32 @@ def interpolate_args(args: dict, prev_results: list[dict]) -> dict:
                         break
             elif value.startswith("$") and value.endswith(".run_id"):
                 # $N.run_id — step reference (1-indexed)
+                ref = value[1:].split(".")[0]
                 try:
-                    idx = int(value[1:].split(".")[0]) - 1
-                    if 0 <= idx < len(prev_results):
-                        rid = _extract_run_id(prev_results[idx])
-                        if rid:
-                            value = rid
-                        else:
-                            step_tool = prev_results[idx].get("tool", "unknown")
-                            raise ValueError(
-                                f"Cannot resolve {value!r}: step {idx + 1} "
-                                f"({step_tool}) did not return a run_id. "
-                                f"Use $prev.run_id to reference the most "
-                                f"recent step that produced a run_id."
-                            )
-                    else:
-                        raise ValueError(
-                            f"Cannot resolve {value!r}: only "
-                            f"{len(prev_results)} steps have completed so far."
-                        )
+                    idx = int(ref) - 1
                 except ValueError:
-                    raise
-                except (IndexError,):
-                    pass
+                    raise ValueError(
+                        f"Cannot resolve {value!r}: expected $prev.run_id or "
+                        f"$N.run_id with a 1-indexed step number, got step "
+                        f"reference {ref!r}."
+                    ) from None
+                if 0 <= idx < len(prev_results):
+                    rid = _extract_run_id(prev_results[idx])
+                    if rid:
+                        value = rid
+                    else:
+                        step_tool = prev_results[idx].get("tool", "unknown")
+                        raise ValueError(
+                            f"Cannot resolve {value!r}: step {idx + 1} "
+                            f"({step_tool}) did not return a run_id. "
+                            f"Use $prev.run_id to reference the most "
+                            f"recent step that produced a run_id."
+                        )
+                else:
+                    raise ValueError(
+                        f"Cannot resolve {value!r}: only "
+                        f"{len(prev_results)} steps have completed so far."
+                    )
         out[key] = value
     return out
 

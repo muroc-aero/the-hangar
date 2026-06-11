@@ -439,3 +439,47 @@ def test_viewer_command_sets_env_from_args(monkeypatch, tmp_path):
             viewer_command(port=7991, db=db)
 
     assert seen == {"port": "7991", "db": db}
+
+
+# ---------------------------------------------------------------------------
+# interpolate_args
+# ---------------------------------------------------------------------------
+
+
+def test_interpolate_step_reference_resolves():
+    from hangar.sdk.cli.runner import interpolate_args
+
+    prev = [{"ok": True, "result": {"run_id": "run-abc"}}]
+    out = interpolate_args({"run_id": "$1.run_id"}, prev)
+    assert out["run_id"] == "run-abc"
+
+
+def test_interpolate_prev_resolves_most_recent():
+    from hangar.sdk.cli.runner import interpolate_args
+
+    prev = [
+        {"ok": True, "result": {"run_id": "run-old"}},
+        {"ok": True, "result": {"status": "no run id here"}},
+        {"ok": True, "result": {"run_id": "run-new"}},
+    ]
+    out = interpolate_args({"run_id": "$prev.run_id"}, prev)
+    assert out["run_id"] == "run-new"
+
+
+def test_interpolate_non_numeric_step_gets_clear_error():
+    """A malformed step reference used to surface the raw int() parse
+    error ('invalid literal for int() with base 10')."""
+    from hangar.sdk.cli.runner import interpolate_args
+
+    with pytest.raises(ValueError, match=r"\$N\.run_id.*'foo'"):
+        interpolate_args({"run_id": "$foo.run_id"}, [])
+
+
+def test_interpolate_out_of_range_step_errors():
+    from hangar.sdk.cli.runner import interpolate_args
+
+    with pytest.raises(ValueError, match="only 1 steps have completed"):
+        interpolate_args(
+            {"run_id": "$5.run_id"},
+            [{"ok": True, "result": {"run_id": "run-abc"}}],
+        )

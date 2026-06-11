@@ -103,45 +103,44 @@ def extract_trajectory_data(prob: om.Problem, metadata: dict) -> dict:
     throttle, vertical speed, and optionally battery SOC.
     """
     phases = metadata["phases"]
-    nn = metadata["num_nodes"]
     trajectory: dict = {}
 
     for phase in phases:
         phase_data: dict = {}
 
         # Range
-        rng = _safe_get_array(prob, f"{phase}.range", "NM", nn)
+        rng = _safe_get_array(prob, f"{phase}.range", "NM")
         if rng is not None:
             phase_data["range_NM"] = rng.tolist()
 
         # Altitude
-        alt = _safe_get_array(prob, f"{phase}.fltcond|h", "ft", nn)
+        alt = _safe_get_array(prob, f"{phase}.fltcond|h", "ft")
         if alt is not None:
             phase_data["altitude_ft"] = alt.tolist()
 
         # Airspeed
-        eas = _safe_get_array(prob, f"{phase}.fltcond|Ueas", "kn", nn)
+        eas = _safe_get_array(prob, f"{phase}.fltcond|Ueas", "kn")
         if eas is not None:
             phase_data["airspeed_kn"] = eas.tolist()
 
         # Fuel used
-        fuel = _safe_get_array(prob, f"{phase}.fuel_used", "kg", nn)
+        fuel = _safe_get_array(prob, f"{phase}.fuel_used", "kg")
         if fuel is not None:
             phase_data["fuel_used_kg"] = fuel.tolist()
 
         # Throttle
-        thr = _safe_get_array(prob, f"{phase}.throttle", None, nn)
+        thr = _safe_get_array(prob, f"{phase}.throttle", None)
         if thr is not None:
             phase_data["throttle"] = thr.tolist()
 
         # Vertical speed
-        vs = _safe_get_array(prob, f"{phase}.fltcond|vs", "ft/min", nn)
+        vs = _safe_get_array(prob, f"{phase}.fltcond|vs", "ft/min")
         if vs is not None:
             phase_data["vertical_speed_ftmin"] = vs.tolist()
 
         # Battery SOC
         if metadata.get("has_battery"):
-            soc = _safe_get_array(prob, f"{phase}.propmodel.batt1.SOC", None, nn)
+            soc = _safe_get_array(prob, f"{phase}.propmodel.batt1.SOC", None)
             if soc is not None:
                 phase_data["battery_SOC"] = soc.tolist()
 
@@ -155,7 +154,6 @@ def _safe_get_array(
     prob: om.Problem,
     path: str,
     units: str | None,
-    nn: int,
 ) -> np.ndarray | None:
     """Get an array value from the problem, returning None if not found."""
     try:
@@ -163,9 +161,6 @@ def _safe_get_array(
             val = prob.get_val(path, units=units)
         else:
             val = prob.get_val(path)
-        arr = np.asarray(val).flatten()
-        if len(arr) == nn:
-            return arr
-        return arr
+        return np.asarray(val).flatten()
     except (KeyError, ValueError):
         return None

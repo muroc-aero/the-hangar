@@ -10,7 +10,9 @@ services:
       # Bind-mount host directory for persistent artifact storage.
       # Docker creates the directory automatically if it doesn't exist.
       - ./hangar_data/oas:/data
-    # Load secrets from .env (copy from .env.example and fill in values).
+    # Load secrets from a local .env next to this file (optional). The
+    # deployment .env template lives in the private lakesideai-infra repo,
+    # not here.
     env_file:
       - path: .env
         required: false
