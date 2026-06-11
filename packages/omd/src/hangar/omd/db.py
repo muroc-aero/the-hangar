@@ -38,6 +38,7 @@ from hangar.results_reader.db import (  # noqa: F401
     init_analysis_db,
     project_headline,
     query_entity,
+    query_entity_index,
     query_provenance_dag,
     query_run_results,
     resolve_scalar,

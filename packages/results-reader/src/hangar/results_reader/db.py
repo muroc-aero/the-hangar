@@ -336,6 +336,33 @@ def query_entity(entity_id: str) -> dict | None:
     return dict(row) if row else None
 
 
+def query_entity_index(plan_id: str | None = None) -> list[dict]:
+    """Return a lightweight index of plan-attached entities.
+
+    One bulk query of ``{plan_id, entity_type, version, created_at}`` over
+    every entity with a ``plan_id`` (optionally restricted to one plan), so
+    consumers building per-plan summaries -- the range-safety dashboard's
+    study list -- need one DB round-trip instead of O(plans) DAG queries.
+
+    Args:
+        plan_id: Restrict the index to a single plan. None returns all.
+
+    Returns:
+        List of dicts with keys ``plan_id``, ``entity_type``, ``version``,
+        ``created_at``.
+    """
+    conn = _get_conn()
+    sql = (
+        "SELECT plan_id, entity_type, version, created_at "
+        "FROM entities WHERE plan_id IS NOT NULL"
+    )
+    params: tuple = ()
+    if plan_id is not None:
+        sql += " AND plan_id = ?"
+        params = (plan_id,)
+    return [dict(r) for r in conn.execute(sql, params).fetchall()]
+
+
 # ---------------------------------------------------------------------------
 # Headline projection (read-time)
 # ---------------------------------------------------------------------------

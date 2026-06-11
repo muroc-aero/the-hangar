@@ -26,6 +26,16 @@ modules as the public surface; internal helpers are not contracts.
   by id (e.g. `"<plan_id>/v<N>"`).
 - `hangar.omd.db.query_provenance_dag(plan_id) -> dict` -- entities,
   activities, edges for a plan.
+- `hangar.results_reader.query_entity_index(plan_id=None) -> list[dict]`
+  -- bulk index of plan-attached entities (`{plan_id, entity_type,
+  version, created_at}`), one round-trip for per-plan summaries such as
+  the dashboard's study list. Re-exported from `hangar.omd.db`.
+- `hangar.omd.db.omd_data_root()` / `hangar.omd.db.recordings_dir()` --
+  resolved omd data root and recorder directory (`OMD_DATA_ROOT` /
+  `OMD_RECORDINGS_DIR` env vars). Consumed by the dashboard's omd plot
+  source to locate recorder `.sql` files; inherently omd-side (the plot
+  path already imports `hangar.omd.plotting`), so these stay in
+  `hangar.omd.db` rather than the results-reader seam.
 - Schema: `entities` / `activities` / `prov_edges` / `run_cases`.
   Entity types in `hangar.omd.db.KNOWN_ENTITY_TYPES` (includes
   `requirement`, `acceptance_criterion`, `decision`, `run_record`,
