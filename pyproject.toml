@@ -48,6 +48,7 @@ testpaths = [
     "packages/ocp/tests",
     "packages/omd/tests",
     "packages/pyc/tests",
+    "packages/results-reader/tests",
     "packages/viewer/tests",
 ]
 markers = [
