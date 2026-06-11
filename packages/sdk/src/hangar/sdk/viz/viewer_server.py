@@ -15,7 +15,7 @@ from urllib.parse import parse_qs, urlparse
 
 import numpy as np
 
-from hangar.sdk.provenance.db import _dumps, get_session_graph, list_sessions
+from hangar.sdk.provenance.db import _dumps, build_session_elements, list_sessions
 
 VIEWER_HTML = Path(__file__).parent / "viewer" / "index.html"
 _DEFAULT_PORT = 7654
@@ -431,8 +431,7 @@ class _ProvHandler(BaseHTTPRequestHandler):
                 self._error(400, "Missing session_id query parameter")
                 return
             try:
-                graph = get_session_graph(session_id)
-                self._json(graph)
+                self._json(build_session_elements(session_id))
                 # Side-effect: flush graph file to artifact directory
                 try:
                     from hangar.sdk.provenance.flush import flush_session_graph

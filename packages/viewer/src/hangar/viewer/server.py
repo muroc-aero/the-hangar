@@ -393,12 +393,15 @@ async def graph_endpoint(request: Request) -> Response:
             return JSONResponse({"error": "Session not found"}, status_code=404)
 
     try:
+        from hangar.sdk.provenance.db import graph_to_elements
+
         graph = await asyncio.to_thread(reader.get_session_graph, session_id)
+        elements = graph_to_elements(graph)
     except Exception as exc:
         return JSONResponse({"error": str(exc)}, status_code=500)
 
     return Response(
-        content=_dumps(graph),
+        content=_dumps(elements),
         status_code=200,
         media_type="application/json",
     )

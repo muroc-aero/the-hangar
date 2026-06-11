@@ -257,6 +257,36 @@ def test_build_session_elements(tmp_path):
         assert e["data"]["target"] in node_ids
 
 
+def test_graph_to_elements_on_merged_graph():
+    """graph_to_elements normalizes an already-merged graph (multi-DB
+    reader shape) without a DB: extra fields pass through, dangling edges
+    are dropped."""
+    from hangar.sdk.provenance.db import graph_to_elements
+
+    graph = {
+        "session": {"session_id": "s1"},
+        "nodes": [
+            {"id": "c1", "type": "tool_call", "tool_name": "create_engine",
+             "tool": "pyc"},
+            {"id": "d1", "type": "decision", "decision_type": "archetype",
+             "reasoning": "turbojet fits"},
+        ],
+        "edges": [
+            {"source": "c1", "target": "d1", "label": "informs"},
+            {"source": "c1", "target": "elsewhere", "label": "cross_tool"},
+        ],
+    }
+    elements = graph_to_elements(graph)
+
+    by_id = {n["data"]["id"]: n["data"] for n in elements["nodes"]}
+    assert by_id["c1"]["label"] == "create_engine"
+    assert by_id["c1"]["tool"] == "pyc"  # raw fields survive
+    assert by_id["d1"]["kind"] == "decision"
+    # The dangling cross-tool edge is dropped; the local one normalized.
+    assert len(elements["edges"]) == 1
+    assert elements["edges"][0]["data"]["relation"] == "informs"
+
+
 def test_list_sessions(tmp_path):
     """list_sessions returns all sessions with counts."""
     init_db(tmp_path / "prov.db")

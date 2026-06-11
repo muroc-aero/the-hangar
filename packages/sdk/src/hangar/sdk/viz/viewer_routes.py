@@ -111,7 +111,11 @@ async def sessions_endpoint(request: Request) -> Response:
 
 async def graph_endpoint(request: Request) -> Response:
     """Return JSON DAG for a given session_id (scoped to user in OIDC mode)."""
-    from hangar.sdk.provenance.db import _dumps, get_session_graph, get_session_owner
+    from hangar.sdk.provenance.db import (
+        _dumps,
+        build_session_elements,
+        get_session_owner,
+    )
 
     session_id = request.query_params.get("session_id")
     if not session_id:
@@ -126,7 +130,7 @@ async def graph_endpoint(request: Request) -> Response:
             return JSONResponse({"error": "Session not found"}, status_code=404)
 
     try:
-        graph = await asyncio.to_thread(get_session_graph, session_id)
+        graph = await asyncio.to_thread(build_session_elements, session_id)
     except Exception as exc:
         return JSONResponse({"error": str(exc)}, status_code=500)
 
