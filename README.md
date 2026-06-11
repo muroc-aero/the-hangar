@@ -13,6 +13,7 @@ Public instances are available at `mcp.lakesideai.dev`. Authentication uses Keyc
 | OAS | `https://mcp.lakesideai.dev/oas/mcp` | Aerostructural analysis and optimization of lifting surfaces. Couples VLM aerodynamics with finite-element structures for wing design. |
 | OCP | `https://mcp.lakesideai.dev/ocp/mcp` | Aircraft conceptual design and mission analysis. Fuel burn, takeoff performance, and battery SOC for conventional and hybrid-electric architectures. |
 | PYC | `https://mcp.lakesideai.dev/pyc/mcp` | Gas turbine engine cycle analysis. Design-point sizing and off-design performance with full thermodynamic station modeling. |
+| OMD | `https://mcp.lakesideai.dev/omd/mcp` | General-purpose OpenMDAO plan runner. Authors and runs YAML optimization plans through a factory registry, composing the other tools into multi-disciplinary studies with a full provenance graph. |
 
 ### Connecting
 
@@ -22,6 +23,7 @@ Public instances are available at `mcp.lakesideai.dev`. Authentication uses Keyc
 claude mcp add --transport http oas https://mcp.lakesideai.dev/oas/mcp
 claude mcp add --transport http ocp https://mcp.lakesideai.dev/ocp/mcp
 claude mcp add --transport http pyc https://mcp.lakesideai.dev/pyc/mcp
+claude mcp add --transport http omd https://mcp.lakesideai.dev/omd/mcp
 ```
 
 **claude.ai:** Settings > Integrations > Add MCP Server, then enter the endpoint URL.
@@ -41,7 +43,7 @@ End-to-end engineering workflows executed through The Hangar. Each study ships w
 
 ## Local setup
 
-Clone and install, then start Claude Code from the repo root. The `.mcp.json` already configures all three servers as local MCP connections.
+Clone and install, then start Claude Code from the repo root. The `.mcp.json` already configures all four servers as local MCP connections.
 
 ```bash
 git clone https://github.com/muroc-aero/the-hangar && cd the-hangar
@@ -49,9 +51,9 @@ uv sync
 claude
 ```
 
-Claude Code will automatically start the OAS, OCP, and PYC servers via the `.mcp.json` config.
+Claude Code will automatically start the OAS, OCP, PYC, and OMD servers via the `.mcp.json` config.
 
-To also enable the CLI-guide skills (so you can run analyses without MCP, using `oas-cli`, `ocp-cli`, `pyc-cli` directly), sync the skills into `.claude/`:
+To also enable the CLI-guide skills (so you can run analyses without MCP, using `oas-cli`, `ocp-cli`, `pyc-cli`, `omd-cli` directly), sync the skills into `.claude/`:
 
 ```bash
 bash scripts/sync-skills.sh
