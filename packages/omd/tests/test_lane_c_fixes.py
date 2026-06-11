@@ -220,3 +220,147 @@ async def test_run_plan_zero_disables_default(_captured_run):
     execution, plan_path, captured = _captured_run
     await execution.run_plan(plan_path, timeout_seconds=0)
     assert captured["timeout_seconds"] is None
+
+
+# ---------------------------------------------------------------------------
+# plan_mutate: rejected mutations must not persist (coupled run, 2026-06-11)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def _plan_dir(tmp_path):
+    from hangar.omd.plan_mutate import init_plan
+
+    d = tmp_path / "probe-plan"
+    init_plan(d, plan_id="probe", name="Probe")
+    return d
+
+
+def test_failed_requirement_validation_rolls_back(_plan_dir):
+    """A requirement that fails post-write schema validation must vanish;
+    the corrected retry must not need replace=True (blind agent hit
+    'requirement fuel-capacity already exists' after a rejected call)."""
+    from hangar.sdk.errors import UserInputError
+
+    from hangar.omd.plan_mutate import add_requirement
+
+    bad = {"id": "fuel-capacity", "text": "ok", "statement": "extra key"}
+    with pytest.raises(UserInputError):
+        add_requirement(_plan_dir, req=bad)
+
+    good = {"id": "fuel-capacity", "text": "Fuel burn within capacity"}
+    req = add_requirement(_plan_dir, req=good)  # no replace=True needed
+    assert req["id"] == "fuel-capacity"
+
+
+def test_failed_replace_restores_prior_requirement(_plan_dir):
+    from hangar.sdk.errors import UserInputError
+
+    from hangar.omd.plan_mutate import add_requirement, load_partial
+
+    add_requirement(_plan_dir, req={"id": "r1", "text": "original"})
+    bad = {"id": "r1", "text": "edited", "statement": "extra key"}
+    with pytest.raises(UserInputError):
+        add_requirement(_plan_dir, req=bad, replace=True)
+
+    reqs = load_partial(_plan_dir)["requirements"]
+    assert reqs == [{"id": "r1", "text": "original"}]
+
+
+def test_requirement_statement_alias_gets_hint(_plan_dir):
+    from hangar.sdk.errors import UserInputError
+
+    from hangar.omd.plan_mutate import add_requirement
+
+    with pytest.raises(UserInputError, match="'statement'.*'text'"):
+        add_requirement(
+            _plan_dir, req={"id": "r1", "statement": "fuel must fit"}
+        )
+
+
+def test_requirement_criteria_object_rejected_with_shape(_plan_dir):
+    """A single criterion mapping (not wrapped in a list) must fail before
+    any write, with the expected shape in the message."""
+    from hangar.sdk.errors import UserInputError
+
+    from hangar.omd.plan_mutate import add_requirement, load_partial
+
+    req = {
+        "id": "r1",
+        "text": "fuel within capacity",
+        "acceptance_criteria": {
+            "metric": "fuel_burn_kg", "comparator": "<=", "threshold": 150.0,
+        },
+    }
+    with pytest.raises(UserInputError, match="LIST.*wrap"):
+        add_requirement(_plan_dir, req=req)
+    assert "requirements" not in load_partial(_plan_dir)
+
+
+def test_failed_component_replace_restores_prior(_plan_dir):
+    """replace=True + failed validation used to unlink the prior component
+    file instead of restoring it."""
+    from hangar.sdk.errors import UserInputError
+
+    from hangar.omd.plan_mutate import add_component, load_partial
+
+    add_component(
+        _plan_dir, comp_id="p", comp_type="paraboloid/Paraboloid", config={}
+    )
+    with pytest.raises(UserInputError):
+        add_component(
+            _plan_dir, comp_id="p", comp_type=123, config={}, replace=True
+        )
+
+    comps = load_partial(_plan_dir)["components"]
+    assert comps == [{"id": "p", "type": "paraboloid/Paraboloid", "config": {}}]
+
+
+# ---------------------------------------------------------------------------
+# read_plan: directory listings and file content must stay bounded
+# ---------------------------------------------------------------------------
+
+
+async def test_read_plan_directory_listing_is_capped(tmp_path, monkeypatch):
+    """read_plan on a big directory returned 91k chars / 2008 files and blew
+    the MCP token limit; listings are now paged."""
+    from hangar.omd.tools import authoring
+
+    monkeypatch.setattr(authoring, "_DIR_LISTING_LIMIT", 5)
+    for i in range(12):
+        (tmp_path / f"f{i:02d}.yaml").write_text("a: 1\n")
+
+    page1 = await authoring.read_plan(str(tmp_path))
+    assert page1["total_files"] == 12
+    assert len(page1["files"]) == 5
+    assert page1["truncated"] is True
+
+    page3 = await authoring.read_plan(str(tmp_path), offset=10)
+    assert page3["files"] == ["f10.yaml", "f11.yaml"]
+    assert page3["truncated"] is False
+
+
+async def test_read_plan_large_file_is_truncated(tmp_path, monkeypatch):
+    from hangar.omd.tools import authoring
+
+    monkeypatch.setattr(authoring, "_MAX_CONTENT_CHARS", 100)
+    f = tmp_path / "big.yaml"
+    f.write_text("x" * 250)
+
+    first = await authoring.read_plan(str(f))
+    assert len(first["content"]) == 100
+    assert first["truncated"] is True
+    assert first["total_chars"] == 250
+
+    last = await authoring.read_plan(str(f), offset=200)
+    assert len(last["content"]) == 50
+    assert last["truncated"] is False
+
+
+async def test_read_plan_small_file_unchanged(tmp_path):
+    from hangar.omd.tools import authoring
+
+    f = tmp_path / "small.yaml"
+    f.write_text("a: 1\n")
+    result = await authoring.read_plan(str(f))
+    assert result == {"path": str(f), "is_dir": False, "content": "a: 1\n"}

@@ -20,7 +20,16 @@ Two authoring styles:
   rationale decision.
 - **Direct YAML**: compose the full plan yourself and `write_plan` it, then
   `validate_plan` / `run_plan` the written path. `read_plan` reads any plan
-  file (or lists a plan directory) back.
+  file (or lists a plan directory) back; large listings and files are
+  truncated with `truncated: true` and totals -- page with `offset`.
+
+Requirements (`plan_add_requirement` or the plan `requirements:` list) have
+the shape `{id, text, type?, priority?, status?, acceptance_criteria?}`. The
+requirement statement field is `text` (not `statement`), and
+`acceptance_criteria` is a **list** of `{metric, comparator, threshold}`
+mappings (`comparator` one of `<, <=, >, >=, ==, !=, in`). A mutation that
+fails validation leaves the plan directory untouched, so the corrected
+retry does not need `replace=true`.
 
 ## Tool surface (CLI parity)
 

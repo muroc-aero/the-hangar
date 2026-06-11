@@ -43,18 +43,46 @@ async def write_plan(
     return {"written": True, "path": str(target)}
 
 
+# Caps keep read_plan results inside MCP token limits: a directory like
+# tests/fixtures lists thousands of YAML files, and recorder exports can be
+# arbitrarily large (blind Lane C run, 2026-06-11: 91k chars blew the limit).
+_DIR_LISTING_LIMIT = 200
+_MAX_CONTENT_CHARS = 50_000
+
+
 async def read_plan(
     plan_path: Annotated[str, "Plan YAML path (workspace-relative or absolute)"],
+    offset: Annotated[int, "Directory listings / file content: skip this many entries / characters (for paging truncated results)"] = 0,
 ) -> dict:
-    """Read a plan YAML file back (workspace files or any server-side path)."""
+    """Read a plan YAML file back (workspace files or any server-side path).
+
+    Directories return a YAML file listing; large listings and files are
+    truncated (``truncated: True`` with totals) -- page with ``offset``.
+    """
     path = resolve_plan_path(plan_path)
     if path.is_dir():
         files = sorted(
             str(p.relative_to(path)) for p in path.rglob("*.yaml")
         )
-        return {"path": str(path), "is_dir": True, "files": files}
+        window = files[offset:offset + _DIR_LISTING_LIMIT]
+        return {
+            "path": str(path),
+            "is_dir": True,
+            "files": window,
+            "total_files": len(files),
+            "offset": offset,
+            "truncated": offset + len(window) < len(files),
+        }
     content = await asyncio.to_thread(path.read_text)
-    return {"path": str(path), "is_dir": False, "content": content}
+    window = content[offset:offset + _MAX_CONTENT_CHARS]
+    result = {"path": str(path), "is_dir": False, "content": window}
+    if offset or len(content) > offset + len(window):
+        result.update({
+            "total_chars": len(content),
+            "offset": offset,
+            "truncated": offset + len(window) < len(content),
+        })
+    return result
 
 
 async def plan_init(
@@ -94,7 +122,7 @@ async def plan_add_component(
 
 async def plan_add_requirement(
     plan_dir: Annotated[str, "Plan directory (workspace-relative or absolute)"],
-    requirement: Annotated[dict, "Requirement mapping; needs at least 'id' and 'text', plus optional type/priority/acceptance_criteria"],
+    requirement: Annotated[dict, "Requirement mapping: 'id' and 'text' (the requirement statement) required; optional type/priority/status/acceptance_criteria, where acceptance_criteria is a LIST of {metric, comparator, threshold} mappings"],
     rationale: Annotated[str | None, "Why this requirement (recorded as a plan decision)"] = None,
     replace: Annotated[bool, "Overwrite an existing requirement with the same id"] = False,
 ) -> dict:
