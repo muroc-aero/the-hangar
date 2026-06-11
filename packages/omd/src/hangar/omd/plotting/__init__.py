@@ -18,6 +18,16 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 
+# Process-wide render lock shared with hangar.sdk.viz.plotting: pyplot's
+# global figure manager is not thread-safe, and in one server process this
+# module renders concurrently with the SDK /plot endpoint, the omd MCP
+# tools, /omd-plots, and the range-safety dashboard.
+from hangar.sdk.viz.render_lock import (  # noqa: F401 -- re-export
+    MPL_RENDER_LOCK,
+    atomic_savefig,
+    atomic_write_bytes,
+)
+
 from hangar.omd.plotting._common import (  # noqa: F401 -- re-export
     detect_surface_name,
     find_outputs,
@@ -154,14 +164,20 @@ def generate_plots(
             if "run_id" not in sig.parameters and "kwargs" not in str(sig):
                 kwargs.pop("run_id", None)
 
-            fig = func(recorder_path, **kwargs)
             # Prefix type-specific plots with component_id for composites
             if ptype in _plot_source:
                 out_path = output_dir / f"{_plot_source[ptype]}_{ptype}.png"
             else:
                 out_path = output_dir / f"{ptype}.png"
-            fig.savefig(str(out_path), dpi=150, bbox_inches="tight")
-            plt.close(fig)
+            # The lock spans figure creation through savefig/close; the
+            # atomic save keeps concurrent readers of the shared
+            # plots/{run_id}/{type}.png from seeing a torn file.
+            with MPL_RENDER_LOCK:
+                fig = func(recorder_path, **kwargs)
+                try:
+                    atomic_savefig(fig, out_path, dpi=150, bbox_inches="tight")
+                finally:
+                    plt.close(fig)
             saved[ptype] = out_path
             logger.info("Saved %s plot to %s", ptype, out_path)
         except Exception as exc:
@@ -179,7 +195,6 @@ def _resolve_n2(run_id: str, output_dir: Path) -> Path | None:
 
     Returns the output path, or None if no N2 file exists.
     """
-    import shutil
     from hangar.omd.db import n2_dir
 
     src = n2_dir() / f"{run_id}.html"
@@ -188,6 +203,6 @@ def _resolve_n2(run_id: str, output_dir: Path) -> Path | None:
         return None
 
     dst = output_dir / "n2.html"
-    shutil.copy2(src, dst)
+    atomic_write_bytes(dst, src.read_bytes())
     logger.info("N2 diagram copied to %s", dst)
     return dst
