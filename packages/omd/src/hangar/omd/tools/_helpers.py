@@ -3,9 +3,22 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 from hangar.sdk.errors import UserInputError
+
+
+def _user_dir_name(user: str) -> str:
+    """Map a username to a safe directory name.
+
+    OIDC usernames can be emails; keep the readable characters and replace
+    the rest, and never return something path-traversal-shaped.
+    """
+    safe = re.sub(r"[^A-Za-z0-9@._-]", "_", user)
+    if not safe.strip("._"):
+        return "anonymous"
+    return safe
 
 
 def workspace_dir() -> Path:
@@ -13,10 +26,15 @@ def workspace_dir() -> Path:
 
     Relative plan paths in tool arguments resolve here, so a claude.ai agent
     can author, validate, and run plans entirely through tool calls.
+
+    Keyed per user (the OIDC username on the HTTP transport, the
+    HANGAR_USER / OS login elsewhere) so two users initializing the same
+    plan id cannot clobber each other's files.
     """
     from hangar.omd.db import omd_data_root
+    from hangar.sdk.auth import get_current_user
 
-    ws = omd_data_root() / "workspace"
+    ws = omd_data_root() / "workspace" / _user_dir_name(get_current_user())
     ws.mkdir(parents=True, exist_ok=True)
     return ws
 
