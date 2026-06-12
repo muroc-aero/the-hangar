@@ -1,0 +1,96 @@
+# Brelje 2018a Fig 5 grid as a study spec (study-layer port of
+# pipeline/sweep.py --objective fuel). One MDO per (design_range,
+# spec_energy) cell over the paper-correct axes, with the low/high
+# multistart brackets that got the CSV pipeline to 132/132 convergence.
+#
+#   omd-cli study review   packages/omd/demos/brelje_2018a/study/fig5_study.yaml
+#   omd-cli study run      ... --max-cases 4        # pilot batch (~10 min)
+#   omd-cli study run      ... --yes                # full grid (hours)
+#   omd-cli study results  brelje-2018a-fig5
+#
+# Derived CSV columns from the old pipeline (fuel_burn_lb, electric_percent,
+# fuel_mileage) are post-processing over cases.csv, not study outputs.
+
+metadata:
+  id: brelje-2018a-fig5
+  name: "Brelje 2018a Fig 5: King Air series-hybrid fuel+MTOW/100 grid"
+  version: 1
+  description: >
+    Reproduces the Fig 5 trade space (design range 300-800 nmi x battery
+    specific energy 250-800 Wh/kg, 11x12 cells). Each cell is an
+    independent MDO of the lane_b fuel plan.
+
+defaults:
+  runner: omd
+  spec:
+    plan: ../lane_b/fuel_mdo/plan.yaml
+    mode: optimize
+    timeout_seconds: 1800
+
+cases:
+  - matrix:
+      id_template: "r{design_range_nm:g}-e{spec_energy_whkg:g}"
+      axes:
+        design_range_nm:  {linspace: [300.0, 800.0, 11]}
+        spec_energy_whkg: {linspace: [250.0, 800.0, 12]}
+      bind:
+        design_range_nm:
+          - components[mission].config.mission_params.mission_range_NM
+        spec_energy_whkg:
+          - components[mission].config.mission_params.battery_specific_energy
+          - components[mission].config.propulsion_overrides.battery_specific_energy
+
+  # Manual insertion: the upstream HybridTwinTestCase operating point
+  # (500 nmi / 450 Wh/kg) warm-started at the published hybridization,
+  # as a physics anchor alongside the grid cell at the same coordinates.
+  - case:
+      id: hybridtwin-ref-500-450
+      params: {design_range_nm: 500.0, spec_energy_whkg: 450.0}
+      spec:
+        set:
+          components[mission].config.mission_params.mission_range_NM: 500.0
+          components[mission].config.mission_params.battery_specific_energy: 450.0
+          components[mission].config.propulsion_overrides.battery_specific_energy: 450.0
+        initial:
+          cruise.hybridization: 0.05841
+
+multistart:
+  presets:
+    low:
+      initial:
+        cruise.hybridization: 0.05
+        climb.hybridization: 0.05
+        descent.hybridization: 0.05
+        ac|weights|W_battery: 100.0
+        ac|propulsion|motor|rating: 500.0
+    high:
+      initial:
+        cruise.hybridization: 0.95
+        climb.hybridization: 0.95
+        descent.hybridization: 0.95
+        ac|weights|W_battery: 2000.0
+        ac|propulsion|motor|rating: 1500.0
+  pick: {output: mixed_objective, mode: min}
+
+execution:
+  workers: 2
+  est_case_seconds: 240       # ~2 min/MDO x 2 multistart attempts
+  review_threshold: 12        # one grid row; anything more needs --yes
+  guard_max_cases: 300
+
+outputs:
+  - {name: mixed_objective, path: mixed_objective}
+  - {name: MTOW_kg,         path: "ac|weights|MTOW"}
+  - {name: fuel_burn_kg,    path: descent.fuel_used_final}
+  - {name: W_battery_kg,    path: "ac|weights|W_battery"}
+  - {name: S_ref_m2,        path: "ac|geom|wing|S_ref"}
+  - {name: cruise_hybridization,  path: cruise.hybridization}
+  - {name: climb_hybridization,   path: climb.hybridization}
+  - {name: descent_hybridization, path: descent.hybridization}
+  - {name: engine_rating_hp,    path: "ac|propulsion|engine|rating"}
+  - {name: motor_rating_hp,     path: "ac|propulsion|motor|rating"}
+  - {name: generator_rating_hp, path: "ac|propulsion|generator|rating"}
+  - {name: MTOW_margin,      path: margins.MTOW_margin}
+  - {name: rotate_range_ft,  path: rotate.range_final}
+  - {name: Vstall_kn,        path: v0v1.Vstall_eas}
+  - {name: SOC_final,        path: descent.propmodel.batt1.SOC_final}

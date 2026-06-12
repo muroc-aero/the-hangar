@@ -64,6 +64,12 @@ from hangar.omd.tools.results_tools import (
     get_run_summary,
     record_conclusion,
 )
+from hangar.omd.tools.study import (
+    get_study_results,
+    get_study_status,
+    review_study,
+    run_study,
+)
 
 # ---------------------------------------------------------------------------
 # Register the omd views with the SDK viewer infrastructure
@@ -113,6 +119,16 @@ PLAN WORKSPACE:
   Relative paths resolve into a server-side workspace, so you can author,
   run, and read plans entirely through tool calls (no filesystem needed).
   read_plan on a directory lists its files.
+
+STUDIES (multi-case):
+  A study runs many cases (each one plan run) from a single study YAML:
+  matrix (DOE-style) expansion plus manual case insertion. Workflow:
+  author the study YAML (write_plan) -> review_study (case count +
+  compute estimate; ALWAYS review before running -- matrix axes multiply)
+  -> run_study with a small max_cases pilot batch -> inspect via
+  get_study_status / get_study_results (and the per-case run_refs) ->
+  continue in batches. Completed cases are checkpointed and skipped
+  automatically on the next run_study call.
 
 CRITICAL CONSTRAINTS:
   * run_plan refuses semantically invalid plans -- unknown component types
@@ -167,6 +183,15 @@ mcp.tool()(capture_tool(validate_plan))
 mcp.tool()(capture_tool(assemble_plan))
 mcp.tool()(capture_tool(run_plan))
 mcp.tool()(capture_tool(run_polar))
+
+# ---------------------------------------------------------------------------
+# Register study tools (multi-case studies; see hangar.sdk.study)
+# ---------------------------------------------------------------------------
+
+mcp.tool()(capture_tool(review_study))
+mcp.tool()(capture_tool(run_study))
+mcp.tool()(capture_tool(get_study_status))
+mcp.tool()(capture_tool(get_study_results))
 
 # ---------------------------------------------------------------------------
 # Register results + provenance tools

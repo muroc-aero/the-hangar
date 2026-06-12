@@ -791,6 +791,7 @@ dependencies = [
     { name = "fastmcp" },
     { name = "pydantic" },
     { name = "python-dotenv" },
+    { name = "pyyaml" },
 ]
 
 [package.optional-dependencies]
@@ -826,6 +827,7 @@ requires-dist = [
     { name = "pyjwt", extras = ["crypto"], marker = "extra == 'all'", specifier = ">=2.8" },
     { name = "pyjwt", extras = ["crypto"], marker = "extra == 'auth'", specifier = ">=2.8" },
     { name = "python-dotenv", specifier = ">=1.0" },
+    { name = "pyyaml", specifier = ">=6.0" },
     { name = "uvicorn", marker = "extra == 'all'", specifier = ">=0.27" },
     { name = "uvicorn", marker = "extra == 'http'", specifier = ">=0.27" },
 ]
