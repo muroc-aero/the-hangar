@@ -7,8 +7,10 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import secrets
 import threading
+import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -121,7 +123,12 @@ class ArtifactStore:
     ) -> None:
         index_path = self._index_path(user, project, session_id)
         index_path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = index_path.with_suffix(".tmp")
+        # Unique tmp per writer: concurrent processes (study workers) sharing
+        # a session must not race on one tmp name -- a fixed name lets writer
+        # A rename writer B's tmp away before B's own rename. Last writer
+        # wins on content, which is fine: the index is a cache rebuilt from
+        # the artifact files when missing or corrupt.
+        tmp = index_path.with_suffix(f".tmp-{os.getpid()}-{uuid.uuid4().hex[:8]}")
         try:
             with tmp.open("w") as f:
                 json.dump(_sanitize_for_json(index), f, indent=2, cls=_NumpyEncoder)
