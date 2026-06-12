@@ -1,23 +1,28 @@
 # Studies: multi-case analysis layer (2026-06-11)
 
 A *study* groups many sub-analysis cases under one spec. Each case is one
-analysis/optimization run (for omd: one plan run). The layer is tool
-independent: the core lives in `hangar.sdk.study`, runners adapt it to a
-tool, and one study can mix runners across cases. The omd runner is the
-first (and currently only) adapter.
+analysis/optimization run (for omd: one plan run; for oas/ocp/pyc: one
+workflow script). The layer is tool independent: the core lives in
+`hangar.sdk.study`, runners adapt it to a tool, and one study can mix
+runners across cases (different `runner:` per matrix block or manual
+case). Runners load lazily from installed packages via the
+`hangar.study_runners` entry-point group, so no orchestrating package
+needs to import the tools.
 
 ## Where things live
 
 | Piece | Location |
 |---|---|
 | Core (schema, expansion, review, store, orchestration) | `packages/sdk/src/hangar/sdk/study/` |
-| omd runner adapter | `packages/omd/src/hangar/omd/study_runner.py` |
-| CLI | `omd-cli study validate/review/generate/run/status/results` |
+| Generic script runner (any sdk-CLI tool registry) | `packages/sdk/src/hangar/sdk/study/script_runner.py` |
+| Runner adapters | `packages/{omd,oas,ocp,pyc}/src/hangar/*/study_runner.py` + `hangar.study_runners` entry points |
+| Standalone CLI (no omd needed) | `hangar-study validate/review/generate/run/status/results/runners` |
+| omd CLI alias | `omd-cli study ...` (same commands) |
 | MCP tools (omd server) | `review_study`, `run_study`, `get_study_status`, `get_study_results` |
 | Study state | `hangar_data/studies/{study_id}/` (`HANGAR_STUDY_DIR` to override) |
-| Case run provenance | each tool's own store (omd: analysis.db `study` entity + `partOf` edges, `metadata.study` on case plans) |
-| Demo | `packages/omd/demos/brelje_2018a/study/fig5_study.yaml` (study-layer port of `pipeline/sweep.py`) |
-| Tests | `packages/sdk/tests/test_study.py`, `packages/omd/tests/test_study_runner.py` |
+| Case run provenance | each tool's own store (omd: analysis.db `study` entity + `partOf` edges, `metadata.study` on case plans; script runners: the tool's run_id in `run_ref`) |
+| Demos | `packages/omd/demos/brelje_2018a/study/fig5_study.yaml` (133-case omd MDO grid), `packages/oas/examples/alpha_span_study/` (oas script study + oas/pyc cross-tool study) |
+| Tests | `packages/sdk/tests/test_study.py`, `test_script_runner.py`; `packages/omd/tests/test_study_runner.py`, `test_study_cross_tool.py`; per-tool smoke suites |
 
 ## The spec (study.yaml)
 
@@ -56,17 +61,59 @@ outputs:                            # case-table columns, runner-interpreted pat
   - {name: MTOW_kg, path: "ac|weights|MTOW"}
 ```
 
+### Script-runner case specs (oas, ocp, pyc)
+
+Tools whose CLI is built on `hangar.sdk.cli` get their runner from the
+generic script runner (`hangar.sdk.study.script_runner`): a case is a
+workflow script, the same `[{tool, args}]` JSON `*-cli run-script`
+executes, run in-process and stopped at the first failing step.
+
+```yaml
+defaults:
+  runner: oas
+  spec:
+    script: scripts/aero.json       # or inline steps: [...] -- give steps
+                                    # an "id" so bind paths can address them
+    steps:
+      - {id: surf, tool: create_surface, args: {name: wing, num_y: 7, ...}}
+      - {id: an, tool: run_aero_analysis, args: {surfaces: [wing], alpha: 2.0}}
+    success_when:                   # optional: map a result field to
+      step: an                      # converged/failed (oas optimization:
+      path: validation.passed       # results.success; default is
+                                    # "completed" when all steps ok)
+cases:
+  - matrix:
+      axes: {alpha: {values: [0, 2, 4]}}
+      bind:
+        alpha:
+          - steps[an].args.alpha    # set_by_path into the step list
+outputs:
+  - {name: CL, path: "an:results.CL"}   # "step_ref:dotted.path" into that
+                                        # step's response envelope
+```
+
+`$prev.run_id` / `$N.run_id` interpolation works exactly as in
+`run-script`; multistart presets patch steps via the same `set` shape. The
+runner calls the tool's `reset` before each case so pool workers don't
+leak session state between cases, and `run_ref` is the last `run_id` a
+step returned (`run_ref_step: <id>` to override).
+
 ## Workflow (review-first, incremental)
 
 ```bash
-omd-cli study validate study.yaml        # schema + expansion preflight
-omd-cli study review   study.yaml        # case count, axes, compute estimate
-omd-cli study generate study.yaml        # write case plan artifacts, no compute
-omd-cli study run study.yaml --max-cases 4    # pilot batch, checkpointed
-omd-cli study status  <study_id>         # progress counts
-omd-cli study results <study_id>         # spreadsheet-style case table
-omd-cli study run study.yaml --yes       # commit to the rest (resumes)
+hangar-study validate study.yaml         # schema + expansion preflight
+hangar-study review   study.yaml         # case count, axes, compute estimate
+hangar-study generate study.yaml         # write case input artifacts, no compute
+hangar-study run study.yaml --max-cases 4     # pilot batch, checkpointed
+hangar-study status  <study_id>          # progress counts
+hangar-study results <study_id>          # spreadsheet-style case table
+hangar-study run study.yaml --yes        # commit to the rest (resumes)
+hangar-study runners                     # registered + discoverable runners
 ```
+
+`omd-cli study <same commands>` is an equivalent alias when hangar-omd is
+installed; both resolve runners through entry-point discovery, so a mixed
+oas/omd study runs from either.
 
 Design decisions baked in:
 
@@ -91,7 +138,13 @@ Design decisions baked in:
 
 - [x] Tool-independent core in `hangar.sdk.study` (no OpenMDAO/tool imports)
 - [x] Matrix (DOE) expansion + manual case insertion, mixed in one study
-- [x] Per-case runner field (multi-tool studies once more runners exist)
+- [x] Per-case runner field; cross-tool studies verified (oas + pyc demo,
+      omd + oas test) with one case-table schema across tools
+- [x] oas/ocp/pyc runners via the generic script runner
+      (`hangar.sdk.study.script_runner`): case = run-script workflow,
+      `success_when` validation gate, outputs from response envelopes
+- [x] Runner discovery via `hangar.study_runners` entry points
+- [x] Standalone `hangar-study` CLI (no omd dependency)
 - [x] Deterministic case keys; resume; spec-edit invalidation
 - [x] Review guard: case count, axis sizes, multistart multiplier, wall estimate
 - [x] Incremental/pilot batches (`--max-cases`, MCP-capped batches)
@@ -119,11 +172,17 @@ Design decisions baked in:
       grid).
 - [ ] **DOE sampling strategies** beyond full-factorial + explicit lists
       (LHS, fractional, adaptive refinement near failures/ridges).
-- [ ] **Non-omd runners**: oas/ocp/pyc-native runners (case spec = tool
-      CLI/script payload), then a cross-tool demo study; runner discovery
-      via entry points so `study run` works without importing omd.
-- [ ] **Standalone study CLI** (`hangar-study` or similar) once a second
-      runner exists; `omd-cli study` stays as an alias.
+- [ ] **MCP study tools on the oas/ocp/pyc servers**: only the omd server
+      exposes review/run/status/results today (and can run any runner via
+      discovery when co-installed); factor the four tools into a shared
+      sdk module and register them on every server.
+- [ ] **Dashboard run-scoped views for non-omd cases**: the studyfs
+      source's per-case results/plots delegate to the omd source, so
+      oas/ocp/pyc `run_ref`s render the table row but not run detail;
+      dispatch on the case's runner instead.
+- [ ] **Per-step timeout for script runners**: omd cases have
+      `timeout_seconds` through run_plan; script steps currently run
+      unbounded.
 - [ ] **Study-level requirements/conclusions**: acceptance criteria over
       aggregate outputs ("all cells converged", "min margin > 0"),
       `record_conclusion` for studies.
