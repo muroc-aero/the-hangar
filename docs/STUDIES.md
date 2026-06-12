@@ -132,8 +132,20 @@ Design decisions baked in:
 - [ ] **Concurrent-orchestrator safety**: state.json assumes a single
       orchestrator process; add a lock file if studies ever run from two
       hosts/processes at once.
+- [ ] **Queued vs running status**: the orchestrator marks the whole
+      submitted batch "running" at dispatch, so a 131-case batch shows
+      running: 131 while only ~workers cases execute; add a "queued"
+      status (done/total stays accurate; surfaced by the 2026-06-12
+      fig5 verification run).
 - [ ] **Brelje fig6 spec + full-grid re-verification** via the study layer
       (warm_from depends on the retry-heuristics item); then port the
-      Adler 2022a demo onto studies when it lands.
+      Adler 2022a demo onto studies when it lands. Fig5 verified
+      2026-06-12: 126/133 cold-bracket convergence, every converged cell
+      identical to the reference CSV (0.0000% delta); the 7 boundary
+      failures are the retry-heuristics motivation, and a single-neighbor
+      manual rescue (fig5_study_v2_rescue pattern) recovers convergence
+      but can land in a worse basin (545 vs 468 at r700-e450), so the
+      automated retry should be multi-neighbor + bracket like
+      retry_stuck_cells.py.
 - [ ] **Case-level artifacts browsing** in the dashboard (link from a case
       row to its generated plan YAML and N2/plots of its run).
