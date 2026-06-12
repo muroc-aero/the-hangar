@@ -1,0 +1,74 @@
+# OAS demo study: 3x3 alpha x span grid + one finer-mesh anchor case.
+#
+# Each case is a workflow script over the OAS tool registry (the same
+# [{tool, args}] steps oas-cli run-script executes), patched per case by
+# the matrix bindings. Run it with the standalone study CLI:
+#
+#   hangar-study review  packages/oas/examples/alpha_span_study/study.yaml
+#   hangar-study run     packages/oas/examples/alpha_span_study/study.yaml --max-cases 2
+#   hangar-study results oas-alpha-span
+#
+# (omd-cli study works identically if hangar-omd is installed.)
+metadata:
+  id: oas-alpha-span
+  name: "OAS rectangular wing: CL/CD over alpha and span"
+  version: 1
+
+defaults:
+  runner: oas
+  spec:
+    steps:
+      - id: surf
+        tool: create_surface
+        args:
+          name: wing
+          wing_type: rect
+          span: 10.0
+          root_chord: 1.0
+          num_x: 2
+          num_y: 7
+          symmetry: true
+          with_viscous: true
+      - id: an
+        tool: run_aero_analysis
+        args:
+          surfaces: [wing]
+          alpha: 2.0
+    # Map the analysis envelope's physics checks to converged/failed.
+    success_when:
+      step: an
+      path: validation.passed
+
+cases:
+  - matrix:
+      id_template: "a{alpha:g}-s{span:g}"
+      axes:
+        alpha:
+          values: [0.0, 2.0, 4.0]
+        span:
+          values: [8.0, 10.0, 12.0]
+      bind:                       # NOTE: block lists (bare [id] selectors
+        alpha:                    # break YAML flow-sequence parsing)
+          - steps[an].args.alpha
+        span:
+          - steps[surf].args.span
+  # Manual insertion: same mid-grid point on a finer mesh, to check mesh
+  # sensitivity against its matrix twin a2-s10.
+  - case:
+      id: a2-s10-fine
+      params: {alpha: 2.0, span: 10.0}
+      spec:
+        set:
+          steps[surf].args.num_y: 15
+          steps[an].args.alpha: 2.0
+
+execution:
+  workers: 2
+  est_case_seconds: 5
+  review_threshold: 4             # force the review -> pilot -> continue loop
+  guard_max_cases: 100
+
+outputs:
+  - {name: CL, path: "an:results.CL"}
+  - {name: CD, path: "an:results.CD"}
+  - {name: L_over_D, path: "an:results.L_over_D"}

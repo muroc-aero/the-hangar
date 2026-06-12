@@ -61,12 +61,45 @@ def register_runner(
     _RUNNERS[name] = {"run": run_case, "generate": generate_case}
 
 
+def _discover_runner(name: str) -> bool:
+    """Try to load a runner via the ``hangar.study_runners`` entry-point group.
+
+    Each runner package advertises a module whose import registers its
+    runner (e.g. ``oas = "hangar.oas.study_runner"``), so studies can mix
+    tools without the caller hand-importing every adapter.
+    """
+    from importlib import import_module, metadata
+
+    for ep in metadata.entry_points(group="hangar.study_runners"):
+        if ep.name != name:
+            continue
+        try:
+            import_module(ep.value)
+        except Exception as exc:
+            raise KeyError(
+                f"runner {name!r} found as entry point {ep.value!r} but "
+                f"failed to import: {type(exc).__name__}: {exc}") from exc
+        return name in _RUNNERS
+    return False
+
+
+def list_available_runners() -> dict[str, str]:
+    """Registered runners plus discoverable-but-unloaded entry points."""
+    from importlib import metadata
+
+    out = {name: "registered" for name in _RUNNERS}
+    for ep in metadata.entry_points(group="hangar.study_runners"):
+        out.setdefault(ep.name, f"entry point ({ep.value})")
+    return out
+
+
 def get_runner(name: str) -> dict[str, Callable]:
-    if name not in _RUNNERS:
+    if name not in _RUNNERS and not _discover_runner(name):
         raise KeyError(
-            f"no runner registered for {name!r} (registered: "
-            f"{sorted(_RUNNERS) or 'none'}). Import the runner module "
-            "first, e.g. hangar.omd.study_runner for 'omd'.")
+            f"no runner registered for {name!r} (available: "
+            f"{sorted(list_available_runners()) or 'none'}). Install the "
+            "tool package that provides it, or import its runner module "
+            "(e.g. hangar.omd.study_runner for 'omd').")
     return _RUNNERS[name]
 
 

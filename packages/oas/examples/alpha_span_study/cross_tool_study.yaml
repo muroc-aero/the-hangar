@@ -1,0 +1,71 @@
+# Cross-tool demo study: OAS wing cases and pyCycle engine cases in ONE
+# study, dispatched to different runners per matrix block. Runners load
+# from installed packages via the hangar.study_runners entry-point group;
+# nothing here is omd-specific and no base plan is needed.
+#
+#   hangar-study review packages/oas/examples/alpha_span_study/cross_tool_study.yaml
+#   hangar-study run    packages/oas/examples/alpha_span_study/cross_tool_study.yaml --yes
+#
+# The case table gets one schema across tools: each runner fills the
+# output columns it understands (CL/CD for wings, TSFC/Fn for engines)
+# and leaves the rest empty.
+metadata:
+  id: aero-engine-cross-tool
+  name: "Cross-tool: wing alpha sweep + turbojet T4 sweep"
+  version: 1
+
+defaults:
+  runner: oas
+
+cases:
+  - matrix:
+      id_template: "wing-a{alpha:g}"
+      spec:
+        steps:
+          - id: surf
+            tool: create_surface
+            args: {name: wing, wing_type: rect, span: 10.0, root_chord: 1.0,
+                   num_x: 2, num_y: 7, symmetry: true, with_viscous: true}
+          - id: an
+            tool: run_aero_analysis
+            args: {surfaces: [wing], alpha: 2.0}
+        success_when: {step: an, path: validation.passed}
+      axes:
+        alpha:
+          values: [0.0, 2.0, 4.0]
+      bind:
+        alpha:
+          - steps[an].args.alpha
+  - matrix:
+      id_template: "engine-t{T4:g}"
+      runner: pyc
+      spec:
+        steps:
+          - id: engine
+            tool: create_engine
+            args: {name: tj, archetype: turbojet}
+          - id: design
+            tool: run_design_point
+            args: {engine_name: tj, T4_target: 3000.0}
+        success_when: {step: design, path: validation.passed}
+      axes:
+        T4:
+          # Stay on the physical branch: with default turbojet parameters,
+          # T4 around 3200 degR solves to negative net thrust and the
+          # success_when validation gate (correctly) fails the case.
+          values: [2800.0, 3000.0]
+      bind:
+        T4:
+          - steps[design].args.T4_target
+
+execution:
+  workers: 2
+  est_case_seconds: 30
+  review_threshold: 5
+  guard_max_cases: 50
+
+outputs:
+  - {name: CL, path: "an:results.CL"}
+  - {name: CD, path: "an:results.CD"}
+  - {name: TSFC, path: "design:results.performance.TSFC"}
+  - {name: Fn, path: "design:results.performance.Fn"}

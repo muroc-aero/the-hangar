@@ -16,6 +16,9 @@ dependencies = [
 pyc-server = "hangar.pyc.server:main"
 pyc-cli    = "hangar.pyc.cli:main"
 
+[project.entry-points."hangar.study_runners"]
+pyc = "hangar.pyc.study_runner"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

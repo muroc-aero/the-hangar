@@ -16,6 +16,9 @@ dependencies = [
 ocp-server = "hangar.ocp.server:main"
 ocp-cli    = "hangar.ocp.cli:main"
 
+[project.entry-points."hangar.study_runners"]
+ocp = "hangar.ocp.study_runner"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
