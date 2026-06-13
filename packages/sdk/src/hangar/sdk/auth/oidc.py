@@ -230,6 +230,19 @@ def get_current_user() -> str:
     return _hangar_env("HANGAR_USER", "OAS_USER") or getpass.getuser()
 
 
+def set_current_user(username: str) -> None:
+    """Set the current-request username in the contextvar.
+
+    Used to carry the authenticated user across a process boundary where the
+    request context is not inherited -- e.g. a study orchestrator hands the
+    resolved owner to each pool worker so the run records it writes are
+    stamped with the right ``user`` regardless of the pool start method
+    (fork vs spawn). A no-op for an empty username.
+    """
+    if username:
+        _current_user_ctx.set(username)
+
+
 # Scopes we ADVERTISE in the RFC 9728 protected-resource metadata but do NOT
 # enforce on tokens. See _advertise_extra_scopes_in_resource_metadata().
 ADVERTISED_EXTRA_SCOPES: tuple[str, ...] = ("offline_access",)

@@ -82,9 +82,26 @@ class StudyStore:
 
     def load_state(self) -> dict:
         if not self.state_path.exists():
-            return {"study_id": self.study_id, "version": None,
+            return {"study_id": self.study_id, "version": None, "owner": "",
                     "created_at": _now(), "updated_at": _now(), "cases": {}}
         return json.loads(self.state_path.read_text())
+
+    def set_owner_if_absent(self, owner: str | None) -> None:
+        """Stamp the study's owner once, at creation.
+
+        Sourced from ``get_current_user()`` by the orchestrator (the MCP
+        request user, or the OS/``HANGAR_USER`` login for CLI runs). Used by
+        the dashboard to scope the study list per user; admins see all.
+        Never overwrites an existing owner, so a later run by a different
+        user does not reassign ownership.
+        """
+        if not owner:
+            return
+        state = self.load_state()
+        if state.get("owner"):
+            return
+        state["owner"] = owner
+        self._write_state(state)
 
     def _write_state(self, state: dict) -> None:
         state["updated_at"] = _now()
@@ -163,6 +180,7 @@ class StudyStore:
         return {
             "study_id": self.study_id,
             "version": state.get("version"),
+            "owner": state.get("owner", ""),
             "total": len(cases),
             "done": done,
             "counts": counts,
