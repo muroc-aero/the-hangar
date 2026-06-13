@@ -9,6 +9,7 @@ from hangar.sdk.auth.oidc import (
     build_auth_settings,
     build_token_verifier,
     get_current_user,
+    set_current_user,
 )
 
 __all__ = [
@@ -20,4 +21,5 @@ __all__ = [
     "build_auth_settings",
     "build_token_verifier",
     "get_current_user",
+    "set_current_user",
 ]

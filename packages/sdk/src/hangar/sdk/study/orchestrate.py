@@ -36,6 +36,23 @@ logger = logging.getLogger(__name__)
 
 SUCCESS_STATUSES = frozenset({"converged", "completed"})
 
+
+def _resolve_owner(owner: str | None) -> str:
+    """Resolve the study owner: the explicit value, else the current user.
+
+    Best-effort: ``get_current_user()`` returns the MCP request user over
+    HTTP, or the OS/``HANGAR_USER`` login otherwise. Any failure yields ""
+    (an ownerless study, visible to everyone in the dashboard).
+    """
+    if owner:
+        return owner
+    try:
+        from hangar.sdk.auth.oidc import get_current_user
+
+        return get_current_user() or ""
+    except Exception:  # noqa: BLE001 - owner is advisory; never block a run
+        return ""
+
 _RUNNERS: dict[str, dict[str, Callable]] = {}
 
 
@@ -136,6 +153,16 @@ def _pick_best(attempts: list[dict], pick: dict) -> dict:
 def _run_one_case(args: tuple) -> dict:
     """Worker: run one case (all multistart presets) and return its result."""
     case_dict, ctx, presets, pick = args
+    # Carry the study owner into this (possibly forked/spawned) worker so the
+    # run records the tool writes are stamped with the right user -- the
+    # request contextvar is not reliably inherited across the pool boundary.
+    if ctx.get("owner"):
+        try:
+            from hangar.sdk.auth import set_current_user
+
+            set_current_user(ctx["owner"])
+        except Exception:  # noqa: BLE001 - user stamping is best-effort
+            pass
     t0 = time.perf_counter()
     attempts: list[dict] = []
     try:
@@ -196,6 +223,7 @@ def run_study(
     retry_failed: bool = False,
     store_root: Path | None = None,
     on_case_done: Callable[[dict, dict], None] | None = None,
+    owner: str | None = None,
 ) -> dict:
     """Expand, checkpoint, and run a study (or the next batch of it).
 
@@ -228,6 +256,10 @@ def run_study(
 
     store = StudyStore(study_id, root=store_root)
     store.save_spec(study_path.read_text(), version)
+    store.set_owner_if_absent(_resolve_owner(owner))
+    # The effective owner (original creator on resume) stamps each case's run
+    # records too, so the dashboard's per-study and per-run scoping agree.
+    effective_owner = store.load_state().get("owner") or ""
     state = store.sync_cases(cases, version)
 
     pending = _pending_cases(cases, state, retry_failed)
@@ -261,6 +293,7 @@ def run_study(
             "params": case.params,
             "outputs": outputs,
             "artifact_dir": str(store.case_artifact_dir(case.case_id)),
+            "owner": effective_owner,
         }
         store.update_case(case.case_key, status="running")
         work.append((case.to_dict(), ctx, presets, pick))
@@ -319,6 +352,7 @@ def run_study(
 def generate_study(
     study_path: Path | str,
     store_root: Path | None = None,
+    owner: str | None = None,
 ) -> dict:
     """Materialize every case's input artifact without running anything.
 
@@ -335,6 +369,7 @@ def generate_study(
     meta = study["metadata"]
     store = StudyStore(meta["id"], root=store_root)
     store.save_spec(study_path.read_text(), meta.get("version", 1))
+    store.set_owner_if_absent(_resolve_owner(owner))
     cases = expand_cases(study)
     store.sync_cases(cases, meta.get("version", 1))
 

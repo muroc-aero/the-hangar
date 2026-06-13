@@ -156,6 +156,15 @@ Design decisions baked in:
 - [x] Progress tracking pollable over MCP (`get_study_status`)
 - [x] Brelje 2018a Fig 5 demo spec (133 cases, review/generate verified)
 - [x] range-safety dashboard: studies source + case-table view (submodule)
+- [x] Per-user studies: `owner` stamped on a study at creation
+      (`get_current_user()`); dashboard scopes the study list + study views
+      to the viewer (admins see all) over the unified-viewer OIDC flow
+- [x] VPS deployment: omd-mcp persists run data on the volume
+      (`OMD_DATA_ROOT=/data`); dashboard runs as its own OIDC service
+      (`docker/Dockerfile.dashboard`, `dashboard.lakesideai.dev`) reading the
+      omd run data + study store read-only -- run studies over MCP
+      (`run_study`), watch progress, and click a case into its omd run
+      provenance/plots. (infra: lakesideai-infra compose + Caddy)
 
 ## Deferred backlog
 

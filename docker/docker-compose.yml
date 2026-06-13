@@ -84,6 +84,11 @@ services:
       OMD_PORT: 8000
       HANGAR_DATA_DIR: /data
       HANGAR_PROV_DB: /data/provenance.db
+      # Persist omd run data (analysis.db, plans, recordings, n2, plots) on
+      # the bind-mounted /data volume next to /data/studies, instead of the
+      # ephemeral /app/hangar_data/omd default, so the dashboard can read them.
+      OMD_DATA_ROOT: /data
+      OMD_DB_PATH: /data/analysis.db
       # The dashboard runs as its own service in deployments; no in-container
       # autostart (hangar-range-safety is not installed in this image).
       RS_DASHBOARD_AUTOSTART: "off"

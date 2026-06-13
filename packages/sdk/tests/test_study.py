@@ -244,6 +244,17 @@ def _fake_runner(spec: dict, ctx: dict) -> dict:
 register_runner("fake", _fake_runner)
 
 
+def _user_echo_runner(spec: dict, ctx: dict) -> dict:
+    """Records the user visible to the runner (via get_current_user)."""
+    from hangar.sdk.auth import get_current_user
+
+    return {"status": "completed", "run_ref": f"run-{ctx['case_id']}",
+            "outputs": {"seen_user": get_current_user()}, "error": None}
+
+
+register_runner("user-echo", _user_echo_runner)
+
+
 @pytest.fixture()
 def study_root(tmp_path, monkeypatch):
     root = tmp_path / "studies"
@@ -261,6 +272,37 @@ class TestRunStudy:
 
         again = run_study(path, confirm=True, workers=1, store_root=study_root)
         assert again["batch"]["ran"] == 0
+
+    def test_owner_stamped_and_not_reassigned(self, tmp_path, study_root):
+        path = _write_spec(tmp_path, _base_spec())
+        run_study(path, confirm=True, workers=1, store_root=study_root,
+                  owner="alice")
+        store = StudyStore("demo-study", root=study_root)
+        assert store.load_state()["owner"] == "alice"
+        assert store.status_summary()["owner"] == "alice"
+        # A later run by a different user does not reassign ownership.
+        run_study(path, confirm=True, workers=1, store_root=study_root,
+                  owner="bob")
+        assert store.load_state()["owner"] == "alice"
+
+    def test_owner_stamps_run_user_across_pool_workers(self, tmp_path, study_root):
+        # Two cases, two workers -> a real mp.Pool fork; the runner must still
+        # see the study owner via get_current_user (deterministic, not relying
+        # on contextvar fork inheritance).
+        spec = {
+            "metadata": {"id": "user-study", "name": "U", "version": 1},
+            "defaults": {"runner": "user-echo", "spec": {"mode": "analysis"}},
+            "cases": [{"matrix": {"axes": {"a": {"values": [1, 2]}},
+                                  "bind": {"a": ["config.a"]}}}],
+            "outputs": [{"name": "seen_user", "path": "seen_user"}],
+        }
+        path = _write_spec(tmp_path, spec)
+        run_study(path, confirm=True, workers=2, store_root=study_root,
+                  owner="alice")
+        store = StudyStore("user-study", root=study_root)
+        seen = {e["outputs"].get("seen_user")
+                for e in store.load_state()["cases"].values()}
+        assert seen == {"alice"}
 
     def test_outputs_in_state_and_csv(self, tmp_path, study_root):
         path = _write_spec(tmp_path, _base_spec())
