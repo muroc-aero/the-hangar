@@ -29,7 +29,10 @@ def _study_urls(study_id: str) -> dict:
     urls: dict[str, str] = {}
     rs = rs_dashboard_base()
     if rs:
-        urls["range_safety_study"] = f"{rs}/?study=studyfs:{study_id}"
+        # The dashboard selects a study by ``plan_id`` (the {source}:{id}
+        # study key); ``studyfs:`` routes to the case-table view. (It also
+        # accepts ``study`` as a back-compat alias.)
+        urls["range_safety_study"] = f"{rs}/?plan_id=studyfs:{study_id}"
     return urls
 
 
