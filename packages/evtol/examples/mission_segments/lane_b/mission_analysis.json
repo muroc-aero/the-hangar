@@ -1,0 +1,4 @@
+[
+  {"tool": "load_vehicle_template", "args": {"template": "test_all"}},
+  {"tool": "run_mission_analysis", "args": {"run_name": "lane_b_mission"}}
+]
