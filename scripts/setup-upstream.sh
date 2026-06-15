@@ -36,6 +36,7 @@ for arg in "$@"; do
 done
 
 PYCYCLE_PATCH="$SCRIPT_DIR/pycycle-numpy2.patch"
+EVTOLPY_PATCH="$SCRIPT_DIR/evtolpy-packaging.patch"
 
 # sync_repo <dir-name> <clone-url> <ref>
 sync_repo() {
@@ -92,12 +93,40 @@ pycycle_patch() {
     fi
 }
 
+# evtolpy ships no packaging metadata; evtolpy-packaging.patch adds a
+# pyproject.toml so it installs as an editable package (uv sources point at
+# upstream/evtolpy). The added file is untracked, so sync_repo's dirty check
+# (--untracked-files=no) ignores it; reverse-apply removes it before a sync so
+# pin bumps are not blocked, and reapply restores it afterward.
+evtolpy_unpatch() {
+    local dir="$UPSTREAM_DIR/evtolpy"
+    [ -d "$dir/.git" ] && [ -f "$EVTOLPY_PATCH" ] || return 0
+    if git -C "$dir" apply -R --check "$EVTOLPY_PATCH" 2>/dev/null; then
+        git -C "$dir" apply -R "$EVTOLPY_PATCH"
+        echo "  Reverse-applied packaging patch ahead of sync."
+    fi
+}
+
+evtolpy_patch() {
+    local dir="$UPSTREAM_DIR/evtolpy"
+    [ -d "$dir/.git" ] && [ -f "$EVTOLPY_PATCH" ] || return 0
+    if git -C "$dir" apply --check "$EVTOLPY_PATCH" 2>/dev/null; then
+        git -C "$dir" apply "$EVTOLPY_PATCH"
+        echo "  Applied packaging patch (adds pyproject.toml)."
+    else
+        echo "  packaging patch already applied or upstream packaged -- skipping."
+    fi
+}
+
 # Required by uv sync ([tool.uv.sources] editable installs)
 sync_repo OpenAeroStruct https://github.com/mdolab/OpenAeroStruct "$OAS_REF"
 sync_repo openconcept    https://github.com/mdolab/openconcept    "$OCP_REF"
 pycycle_unpatch
 sync_repo pyCycle        https://github.com/OpenMDAO/pyCycle      "$PYC_REF"
 pycycle_patch
+evtolpy_unpatch
+sync_repo evtolpy        https://github.com/starbelt/evtolpy      "$EVTOL_REF"
+evtolpy_patch
 
 # Reference-only clones for reading upstream source
 if [ "$REQUIRED_ONLY" = false ]; then

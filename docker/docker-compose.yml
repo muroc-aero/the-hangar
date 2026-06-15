@@ -93,6 +93,26 @@ services:
       # autostart (hangar-range-safety is not installed in this image).
       RS_DASHBOARD_AUTOSTART: "off"
 
+  evt:
+    build:
+      context: ..
+      dockerfile: packages/evt/Dockerfile
+    ports:
+      - "8004:8000"
+    volumes:
+      - ./hangar_data/evt:/data
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      EVT_TRANSPORT: http
+      EVT_HOST: 0.0.0.0
+      # In-container port must match the container side of the ports mapping
+      # (the server's native default is 8004).
+      EVT_PORT: 8000
+      HANGAR_DATA_DIR: /data
+      HANGAR_PROV_DB: /data/provenance.db
+
   viewer:
     build:
       context: ..
@@ -104,5 +124,6 @@ services:
       - ./hangar_data/ocp:/data/ocp:ro
       - ./hangar_data/pyc:/data/pyc:ro
       - ./hangar_data/omd:/data/omd:ro
+      - ./hangar_data/evt:/data/evt:ro
     environment:
-      HANGAR_VIEWER_DBS: "oas=/data/oas/provenance.db,ocp=/data/ocp/provenance.db,pyc=/data/pyc/provenance.db,omd=/data/omd/provenance.db"
+      HANGAR_VIEWER_DBS: "oas=/data/oas/provenance.db,ocp=/data/ocp/provenance.db,pyc=/data/pyc/provenance.db,omd=/data/omd/provenance.db,evt=/data/evt/provenance.db"
