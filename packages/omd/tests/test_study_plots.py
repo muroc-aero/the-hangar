@@ -25,7 +25,7 @@ from hangar.omd.plotting._common import (
     to_float_array,
 )
 from hangar.omd.plotting.ocp import derive_study_columns, plot_ocp_trade_grid
-from hangar.omd.study_plots import _build_table, plot_study
+from hangar.omd.study_plots import _build_table, plot_study, study_plot_types
 
 _KG_TO_LB = 2.20462
 
@@ -215,6 +215,40 @@ def test_plot_study_requires_two_axes(tmp_path, monkeypatch):
                        study_id="one-axis")
     with pytest.raises(ValueError, match="exactly 2 numeric axes"):
         plot_study(sid)
+
+
+def test_study_plot_types_provider(tmp_path, monkeypatch):
+    # OCP study -> provider plot name(s), listed without rendering.
+    sid = _write_study(tmp_path, monkeypatch,
+                       axes=["design_range_nm", "spec_energy_whkg"],
+                       component_type="ocp/FullMission", cases=_ocp_cases())
+    assert study_plot_types(sid) == ["trade_grid"]
+
+
+def test_study_plot_types_generic_and_gated(tmp_path, monkeypatch):
+    # No provider + numeric outputs -> generic "grid"; <2 axes -> empty.
+    cases = {f"k{i}": {
+        "case_id": f"c{i}", "runner": "omd",
+        "params": {"design_range_nm": x, "spec_energy_whkg": y},
+        "status": "converged", "outputs": {"f_xy": float(i)}, "in_spec": True,
+    } for i, (x, y) in enumerate([(1.0, 1.0), (2.0, 1.0), (1.0, 2.0), (2.0, 2.0)])}
+    sid = _write_study(tmp_path, monkeypatch,
+                       axes=["design_range_nm", "spec_energy_whkg"],
+                       component_type="paraboloid/Paraboloid", cases=cases,
+                       study_id="generic-types")
+    assert study_plot_types(sid) == ["grid"]
+
+    one = {"k0": {"case_id": "c0", "runner": "omd",
+                  "params": {"design_range_nm": 1.0}, "status": "converged",
+                  "outputs": {"MTOW_kg": 4000.0}, "in_spec": True}}
+    sid1 = _write_study(tmp_path, monkeypatch, axes=["design_range_nm"],
+                        component_type="ocp/FullMission", cases=one,
+                        study_id="one-axis-types")
+    assert study_plot_types(sid1) == []  # never raises; just empty
+
+
+def test_study_plot_types_missing_study_is_empty():
+    assert study_plot_types("does-not-exist") == []
 
 
 def test_plot_study_generic_fallback(tmp_path, monkeypatch):
