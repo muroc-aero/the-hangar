@@ -18,8 +18,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from hangar.omd.plotting._common import (
+    PanelSpec,
+    Table,
     find_outputs,
     get_reader_and_final_case,
+    render_grid,
+    to_float_array,
 )
 
 logger = logging.getLogger(__name__)
@@ -217,4 +221,84 @@ def plot_component_efficiency(
 PYC_PLOTS: dict[str, callable] = {
     "station_properties": plot_station_properties,
     "component_efficiency": plot_component_efficiency,
+}
+
+
+# ---------------------------------------------------------------------------
+# Study-level plots (2-axis trade grids over a study's cases.csv)
+# ---------------------------------------------------------------------------
+#
+# A study-plot provider is a dict mapping a plot name to a callable
+#   (study_table, x_axis, y_axis, **kwargs) -> Figure
+# distinct from the per-run providers above (which take a recorder path). The
+# pyc provider renders an engine cycle trade space (TSFC, thrust, OPR, fuel
+# flow) over two design axes. It imports no upstream solver, so it registers
+# and renders even where pycycle is absent.
+
+
+def _col(table: Table, name: str):
+    """Column as a float ndarray, or None if absent."""
+    if name not in table:
+        return None
+    return to_float_array(table[name])
+
+
+def _has_finite(arr) -> bool:
+    return arr is not None and bool(np.isfinite(arr).any())
+
+
+def derive_pyc_study_columns(table: Table) -> dict:
+    """Carry the raw case columns through as float arrays.
+
+    A passthrough today (the pyc trade-grid panels read recorded outputs
+    directly); kept for symmetry with the OAS/OCP providers and as the hook
+    for future derived metrics (e.g. specific thrust).
+    """
+    return {k: to_float_array(v) for k, v in table.items()}
+
+
+# Panels: (column, label, vmin, vmax, overlay_contours). Superset; panels whose
+# source column is absent or all-NaN are skipped. Column names must match the
+# study's declared outputs.
+_PYC_STUDY_PANELS = [
+    ("TSFC", "TSFC (lbm/lbf/hr)", None, None, True),
+    ("Fn", "Net thrust Fn (lbf)", None, None, False),
+    ("OPR", "Overall pressure ratio", None, None, False),
+    ("Wfuel", "Fuel flow Wfuel (lbm/s)", 0.0, None, False),
+]
+
+
+def plot_pyc_trade_grid(
+    study_table: Table, x_axis: str, y_axis: str, *,
+    style: str = "paper", suptitle: str | None = None, **kwargs,
+) -> plt.Figure:
+    """Render a pyCycle engine trade grid from a study's case table.
+
+    Args:
+        study_table: columnar case table, non-converged cells already NaN'd
+            by the caller.
+        x_axis, y_axis: the two numeric grid-axis columns.
+        style: "paper" (pcolormesh) or "contour".
+        suptitle: optional figure title.
+
+    Returns the Figure. Panels whose source column is missing are skipped.
+    """
+    table = derive_pyc_study_columns(study_table)
+    panels = [
+        PanelSpec(col, label, vmin, vmax, overlay)
+        for (col, label, vmin, vmax, overlay) in _PYC_STUDY_PANELS
+        if _has_finite(table.get(col))
+    ]
+    if not panels:
+        raise ValueError(
+            "no pyc study panels available; expected columns like TSFC, Fn, "
+            "OPR in the case table")
+    return render_grid(
+        table, x_axis, y_axis, panels, style=style,
+        x_label=x_axis, y_label=y_axis, suptitle=suptitle,
+    )
+
+
+PYC_STUDY_PLOTS: dict = {
+    "trade_grid": plot_pyc_trade_grid,
 }

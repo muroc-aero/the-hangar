@@ -17,6 +17,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from hangar.omd.plotting._common import (
+    PanelSpec,
+    Table,
     detect_surface_name,
     find_first_output,
     find_outputs,
@@ -24,6 +26,8 @@ from hangar.omd.plotting._common import (
     get_span_eta,
     mirror_spanwise,
     compute_elliptical_lift,
+    render_grid,
+    to_float_array,
 )
 
 logger = logging.getLogger(__name__)
@@ -1350,4 +1354,94 @@ OAS_AEROSTRUCT_PLOTS: dict[str, callable] = {
     "skin_spar": plot_skin_spar,
     "t_over_c": plot_t_over_c,
     "multipoint_comparison": plot_multipoint_comparison,
+}
+
+
+# ---------------------------------------------------------------------------
+# Study-level plots (2-axis trade grids over a study's cases.csv)
+# ---------------------------------------------------------------------------
+#
+# A study-plot provider is a dict mapping a plot name to a callable
+#   (study_table, x_axis, y_axis, **kwargs) -> Figure
+# distinct from the per-run providers above (which take a recorder path). The
+# OAS provider renders the aero / aerostruct trade space over a two-axis study
+# and owns the one derived column the raw cases.csv lacks (L/D). It imports no
+# upstream solver, so it registers and renders even where openaerostruct is
+# absent (e.g. the dashboard reading a study's cases.csv).
+
+
+def _col(table: Table, name: str):
+    """Column as a float ndarray, or None if absent."""
+    if name not in table:
+        return None
+    return to_float_array(table[name])
+
+
+def _has_finite(arr) -> bool:
+    return arr is not None and bool(np.isfinite(arr).any())
+
+
+def derive_oas_study_columns(table: Table) -> dict:
+    """Add OAS-specific derived columns used by the trade-grid panels.
+
+    Returns a new columnar table (column -> ndarray) with ``L_over_D`` when
+    both ``CL`` and ``CD`` are present. All raw columns are carried through
+    coerced to float arrays.
+    """
+    out = {k: to_float_array(v) for k, v in table.items()}
+    cl = _col(table, "CL")
+    cd = _col(table, "CD")
+    if cl is not None and cd is not None:
+        with np.errstate(divide="ignore", invalid="ignore"):
+            out["L_over_D"] = cl / cd
+    return out
+
+
+# Panels: (column, label, vmin, vmax, overlay_contours). The list is a
+# superset; panels whose source column is absent or all-NaN are skipped, so an
+# aero-only study renders the aero panels and an aerostruct study renders all.
+_OAS_STUDY_PANELS = [
+    ("L_over_D", "Lift-to-drag (L/D)", None, None, True),
+    ("CD", "Drag coefficient C_D", 0.0, None, False),
+    ("structural_mass", "Structural mass (kg)", 0.0, None, False),
+    ("failure", "Failure (sigma/allow - 1)", None, None, False),
+    ("CL", "Lift coefficient C_L", None, None, False),
+    ("CM", "Pitching moment C_M", None, None, False),
+]
+
+
+def plot_oas_trade_grid(
+    study_table: Table, x_axis: str, y_axis: str, *,
+    style: str = "paper", suptitle: str | None = None, **kwargs,
+) -> plt.Figure:
+    """Render an OAS aero / aerostruct trade grid from a study's case table.
+
+    Args:
+        study_table: columnar case table, non-converged cells already NaN'd
+            by the caller.
+        x_axis, y_axis: the two numeric grid-axis columns.
+        style: "paper" (pcolormesh) or "contour".
+        suptitle: optional figure title.
+
+    Returns the Figure. Panels whose source column is missing are skipped, so
+    an aero-only study still renders the aero panels.
+    """
+    table = derive_oas_study_columns(study_table)
+    panels = [
+        PanelSpec(col, label, vmin, vmax, overlay)
+        for (col, label, vmin, vmax, overlay) in _OAS_STUDY_PANELS
+        if _has_finite(table.get(col))
+    ]
+    if not panels:
+        raise ValueError(
+            "no OAS study panels available; expected columns like CL, CD, "
+            "structural_mass, failure in the case table")
+    return render_grid(
+        table, x_axis, y_axis, panels, style=style,
+        x_label=x_axis, y_label=y_axis, suptitle=suptitle,
+    )
+
+
+OAS_STUDY_PLOTS: dict = {
+    "trade_grid": plot_oas_trade_grid,
 }

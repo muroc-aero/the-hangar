@@ -79,8 +79,9 @@ All runtime data lives under `hangar_data/omd/` (configurable via `OMD_DATA_ROOT
   - `__init__.py` -- `generate_plots()` entry point, N2 HTML handling
   - `_common.py` -- shared helpers: CaseReader access, span extraction, mirroring, elliptical lift; study-grid renderer (`render_grid`, `PanelSpec`, `pivot_grid`, pandas-free)
   - `generic.py` -- convergence (with constraint traces), DV evolution (individual + mean)
-  - `oas.py` -- OAS-specific: planform, lift, twist, struct, thickness, vonmises, skin_spar, t_over_c, mesh_3d
+  - `oas.py` -- OAS per-run plots (planform, lift, twist, struct, thickness, vonmises, skin_spar, t_over_c, mesh_3d) + `OAS_STUDY_PLOTS` (L/D, C_D, structural mass, failure trade grid)
   - `ocp.py` -- OCP per-run plots + `OCP_STUDY_PLOTS` (Brelje fig5/fig6 trade-grid panels + derived columns)
+  - `pyc.py` -- pyc per-run plots (station properties, component efficiency) + `PYC_STUDY_PLOTS` (TSFC, thrust, OPR, fuel-flow trade grid)
 - `study_plots.py` -- study-level 2-axis trade grids over a study's cases.csv (`plot_study`); dispatches to a study-plot provider by `component_type`, generic per-column fallback otherwise
 - `db.py` -- SQLite analysis DB: provenance tables, path helpers
 - `recorder.py` -- imports OpenMDAO CaseReader data into analysis DB
@@ -182,9 +183,17 @@ Dispatch mirrors the per-run provider pattern but uses a separate registry
 
 - `register_study_plots(component_type, provider)` in `registry.py`;
   providers map a plot name to `(study_table, x_axis, y_axis, **kwargs) -> Figure`.
-- The OCP provider (`OCP_STUDY_PLOTS` in `plotting/ocp.py`) renders the
-  Brelje fig5/fig6 four-panel grid and owns the mission-specific derived
-  columns (lb-unit weights, fuel mileage, electric percent, offline DOC).
+- Per-tool providers: `OCP_STUDY_PLOTS` (`plotting/ocp.py`, Brelje fig5/fig6
+  four-panel grid + mission derived columns), `OAS_STUDY_PLOTS`
+  (`plotting/oas.py`, L/D + C_D + structural mass + failure, L/D derived from
+  CL/CD), `PYC_STUDY_PLOTS` (`plotting/pyc.py`, TSFC + thrust + OPR + fuel
+  flow). Panel lists are a superset; panels whose column is absent are
+  skipped, so an aero-only OAS study renders a subset. Demos:
+  `demos/oas_trade/`, `demos/pyc_trade/`.
+- Study-plot providers register **outside** the solver-import guards in
+  `_register_builtins()` (they read cases.csv, not a live problem), so a study
+  plots even where openaerostruct/openconcept/pycycle is not installed (e.g.
+  the dashboard env). Keep the study-plot code in these modules solver-free.
 - Component types with no provider fall back to a generic grid: one panel
   per numeric output column.
 - The generic mechanism is pandas-free: a columnar `Table`

@@ -24,7 +24,9 @@ from hangar.omd.plotting._common import (
     render_grid,
     to_float_array,
 )
+from hangar.omd.plotting.oas import derive_oas_study_columns, plot_oas_trade_grid
 from hangar.omd.plotting.ocp import derive_study_columns, plot_ocp_trade_grid
+from hangar.omd.plotting.pyc import plot_pyc_trade_grid
 from hangar.omd.study_plots import _build_table, plot_study, study_plot_types
 
 _KG_TO_LB = 2.20462
@@ -249,6 +251,119 @@ def test_study_plot_types_generic_and_gated(tmp_path, monkeypatch):
 
 def test_study_plot_types_missing_study_is_empty():
     assert study_plot_types("does-not-exist") == []
+
+
+# ---------------------------------------------------------------------------
+# OAS study-plot provider
+# ---------------------------------------------------------------------------
+
+
+def _oas_cases(outputs_keys=("CL", "CD", "CM", "structural_mass", "failure")):
+    """2x2 grid: three converged + one failed (its outputs are masked)."""
+    base = {"CL": 0.5, "CD": 0.02, "CM": -0.1,
+            "structural_mass": 120.0, "failure": -0.3}
+    cases = {}
+    pts = [(8.0, 0.10, "converged"), (12.0, 0.10, "converged"),
+           (8.0, 0.14, "converged"), (12.0, 0.14, "failed")]
+    for i, (ar, thick, status) in enumerate(pts):
+        outputs = {} if status == "failed" else {
+            k: base[k] + 0.01 * i for k in outputs_keys}
+        cases[f"k{i}"] = {
+            "case_id": f"c{i}", "runner": "omd",
+            "params": {"aspect_ratio": ar, "skin_thickness": thick},
+            "status": status, "outputs": outputs, "in_spec": True,
+        }
+    return cases
+
+
+def test_derive_oas_study_columns():
+    out = derive_oas_study_columns({"CL": [0.5, 1.0], "CD": [0.02, 0.04]})
+    assert out["L_over_D"][0] == pytest.approx(25.0)
+    assert out["L_over_D"][1] == pytest.approx(25.0)
+
+
+def test_plot_oas_trade_grid_skips_missing_panels():
+    # aero-only table: no structural_mass / failure -> those panels skipped.
+    table = {"aspect_ratio": [8.0, 12.0, 8.0, 12.0],
+             "skin_thickness": [0.1, 0.1, 0.14, 0.14],
+             "CL": [0.5, 0.6, 0.55, 0.65], "CD": [0.02, 0.025, 0.022, 0.027]}
+    fig = plot_oas_trade_grid(table, "aspect_ratio", "skin_thickness")
+    titles = [ax.get_title() for ax in fig.axes if ax.get_title()]
+    assert any("L/D" in t for t in titles)
+    assert not any("Structural mass" in t for t in titles)
+
+
+def test_plot_study_oas_provider(tmp_path, monkeypatch):
+    sid = _write_study(tmp_path, monkeypatch,
+                       axes=["aspect_ratio", "skin_thickness"],
+                       component_type="oas/AerostructPoint", cases=_oas_cases(),
+                       study_id="oas-study")
+    result = plot_study(sid)
+    assert result["component_type"] == "oas/AerostructPoint"
+    out = Path(result["saved"]["trade_grid"])
+    assert out.exists() and out.stat().st_size > 0
+
+
+def test_study_plot_types_oas_provider(tmp_path, monkeypatch):
+    sid = _write_study(tmp_path, monkeypatch,
+                       axes=["aspect_ratio", "skin_thickness"],
+                       component_type="oas/AeroPoint",
+                       cases=_oas_cases(outputs_keys=("CL", "CD", "CM")),
+                       study_id="oas-types")
+    assert study_plot_types(sid) == ["trade_grid"]
+
+
+# ---------------------------------------------------------------------------
+# pyCycle study-plot provider
+# ---------------------------------------------------------------------------
+
+
+def _pyc_cases():
+    """2x2 design-point grid over comp_PR x T4_target; one failed cell."""
+    base = {"TSFC": 0.8, "Fn": 11800.0, "OPR": 13.5, "Wfuel": 9400.0}
+    cases = {}
+    pts = [(12.0, 2300.0, "converged"), (16.0, 2300.0, "converged"),
+           (12.0, 2500.0, "converged"), (16.0, 2500.0, "failed")]
+    for i, (pr, t4, status) in enumerate(pts):
+        outputs = {} if status == "failed" else {
+            "TSFC": base["TSFC"] - 0.01 * i, "Fn": base["Fn"] + 50 * i,
+            "OPR": base["OPR"] + 0.5 * i, "Wfuel": base["Wfuel"] + 20 * i}
+        cases[f"k{i}"] = {
+            "case_id": f"c{i}", "runner": "omd",
+            "params": {"comp_PR": pr, "T4_target": t4},
+            "status": status, "outputs": outputs, "in_spec": True,
+        }
+    return cases
+
+
+def test_plot_pyc_trade_grid_renders():
+    table = {"comp_PR": [12.0, 16.0, 12.0, 16.0],
+             "T4_target": [2300.0, 2300.0, 2500.0, 2500.0],
+             "TSFC": [0.8, 0.79, 0.81, 0.78], "Fn": [11800, 11850, 11900, 12000],
+             "OPR": [13.5, 14.0, 13.8, 14.5]}
+    fig = plot_pyc_trade_grid(table, "comp_PR", "T4_target")
+    titles = [ax.get_title() for ax in fig.axes if ax.get_title()]
+    assert any("TSFC" in t for t in titles)
+    assert any("thrust" in t.lower() for t in titles)
+
+
+def test_plot_study_pyc_provider(tmp_path, monkeypatch):
+    sid = _write_study(tmp_path, monkeypatch,
+                       axes=["comp_PR", "T4_target"],
+                       component_type="pyc/TurbojetDesign", cases=_pyc_cases(),
+                       study_id="pyc-study")
+    result = plot_study(sid)
+    assert result["component_type"] == "pyc/TurbojetDesign"
+    out = Path(result["saved"]["trade_grid"])
+    assert out.exists() and out.stat().st_size > 0
+
+
+def test_study_plot_types_pyc_provider(tmp_path, monkeypatch):
+    sid = _write_study(tmp_path, monkeypatch,
+                       axes=["comp_PR", "T4_target"],
+                       component_type="pyc/TurbojetDesign", cases=_pyc_cases(),
+                       study_id="pyc-types")
+    assert study_plot_types(sid) == ["trade_grid"]
 
 
 def test_plot_study_generic_fallback(tmp_path, monkeypatch):
