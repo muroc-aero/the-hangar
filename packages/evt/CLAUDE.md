@@ -47,6 +47,17 @@ docker-compose maps the same host ports onto in-container port 8000).
 
 ```bash
 uv run pytest packages/evt/tests/ -m "not slow"
-# parity suite (per-directory, slow):
+# parity suites (per-directory; each sets up its own sys.path):
 uv run pytest packages/evt/examples/mission_segments/tests/
+uv run pytest packages/evt/examples/abu_scitech_2026/tests/   # AIAA SciTech 2026 case study
 ```
+
+## Examples
+
+- `examples/mission_segments/` -- three-lane parity (energy/power/weight) vs
+  the direct evtolpy API at the `test_all` baseline.
+- `examples/abu_scitech_2026/` -- non-ABU reproduction of the AIAA SciTech 2026
+  case study (3 vehicles x 2 altitudes x 3 ranges = 18 cases) in lane A/B/C
+  form. Energy reproduces the paper exactly; sized MTOW shows a documented
+  upstream resizing-loop drift (and two Joby S4 60-mile divergences). See its
+  README for the fidelity table.
