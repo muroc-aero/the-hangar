@@ -67,6 +67,7 @@ from hangar.omd.tools.results_tools import (
 from hangar.omd.tools.study import (
     get_study_results,
     get_study_status,
+    plot_study,
     review_study,
     run_study,
 )
@@ -192,6 +193,7 @@ mcp.tool()(capture_tool(review_study))
 mcp.tool()(capture_tool(run_study))
 mcp.tool()(capture_tool(get_study_status))
 mcp.tool()(capture_tool(get_study_results))
+mcp.tool()(capture_tool(plot_study))
 
 # ---------------------------------------------------------------------------
 # Register results + provenance tools

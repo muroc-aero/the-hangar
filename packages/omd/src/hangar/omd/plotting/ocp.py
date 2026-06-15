@@ -17,11 +17,17 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from hangar.omd.plotting._common import (
+    PanelSpec,
+    Table,
     find_outputs,
     get_reader_and_final_case,
+    render_grid,
+    to_float_array,
 )
 
 logger = logging.getLogger(__name__)
+
+_KG_TO_LB = 2.20462
 
 # Phase ordering and styling (matches ocp/viz/plotting.py)
 _PHASE_ORDER = [
@@ -387,4 +393,133 @@ OCP_MISSION_PLOTS: dict = {
     "mission_profile": plot_mission_profile,
     "weight_breakdown": plot_weight_breakdown,
     "performance_summary": plot_performance_summary,
+}
+
+
+# ---------------------------------------------------------------------------
+# Study-level plots (2-axis trade grids over a study's cases.csv)
+# ---------------------------------------------------------------------------
+#
+# A study-plot provider is a dict mapping a plot name to a callable
+#   (study_df, x_axis, y_axis, **kwargs) -> Figure
+# distinct from the per-run providers above (which take a recorder path).
+# The OCP provider renders the Brelje 2018a Fig 5/6 style four-panel trade
+# space and owns the mission-specific derived columns the raw cases.csv
+# lacks (lb-unit weights, fuel mileage, electric fraction, offline DOC).
+
+
+def _col(table: Table, name: str):
+    """Column as a float ndarray, or None if absent."""
+    if name not in table:
+        return None
+    return to_float_array(table[name])
+
+
+def _has_finite(arr) -> bool:
+    return arr is not None and bool(np.isfinite(arr).any())
+
+
+def derive_study_columns(
+    table: Table, range_col: str = "design_range_nm",
+    energy_col: str = "spec_energy_whkg",
+) -> dict:
+    """Add the OCP-mission derived columns used by the Fig 5/6 panels.
+
+    Returns a new columnar table (column -> ndarray) with, when their inputs
+    are present: ``MTOW_lb``, ``fuel_burn_lb``, ``fuel_mileage_lb_per_nmi``,
+    ``electric_percent``, and an offline ``doc_per_nmi`` estimate when the
+    study recorded none (the min-fuel grid has no cost model). Formulas
+    mirror the demo's bespoke sweep and the Brelje Section IV.D cost
+    coefficients used in the OCP factory.
+    """
+    out = {k: to_float_array(v) for k, v in table.items()}
+    mtow_kg = _col(table, "MTOW_kg")
+    fuel_kg = _col(table, "fuel_burn_kg")
+    batt_kg = _col(table, "W_battery_kg")
+    rng = _col(table, range_col)
+    energy = _col(table, energy_col)
+
+    if mtow_kg is not None:
+        out["MTOW_lb"] = mtow_kg * _KG_TO_LB
+    if fuel_kg is not None:
+        out["fuel_burn_lb"] = fuel_kg * _KG_TO_LB
+        if rng is not None:
+            with np.errstate(divide="ignore", invalid="ignore"):
+                out["fuel_mileage_lb_per_nmi"] = (fuel_kg * _KG_TO_LB) / rng
+    cruise_hyb = _col(table, "cruise_hybridization")
+    if cruise_hyb is not None:
+        out["electric_percent"] = 100.0 * cruise_hyb
+
+    # Offline DOC estimate: only when the study recorded no doc_per_nmi
+    # (min-fuel objective) and the cost-model inputs are all available.
+    eng = _col(table, "engine_rating_hp")
+    mot = _col(table, "motor_rating_hp")
+    gen = _col(table, "generator_rating_hp")
+    inputs = [mtow_kg, fuel_kg, batt_kg, energy, eng, mot, gen, rng]
+    if not _has_finite(_col(table, "doc_per_nmi")) and all(
+        s is not None for s in inputs
+    ):
+        payload_kg = 1000.0 / _KG_TO_LB
+        oew_kg = np.clip(mtow_kg - fuel_kg - batt_kg - payload_kg, 0.0, None)
+        batt_energy_MJ = 0.9 * batt_kg * energy * 0.0036
+        fuel_usd = fuel_kg * (2.50 / 3.08)
+        elec_usd = batt_energy_MJ * (36.0 / 3600.0)
+        airframe_NR_cost = (
+            277.0 * oew_kg * 1.1 + 775.0 * eng * 1.1
+            + 100.0 * mot * 1.1 + 100.0 * gen * 1.1
+        )
+        depreciation_usd = airframe_NR_cost / (5.0 * 365.0 * 15.0)
+        battery_trip_usd = 50.0 * batt_kg / 1500.0
+        trip_doc_usd = fuel_usd + elec_usd + depreciation_usd + battery_trip_usd
+        with np.errstate(divide="ignore", invalid="ignore"):
+            out["doc_per_nmi"] = trip_doc_usd / rng
+    return out
+
+
+# Paper-style panels: (column, label, vmin, vmax, overlay_contours). vmax
+# None auto-ranges from the data; the fuel-mileage panel keeps the paper's
+# contour overlay.
+_OCP_STUDY_PANELS = [
+    ("fuel_mileage_lb_per_nmi", "Fuel mileage (lb/nmi)", 0.0, None, True),
+    ("doc_per_nmi", "Trip DOC (USD) per nmi", None, None, False),
+    ("electric_percent", "Degree of hybridization (electric %)", 0.0, 100.0, False),
+    ("MTOW_lb", "Maximum Takeoff Weight (lb)", None, None, False),
+]
+
+
+def plot_ocp_trade_grid(
+    study_table: Table, x_axis: str, y_axis: str, *,
+    style: str = "paper", suptitle: str | None = None, **kwargs,
+) -> plt.Figure:
+    """Render the Brelje Fig 5/6 style four-panel trade grid from a study.
+
+    Args:
+        study_table: columnar case table, non-converged cells already NaN'd
+            by the caller.
+        x_axis, y_axis: the two numeric grid-axis columns (range, energy).
+        style: "paper" (pcolormesh) or "contour".
+        suptitle: optional figure title.
+
+    Returns the Figure. Panels whose source column is missing are skipped, so
+    a study without the cost model still renders the other three panels.
+    """
+    table = derive_study_columns(study_table, range_col=x_axis, energy_col=y_axis)
+    panels = [
+        PanelSpec(col, label, vmin, vmax, overlay)
+        for (col, label, vmin, vmax, overlay) in _OCP_STUDY_PANELS
+        if _has_finite(table.get(col))
+    ]
+    if not panels:
+        raise ValueError(
+            "no OCP study panels available; expected columns like MTOW_kg, "
+            "fuel_burn_kg, cruise_hybridization in the case table")
+    return render_grid(
+        table, x_axis, y_axis, panels, style=style,
+        x_label="Design range (nmi)", y_label="Specific energy (Wh/kg)",
+        suptitle=suptitle,
+    )
+
+
+OCP_STUDY_PLOTS: dict = {
+    "trade_grid": plot_ocp_trade_grid,
 }

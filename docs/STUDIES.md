@@ -172,9 +172,17 @@ Design decisions baked in:
       (case -> plan requirements -> verdicts), trade-space scatter,
       2-axis heatmap/contour rendering of output columns, sparkline per
       output across an axis.
-- [ ] **Study-level plots in omd**: generic pcolormesh/contour provider
-      over cases.csv when a study has exactly 2 numeric axes (the brelje
-      fig5/fig6 render), replacing `pipeline/plotting.py`.
+- [x] **Study-level plots in omd**: `omd-cli study plot <id>` (and the
+      `plot_study` MCP tool) render a 2-axis trade grid from a study's
+      cases.csv when it has exactly 2 numeric axes. The generic
+      pcolormesh/contour mechanism lives in `omd/plotting/_common.py`
+      (`render_grid`); per-tool panel policy is dispatched by
+      `component_type` through a study-plot provider registry, with the
+      OCP provider (`omd/plotting/ocp.py`) supplying the brelje fig5/fig6
+      four-panel layout and its derived columns (fuel mileage, electric
+      percent, lb-unit MTOW, offline DOC). `pipeline/plotting.py` stays
+      until the study layer is the verified full-grid reproduction path
+      (gated on the retry-heuristics + fig6 warm-from items below).
 - [ ] **Retry heuristics**: nearest-neighbor warm starts and bracket
       retries (`retry_failed.py` / `retry_stuck_cells.py`) as
       `study retry`; cross-study `warm_from` (cost grid seeded from fuel

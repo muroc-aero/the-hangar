@@ -64,6 +64,11 @@ packages/omd/demos/brelje_2018a/
     cells.yaml                         -- one-by-one comparison cells
     compare_to_lane_b.py               -- baseline / check harness
 
+  study/                               -- study-layer specs + agent briefs
+    fig5_study.yaml                    -- Fig 5 grid as a study (a worked outcome)
+    fig5_study.prompt.md               -- agent brief: build+run the Fig 5 study
+    fig6_study.prompt.md               -- agent brief: build+run the Fig 6 study
+
   figures/
     paper/fig{5,6}.png                 -- PDF crops (see paper/README.md)
     reproduced/fig{5,6}.png            -- contour render
@@ -102,11 +107,29 @@ incremental runs, and a spreadsheet case table replace the bespoke
 omd-cli study review packages/omd/demos/brelje_2018a/study/fig5_study.yaml
 omd-cli study run    packages/omd/demos/brelje_2018a/study/fig5_study.yaml --max-cases 4
 omd-cli study results brelje-2018a-fig5
+omd-cli study plot   brelje-2018a-fig5        # 2x2 trade grid from cases.csv
 ```
+
+`omd-cli study plot` renders the Fig 5/6 four-panel trade grid straight
+from the study's `cases.csv` (non-converged cells left blank). It is the
+study-layer equivalent of `pipeline/plotting.py`: the OCP plot provider
+owns the derived panels (fuel mileage, electric percent, MTOW in lb, and
+an offline DOC estimate for the min-fuel grid). Output lands in
+`hangar_data/studies/brelje-2018a-fig5/plots/`.
 
 The CSV pipeline below remains the verified full-reproduction path until
 the study layer grows the retry heuristics and fig6 warm-from (see the
 deferred list in `docs/STUDIES.md`).
+
+#### Agent-driven study (Lane C, full figure)
+
+`study/fig5_study.prompt.md` and `study/fig6_study.prompt.md` are agent
+briefs: each describes the problem, the trade-space conditions, and the
+acceptance anchors, and asks the agent to author and run the study
+(and render the figure) itself. They are the multi-case counterpart to
+`lane_c/hybrid_mdo.prompt.md` (single cell). The `fig5_study*.yaml`
+specs in this directory are one correct outcome of the Fig 5 brief, not
+inputs to it.
 
 ### Modular steps
 
