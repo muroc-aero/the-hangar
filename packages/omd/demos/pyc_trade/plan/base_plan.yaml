@@ -1,0 +1,20 @@
+metadata:
+  id: demo-pyc-trade-turbojet
+  name: pyCycle turbojet design point (trade-study base)
+  version: 1
+operating_points:
+  alt: 0.0
+  MN: 1.0e-06
+  Fn_target: 11800.0
+  T4_target: 2370.0
+components:
+- id: turbojet
+  type: pyc/TurbojetDesign
+  config:
+    comp_PR: 13.5
+    comp_eff: 0.83
+    turb_eff: 0.86
+    Nmech: 8070.0
+    burner_dPqP: 0.03
+    nozz_Cv: 0.99
+    thermo_method: CEA

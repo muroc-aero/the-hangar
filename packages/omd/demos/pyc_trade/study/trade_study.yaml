@@ -1,0 +1,53 @@
+# pyCycle turbojet trade study: compressor pressure ratio x turbine inlet
+# temperature, at the sea-level static design point. Each cell sizes the
+# engine once. Renders the pyc trade grid (TSFC, thrust, OPR, fuel flow) over
+# a study's cases.csv via the pyc/TurbojetDesign study-plot provider.
+#
+#   omd-cli study review packages/omd/demos/pyc_trade/study/trade_study.yaml
+#   omd-cli study run    ... --max-cases 4         # pilot batch
+#   omd-cli study run    ... --yes                 # full 4x4 grid
+#   omd-cli study plot   demo-pyc-trade --type trade_grid
+#
+# Design point only (sea-level static): pyc direct off-design has known
+# low-throttle convergence failures, so this study does not sweep off-design.
+
+metadata:
+  id: demo-pyc-trade
+  name: "pyCycle turbojet trade: comp_PR x T4"
+  version: 1
+  description: >
+    Engine cycle trade space over compressor pressure ratio (10-18) and
+    turbine inlet temperature (2100-2500 degR) at the sea-level static design
+    point, 4x4 cells. Shows TSFC, net thrust, OPR, and fuel flow across the
+    cycle design box.
+
+defaults:
+  runner: omd
+  spec:
+    plan: ../plan/base_plan.yaml
+    mode: analysis
+    timeout_seconds: 600
+
+cases:
+  - matrix:
+      id_template: "pr{comp_PR:g}-t{T4_target:g}"
+      axes:
+        comp_PR:   {linspace: [10.0, 18.0, 4]}
+        T4_target: {linspace: [2100.0, 2500.0, 4]}
+      bind:
+        comp_PR:
+          - components[turbojet].config.comp_PR
+        T4_target:
+          - operating_points.T4_target
+
+execution:
+  workers: 2
+  est_case_seconds: 20
+  review_threshold: 16
+  guard_max_cases: 64
+
+outputs:
+  - {name: TSFC,  path: perf.TSFC}
+  - {name: Fn,    path: perf.Fn}
+  - {name: OPR,   path: perf.OPR}
+  - {name: Wfuel, path: perf.Wfuel}

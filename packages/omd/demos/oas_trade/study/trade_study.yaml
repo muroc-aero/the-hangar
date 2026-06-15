@@ -1,0 +1,49 @@
+# OAS aerostruct trade study: wing span x angle of attack, on a rectangular
+# tube wing. Each cell is one aerostruct analysis of the base plan. Renders
+# the OAS trade grid (L/D, C_D, structural mass, failure) over a study's
+# cases.csv via the oas/AerostructPoint study-plot provider.
+#
+#   omd-cli study review packages/omd/demos/oas_trade/study/trade_study.yaml
+#   omd-cli study run    ... --max-cases 4         # pilot batch
+#   omd-cli study run    ... --yes                 # full 4x4 grid
+#   omd-cli study plot   demo-oas-trade --type trade_grid
+
+metadata:
+  id: demo-oas-trade
+  name: "OAS aerostruct trade: span x alpha"
+  version: 1
+  description: >
+    Aerostructural trade space over wing span (8-14 m) and angle of attack
+    (2-8 deg) for a rectangular tube wing, 4x4 cells. Shows how lift-to-drag,
+    drag, structural mass, and failure margin move across the design box.
+
+defaults:
+  runner: omd
+  spec:
+    plan: ../plan/base_plan.yaml
+    mode: analysis
+    timeout_seconds: 600
+
+cases:
+  - matrix:
+      id_template: "b{span_m:g}-a{alpha_deg:g}"
+      axes:
+        span_m:    {linspace: [8.0, 14.0, 4]}
+        alpha_deg: {linspace: [2.0, 8.0, 4]}
+      bind:
+        span_m:
+          - components[wing].config.surfaces[wing].span
+        alpha_deg:
+          - operating_points.alpha
+
+execution:
+  workers: 2
+  est_case_seconds: 30
+  review_threshold: 16
+  guard_max_cases: 64
+
+outputs:
+  - {name: CL,              path: AS_point_0.CL}
+  - {name: CD,              path: AS_point_0.CD}
+  - {name: structural_mass, path: wing.structural_mass}
+  - {name: failure,         path: AS_point_0.wing_perf.failure}

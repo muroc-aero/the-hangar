@@ -1,0 +1,40 @@
+metadata:
+  id: demo-oas-trade-aerostruct
+  name: OAS rectangular wing aerostruct (trade-study base)
+  version: 1
+operating_points:
+  velocity: 248.136
+  alpha: 5.0
+  Mach_number: 0.84
+  re: 1000000.0
+  rho: 0.38
+solvers:
+  nonlinear:
+    type: NewtonSolver
+    options:
+      maxiter: 20
+      atol: 1.0e-06
+  linear:
+    type: DirectSolver
+components:
+- id: wing
+  type: oas/AerostructPoint
+  config:
+    surfaces:
+    - name: wing
+      wing_type: rect
+      num_x: 2
+      num_y: 7
+      span: 10.0
+      root_chord: 1.0
+      symmetry: true
+      fem_model_type: tube
+      E: 70000000000.0
+      G: 30000000000.0
+      yield_stress: 500000000.0
+      mrho: 3000.0
+      thickness_cp:
+      - 0.01
+      - 0.02
+      - 0.01
+      with_viscous: true

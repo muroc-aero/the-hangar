@@ -180,10 +180,18 @@ Design decisions baked in:
       cases.csv when it has exactly 2 numeric axes. The generic
       pcolormesh/contour mechanism lives in `omd/plotting/_common.py`
       (`render_grid`); per-tool panel policy is dispatched by
-      `component_type` through a study-plot provider registry, with the
-      OCP provider (`omd/plotting/ocp.py`) supplying the brelje fig5/fig6
+      `component_type` through a study-plot provider registry. The OCP
+      provider (`omd/plotting/ocp.py`) supplies the brelje fig5/fig6
       four-panel layout and its derived columns (fuel mileage, electric
-      percent, lb-unit MTOW, offline DOC). Now surfaced everywhere the
+      percent, lb-unit MTOW, offline DOC); the OAS provider
+      (`omd/plotting/oas.py`, `oas/AeroPoint|AerostructPoint|AerostructMultipoint`)
+      renders L/D, C_D, structural mass, and failure; the pyc provider
+      (`omd/plotting/pyc.py`, `pyc/*Design`) renders TSFC, thrust, OPR, and
+      fuel flow. Runnable demos: `packages/omd/demos/oas_trade/` and
+      `packages/omd/demos/pyc_trade/`. Provider registration is
+      solver-independent (the providers read cases.csv, not a live problem),
+      so trade grids render even where the upstream solver is absent. Now
+      surfaced everywhere the
       per-run plots are: `study_plot_types(study_id)` lists the renderable
       grids, the omd viewer serves them at `/omd-study-plot-img` (the
       `plot_study` MCP tool returns matching `study_plot_urls`), and the

@@ -254,16 +254,13 @@ def _register_builtins() -> None:
             build_ocp_full_mission,
             build_ocp_mission_with_reserve,
         )
-        from hangar.omd.plotting.ocp import OCP_MISSION_PLOTS, OCP_STUDY_PLOTS
+        from hangar.omd.plotting.ocp import OCP_MISSION_PLOTS
         register_factory("ocp/BasicMission", build_ocp_basic_mission,
                          plot_provider=OCP_MISSION_PLOTS)
         register_factory("ocp/FullMission", build_ocp_full_mission,
                          plot_provider=OCP_MISSION_PLOTS)
         register_factory("ocp/MissionWithReserve", build_ocp_mission_with_reserve,
                          plot_provider=OCP_MISSION_PLOTS)
-        for _ocp_type in ("ocp/BasicMission", "ocp/FullMission",
-                          "ocp/MissionWithReserve"):
-            register_study_plots(_ocp_type, OCP_STUDY_PLOTS)
     except ImportError:
         logger.info("OpenConcept not available, OCP factories not registered")
 
@@ -295,3 +292,23 @@ def _register_builtins() -> None:
                          plot_provider=PYC_PLOTS)
     except ImportError:
         logger.info("pyCycle not available, pyCycle factories not registered")
+
+    # Study-plot providers render 2-axis trade grids from a study's cases.csv.
+    # They carry no upstream-solver dependency (they read the case table, not a
+    # live problem), so they register independently of the factory guards above
+    # -- a study can be plotted even where the upstream solver is not installed
+    # (e.g. the dashboard reading study state).
+    from hangar.omd.plotting.oas import OAS_STUDY_PLOTS
+    from hangar.omd.plotting.ocp import OCP_STUDY_PLOTS
+    from hangar.omd.plotting.pyc import PYC_STUDY_PLOTS
+    for _oas_type in ("oas/AeroPoint", "oas/AerostructPoint",
+                      "oas/AerostructMultipoint"):
+        register_study_plots(_oas_type, OAS_STUDY_PLOTS)
+    for _ocp_type in ("ocp/BasicMission", "ocp/FullMission",
+                      "ocp/MissionWithReserve"):
+        register_study_plots(_ocp_type, OCP_STUDY_PLOTS)
+    for _pyc_type in ("pyc/TurbojetDesign", "pyc/TurbojetMultipoint",
+                      "pyc/HBTFDesign", "pyc/ABTurbojetDesign",
+                      "pyc/SingleTurboshaftDesign", "pyc/MultiTurboshaftDesign",
+                      "pyc/MixedFlowDesign"):
+        register_study_plots(_pyc_type, PYC_STUDY_PLOTS)
