@@ -77,9 +77,11 @@ All runtime data lives under `hangar_data/omd/` (configurable via `OMD_DATA_ROOT
   - `_ParametricWeightGroup` -- parametric OEW model (weight slot)
 - `plotting/` -- factory-aware plot generation
   - `__init__.py` -- `generate_plots()` entry point, N2 HTML handling
-  - `_common.py` -- shared helpers: CaseReader access, span extraction, mirroring, elliptical lift
+  - `_common.py` -- shared helpers: CaseReader access, span extraction, mirroring, elliptical lift; study-grid renderer (`render_grid`, `PanelSpec`, `pivot_grid`, pandas-free)
   - `generic.py` -- convergence (with constraint traces), DV evolution (individual + mean)
   - `oas.py` -- OAS-specific: planform, lift, twist, struct, thickness, vonmises, skin_spar, t_over_c, mesh_3d
+  - `ocp.py` -- OCP per-run plots + `OCP_STUDY_PLOTS` (Brelje fig5/fig6 trade-grid panels + derived columns)
+- `study_plots.py` -- study-level 2-axis trade grids over a study's cases.csv (`plot_study`); dispatches to a study-plot provider by `component_type`, generic per-column fallback otherwise
 - `db.py` -- SQLite analysis DB: provenance tables, path helpers
 - `recorder.py` -- imports OpenMDAO CaseReader data into analysis DB
 - `plan_schema.py` -- JSON Schema for plan YAML validation
@@ -165,6 +167,28 @@ All aero plots plus:
 All generic plots plus:
 - `station_properties` -- grouped bar chart of total pressure and temperature at flow stations
 - `component_efficiency` -- bar chart of compressor/turbine efficiency and pressure ratio
+
+## Study plots (2-axis trade grids)
+
+Distinct from the per-run plots above: study plots render across a whole
+study's `cases.csv` instead of one recorder file. `plot_study(study_id)`
+(`omd-cli study plot`, MCP `plot_study`) requires a study with exactly two
+numeric axes, pivots each output column over them, masks non-converged
+cells, and renders pcolormesh (`style="paper"`) or contourf
+(`style="contour"`) panels.
+
+Dispatch mirrors the per-run provider pattern but uses a separate registry
+(`_STUDY_PLOT_PROVIDERS`, keyed by `component_type`):
+
+- `register_study_plots(component_type, provider)` in `registry.py`;
+  providers map a plot name to `(study_table, x_axis, y_axis, **kwargs) -> Figure`.
+- The OCP provider (`OCP_STUDY_PLOTS` in `plotting/ocp.py`) renders the
+  Brelje fig5/fig6 four-panel grid and owns the mission-specific derived
+  columns (lb-unit weights, fuel mileage, electric percent, offline DOC).
+- Component types with no provider fall back to a generic grid: one panel
+  per numeric output column.
+- The generic mechanism is pandas-free: a columnar `Table`
+  (`dict[str, Sequence]`) + numpy, so omd core gains no pandas dependency.
 
 ## How to add a new factory
 

@@ -29,6 +29,8 @@ from hangar.sdk.viz.render_lock import (  # noqa: F401 -- re-export
 )
 
 from hangar.omd.plotting._common import (  # noqa: F401 -- re-export
+    PanelSpec,
+    Table,
     detect_surface_name,
     find_outputs,
     find_first_output,
@@ -36,6 +38,9 @@ from hangar.omd.plotting._common import (  # noqa: F401 -- re-export
     get_span_eta,
     mirror_spanwise,
     compute_elliptical_lift,
+    pivot_grid,
+    render_grid,
+    to_float_array,
 )
 from hangar.omd.plotting.generic import (  # noqa: F401 -- re-export
     plot_convergence,

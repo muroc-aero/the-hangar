@@ -8,11 +8,21 @@ from __future__ import annotations
 
 import fnmatch
 import logging
+from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING, Mapping, Sequence
 
 import numpy as np
 
+if TYPE_CHECKING:
+    from matplotlib.figure import Figure
+
 logger = logging.getLogger(__name__)
+
+# A columnar case table: column name -> per-case values. Kept pandas-free so
+# the plotting layer adds no heavy dependency to omd core (the study store
+# itself writes cases.csv with the stdlib csv module).
+Table = Mapping[str, Sequence]
 
 
 # ---------------------------------------------------------------------------
@@ -222,3 +232,188 @@ def compute_elliptical_lift(
     lift_ell = 4.0 * lift_area / np.pi * np.sqrt(arg)
 
     return lift_ell
+
+
+# ---------------------------------------------------------------------------
+# Study-level 2-axis grid rendering
+# ---------------------------------------------------------------------------
+#
+# These helpers render one heatmap panel per output column over a two-axis
+# study grid (e.g. the Brelje 2018a Fig 5/6 design-range x specific-energy
+# trade space). They are tool-independent: a per-tool study-plot provider
+# (see ``OCP_STUDY_PLOTS`` in ``plotting/ocp.py``) decides which columns and
+# labels to plot and calls ``render_grid``. The mechanism is ported from the
+# bespoke ``brelje_2018a/pipeline/plotting.py`` so the paper-style figure is
+# reproducible from a study's ``cases.csv``.
+
+
+@dataclass
+class PanelSpec:
+    """One heatmap panel in a study grid figure.
+
+    Attributes:
+        column: case-table column to plot (raw output or a derived column).
+        label: colorbar label; falls back to ``column`` when None.
+        vmin, vmax: colorbar limits; auto-ranged from the data when None.
+        overlay_contours: draw thin contour lines on top (paper style only).
+    """
+
+    column: str
+    label: str | None = None
+    vmin: float | None = None
+    vmax: float | None = None
+    overlay_contours: bool = False
+
+
+def to_float_array(values: Sequence) -> np.ndarray:
+    """Coerce a column of mixed values to a float ndarray (NaN on failure)."""
+    out = np.full(len(values), np.nan, dtype=float)
+    for i, val in enumerate(values):
+        if val is None or val == "":
+            continue
+        try:
+            out[i] = float(val)
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def _cell_edges(centers: np.ndarray) -> np.ndarray:
+    """Convert N cell-center coordinates to N+1 cell-edge coordinates so
+    pcolormesh draws each grid cell as a rectangle centered on its (x, y).
+    Edges are placed at midpoints with end-cell extrapolation."""
+    centers = np.asarray(centers, dtype=float)
+    if len(centers) < 2:
+        d = 1.0
+        return np.array([centers[0] - d / 2, centers[0] + d / 2])
+    mids = 0.5 * (centers[:-1] + centers[1:])
+    first = centers[0] - (mids[0] - centers[0])
+    last = centers[-1] + (centers[-1] - mids[-1])
+    return np.concatenate([[first], mids, [last]])
+
+
+def pivot_grid(
+    table: Table, x_col: str, y_col: str, value_col: str,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Pivot a long case table into a grid for one value column.
+
+    Returns ``(x_axis, y_axis, grid)`` with ``grid`` of shape
+    ``(n_y, n_x)``. Non-numeric or missing cells stay NaN; duplicate
+    (x, y) coordinates keep the last row (so a manual case at a grid
+    coordinate overrides the matrix cell).
+    """
+    x = to_float_array(table[x_col])
+    y = to_float_array(table[y_col])
+    v = to_float_array(table[value_col])
+
+    x_centers = np.array(sorted({xv for xv in x if np.isfinite(xv)}))
+    y_centers = np.array(sorted({yv for yv in y if np.isfinite(yv)}))
+    xi = {val: i for i, val in enumerate(x_centers)}
+    yi = {val: i for i, val in enumerate(y_centers)}
+
+    grid = np.full((len(y_centers), len(x_centers)), np.nan)
+    for k in range(len(v)):
+        if np.isfinite(x[k]) and np.isfinite(y[k]):
+            grid[yi[y[k]], xi[x[k]]] = v[k]
+    return x_centers, y_centers, grid
+
+
+def render_grid(
+    table: Table,
+    x_axis: str,
+    y_axis: str,
+    panels: list[PanelSpec],
+    *,
+    style: str = "paper",
+    x_label: str | None = None,
+    y_label: str | None = None,
+    suptitle: str | None = None,
+    ncols: int = 2,
+) -> "Figure":
+    """Render a grid of heatmap panels over a two-axis study trade space.
+
+    Args:
+        table: columnar case table (column name -> per-case values) with
+            ``x_axis``, ``y_axis``, and each panel's column.
+        x_axis, y_axis: column names of the two numeric grid axes.
+        panels: one PanelSpec per panel.
+        style: ``"paper"`` (pcolormesh per-cell rectangles) or
+            ``"contour"`` (smooth contourf).
+        x_label, y_label: axis labels (default to the axis column names).
+        suptitle: figure title.
+        ncols: panels per row.
+
+    Returns:
+        The matplotlib Figure (caller saves/closes it).
+    """
+    import matplotlib.pyplot as plt
+
+    if not panels:
+        raise ValueError("render_grid requires at least one panel")
+    if style not in ("paper", "contour"):
+        raise ValueError(f"style must be 'paper' or 'contour', got {style!r}")
+
+    n = len(panels)
+    ncols = max(1, min(ncols, n))
+    nrows = (n + ncols - 1) // ncols
+    fig, axes = plt.subplots(
+        nrows, ncols, figsize=(5.25 * ncols, 4.5 * nrows), squeeze=False,
+    )
+    flat = axes.flatten()
+
+    for ax, panel in zip(flat, panels):
+        x, y, z = pivot_grid(table, x_axis, y_axis, panel.column)
+        _render_panel(ax, x, y, z, panel, style)
+    for ax in flat[n:]:
+        ax.axis("off")
+
+    for ax in flat[:n]:
+        ax.set_xlabel(x_label or x_axis)
+        ax.set_ylabel(y_label or y_axis)
+
+    if suptitle:
+        fig.suptitle(suptitle, fontsize=12)
+        fig.tight_layout(rect=(0, 0, 1, 0.97))
+    else:
+        fig.tight_layout()
+    return fig
+
+
+def _render_panel(ax, x, y, z, panel: PanelSpec, style: str) -> None:
+    import matplotlib.pyplot as plt
+
+    zmasked = np.ma.masked_invalid(np.asarray(z, dtype=float))
+    label = panel.label or panel.column
+    if zmasked.count() == 0:
+        ax.set_facecolor("#eeeeee")
+        ax.text(0.5, 0.5, "no converged cells", ha="center", va="center",
+                transform=ax.transAxes, color="#888888")
+        ax.set_title(label, fontsize=10)
+        return
+
+    vmin = panel.vmin if panel.vmin is not None else float(zmasked.min())
+    vmax = panel.vmax if panel.vmax is not None else float(zmasked.max())
+    if vmax <= vmin:
+        vmax = vmin + 1.0
+
+    if style == "paper":
+        xe = _cell_edges(x)
+        ye = _cell_edges(y)
+        pm = ax.pcolormesh(xe, ye, zmasked, cmap="viridis",
+                           vmin=vmin, vmax=vmax, shading="flat")
+        cbar = plt.colorbar(pm, ax=ax, pad=0.02)
+        cbar.set_label(label)
+        # Contour overlay needs at least a 2x2 grid; skip on thin grids.
+        if panel.overlay_contours and zmasked.shape[0] >= 2 and zmasked.shape[1] >= 2:
+            levels = np.linspace(vmin, vmax, 18)
+            ax.contour(x, y, zmasked, levels=levels, colors="white",
+                       linewidths=0.4, alpha=0.85)
+        ax.set_xlim(xe[0], xe[-1])
+        ax.set_ylim(ye[0], ye[-1])
+    else:
+        levels = np.linspace(vmin, vmax, 11)
+        cf = ax.contourf(x, y, zmasked, levels=levels, cmap="viridis",
+                         extend="both")
+        cbar = plt.colorbar(cf, ax=ax, pad=0.02)
+        cbar.set_label(label)
+    ax.set_title(label, fontsize=10)

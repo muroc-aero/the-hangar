@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 _FACTORIES: dict[str, Callable] = {}
 _PLOT_PROVIDERS: dict[str, dict[str, Callable]] = {}
 _GENERIC_PLOTS: dict[str, Callable] = {}
+# Study-level plot providers: callables of (study_df, x_axis, y_axis, **kwargs)
+# -> Figure, distinct from the per-run providers above (recorder_path-based).
+_STUDY_PLOT_PROVIDERS: dict[str, dict[str, Callable]] = {}
 _initialized = False
 
 
@@ -47,6 +50,33 @@ def register_generic_plots(plots: dict[str, Callable]) -> None:
         plots: Dict mapping plot type names to callables.
     """
     _GENERIC_PLOTS.update(plots)
+
+
+def register_study_plots(
+    component_type: str, provider: dict[str, Callable],
+) -> None:
+    """Register study-level plot types for a component type.
+
+    Study-plot callables have signature
+    ``(study_df, x_axis, y_axis, **kwargs) -> Figure`` and render over a
+    study's ``cases.csv`` (one row per case), not a single recorder file.
+
+    Args:
+        component_type: Type string of the study's components
+            (e.g. "ocp/FullMission").
+        provider: Dict mapping plot type names to study-plot callables.
+    """
+    _STUDY_PLOT_PROVIDERS[component_type] = provider
+
+
+def get_study_plot_provider(
+    component_type: str | None = None,
+) -> dict[str, Callable]:
+    """Get the study-plot provider for a component type (empty if none)."""
+    _ensure_builtins()
+    if component_type and component_type in _STUDY_PLOT_PROVIDERS:
+        return dict(_STUDY_PLOT_PROVIDERS[component_type])
+    return {}
 
 
 def get_factory(component_type: str) -> Callable:
@@ -224,13 +254,16 @@ def _register_builtins() -> None:
             build_ocp_full_mission,
             build_ocp_mission_with_reserve,
         )
-        from hangar.omd.plotting.ocp import OCP_MISSION_PLOTS
+        from hangar.omd.plotting.ocp import OCP_MISSION_PLOTS, OCP_STUDY_PLOTS
         register_factory("ocp/BasicMission", build_ocp_basic_mission,
                          plot_provider=OCP_MISSION_PLOTS)
         register_factory("ocp/FullMission", build_ocp_full_mission,
                          plot_provider=OCP_MISSION_PLOTS)
         register_factory("ocp/MissionWithReserve", build_ocp_mission_with_reserve,
                          plot_provider=OCP_MISSION_PLOTS)
+        for _ocp_type in ("ocp/BasicMission", "ocp/FullMission",
+                          "ocp/MissionWithReserve"):
+            register_study_plots(_ocp_type, OCP_STUDY_PLOTS)
     except ImportError:
         logger.info("OpenConcept not available, OCP factories not registered")
 

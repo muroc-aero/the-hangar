@@ -14,6 +14,7 @@ review-first and incremental:
     omd-cli study status <study_id>          # progress so far
     omd-cli study run study.yaml --yes       # commit to the rest
     omd-cli study results <study_id>         # spreadsheet-style case table
+    omd-cli study plot <study_id>            # 2-axis trade-grid figure
 """
 
 from __future__ import annotations
@@ -236,3 +237,44 @@ def study_results(study_id: str, as_csv: bool, only_failed: bool) -> None:
     click.echo("  ".join(h.ljust(w) for h, w in zip(header, widths)))
     for row in body:
         click.echo("  ".join(c.ljust(w) for c, w in zip(row, widths)))
+
+
+@study_group.command("plot")
+@click.argument("study_id")
+@click.option("--style", type=click.Choice(["paper", "contour"]),
+              default="paper", show_default=True,
+              help="paper: pcolormesh per-cell rectangles; contour: smooth "
+                   "contourf.")
+@click.option("--type", "plot_types", multiple=True,
+              help="Provider plot name(s) to render (default: all). Repeatable.")
+@click.option("--out", "out_dir", type=click.Path(), default=None,
+              help="Output directory (default: studies/<id>/plots).")
+def study_plot(study_id: str, style: str, plot_types: tuple[str, ...],
+               out_dir: str | None) -> None:
+    """Render a study's 2-axis trade-grid figure(s) from its cases.csv.
+
+    Requires a study with exactly two numeric axes. OCP mission studies get
+    the Brelje Fig 5/6 four-panel layout; other component types fall back to
+    one panel per numeric output column.
+    """
+    import hangar.omd.study_runner  # noqa: F401  (registers the omd runner)
+    from hangar.omd.study_plots import plot_study
+
+    try:
+        result = plot_study(
+            study_id,
+            plot_types=list(plot_types) or None,
+            style=style,
+            out_dir=Path(out_dir) if out_dir else None,
+        )
+    except ValueError as exc:
+        click.echo(f"Error: {exc}", err=True)
+        raise SystemExit(1)
+
+    if not result["saved"]:
+        click.echo("No plots produced (see warnings above).", err=True)
+        raise SystemExit(1)
+    click.echo(f"Study {study_id} ({result['component_type'] or 'generic'}), "
+               f"axes {result['axes'][0]} x {result['axes'][1]}:")
+    for name, path in result["saved"].items():
+        click.echo(f"  {name}: {path}")

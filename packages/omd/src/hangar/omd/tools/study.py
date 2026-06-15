@@ -183,3 +183,34 @@ async def get_study_results(
         "cases_csv": str(store.csv_path),
         "urls": _study_urls(study_id),
     }
+
+
+async def plot_study(
+    study_id: Annotated[str, "Study id (metadata.id of the study YAML)"],
+    style: Annotated[str, "'paper' (pcolormesh) or 'contour' (smooth)"] = "paper",
+    plot_types: Annotated[
+        list[str] | None,
+        "Provider plot name(s) to render; default renders all the study's "
+        "component type offers (OCP missions: the Fig 5/6 'trade_grid').",
+    ] = None,
+) -> dict:
+    """Render a study's 2-axis trade-grid figure(s) from its case table.
+
+    Requires a study with exactly two numeric axes (otherwise raises). OCP
+    mission studies get the Brelje Fig 5/6 four-panel layout; other component
+    types fall back to one panel per numeric output column. Returns the saved
+    PNG paths.
+    """
+    import hangar.omd.study_runner  # noqa: F401  (registers the omd runner)
+    from hangar.omd.study_plots import plot_study as _plot_study
+
+    if style not in ("paper", "contour"):
+        raise UserInputError("style must be 'paper' or 'contour'")
+    try:
+        result = await asyncio.to_thread(
+            _plot_study, study_id, plot_types=plot_types, style=style,
+        )
+    except ValueError as exc:
+        raise UserInputError(str(exc))
+    result["urls"] = _study_urls(study_id)
+    return result
