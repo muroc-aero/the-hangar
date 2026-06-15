@@ -187,3 +187,9 @@ Case-study HTML templates and tarballs are committed in
 `lakesideai-sites/mcp.lakesideai.dev/studies/<study-id>/`. The omd plan
 that produces a study still lives here, under
 `packages/omd/demos/<study-id>/`.
+
+## Design system
+Use the `lakesideai-design` skill for any UI work. Brand non-negotiables:
+real mono numbers, no emoji, small mechanical radii, flat panels (ink rules on
+paper, not shadow), green #1F9D55 + blueprint blue #15487A, IBM Plex throughout.
+Product UIs use the App/Instrument surface; marketing & decks use class="surface-paper".
