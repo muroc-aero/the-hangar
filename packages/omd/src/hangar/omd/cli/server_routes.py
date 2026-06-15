@@ -936,6 +936,44 @@ cy.on('tap', function(evt) {{
 
 
 
+def _omd_study_plot_img_handler(
+    qs: dict[str, list[str]],
+    *,
+    user: str | None = None,
+) -> tuple[int, str, bytes]:
+    """Render and serve a study-level trade-grid PNG.
+
+    Unlike ``/omd-plot-img`` (one recorder file), this renders the study's
+    2-axis grid over its whole ``cases.csv`` on demand and caches the PNG
+    under ``studies/{id}/plots/{name}.png``. ``style`` selects pcolormesh
+    (``paper``) vs contourf (``contour``).
+    """
+    import json as _json
+    from pathlib import Path
+
+    study_id = (qs.get("study_id") or [None])[0]
+    name = (qs.get("name") or [None])[0]
+    style = (qs.get("style") or ["paper"])[0]
+    if not study_id or not name:
+        return 400, "application/json", b'{"error":"Missing study_id or name"}'
+    # Plot names come from the provider registry, but guard path traversal.
+    if ".." in name or "/" in name or "\\" in name:
+        return 400, "application/json", b'{"error":"Invalid name"}'
+    if style not in ("paper", "contour"):
+        style = "paper"
+
+    from hangar.omd.study_plots import plot_study
+
+    try:
+        result = plot_study(study_id, plot_types=[name], style=style)
+    except ValueError as exc:
+        return 404, "application/json", _json.dumps({"error": str(exc)}).encode()
+    path = (result.get("saved") or {}).get(name)
+    if not path or not Path(path).exists():
+        return 404, "application/json", b'{"error":"Study plot not found"}'
+    return 200, "image/png", Path(path).read_bytes()
+
+
 def register_omd_viewer_routes() -> None:
     """Register all omd routes with the SDK viewer server.
 
@@ -949,6 +987,7 @@ def register_omd_viewer_routes() -> None:
     register_viewer_route("/omd-plan-diff", _omd_plan_diff_handler)
     register_viewer_route("/omd-plots", _omd_plots_handler)
     register_viewer_route("/omd-plot-img", _omd_plot_img_handler)
+    register_viewer_route("/omd-study-plot-img", _omd_study_plot_img_handler)
     register_viewer_route("/omd-n2", _omd_n2_handler)
     register_viewer_route("/omd-problem-dag", _omd_problem_dag_handler)
     register_viewer_route("/omd-plan-detail", _omd_plan_detail_handler)

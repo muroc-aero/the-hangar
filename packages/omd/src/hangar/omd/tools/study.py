@@ -36,6 +36,17 @@ def _study_urls(study_id: str) -> dict:
     return urls
 
 
+def _viewer_base() -> str | None:
+    """Base URL of a reachable omd viewer, or None (mirrors view_urls)."""
+    try:
+        from hangar.sdk.helpers import _get_viewer_base_url
+
+        base = _get_viewer_base_url()
+        return base.rstrip("/") if base else None
+    except Exception:
+        return None
+
+
 def _resolve_study_path(study_path: str) -> Path:
     # Same workspace-relative resolution as plan paths, so MCP-only agents
     # can author a study.yaml via write_plan and run it by relative path.
@@ -213,4 +224,14 @@ async def plot_study(
     except ValueError as exc:
         raise UserInputError(str(exc))
     result["urls"] = _study_urls(study_id)
+    # Per-plot served image links (the study counterpart to generate_plots'
+    # plot_urls), so the rendered grid is web-addressable, not just on disk.
+    base = _viewer_base()
+    saved = result.get("saved") or {}
+    if base and saved:
+        result["study_plot_urls"] = {
+            name: (f"{base}/omd-study-plot-img?study_id={study_id}"
+                   f"&name={name}&style={style}")
+            for name in saved
+        }
     return result

@@ -190,6 +190,20 @@ Dispatch mirrors the per-run provider pattern but uses a separate registry
 - The generic mechanism is pandas-free: a columnar `Table`
   (`dict[str, Sequence]`) + numpy, so omd core gains no pandas dependency.
 
+Surfacing (parity with the per-run plot gallery):
+
+- `study_plot_types(study_id)` lists the renderable grid names without
+  rendering (`[]` when the study is not 2-axis numeric), so a UI can list
+  before it renders.
+- The omd viewer serves a rendered grid at
+  `/omd-study-plot-img?study_id=&name=&style=` (registered in
+  `cli/server_routes.py`); the `plot_study` MCP tool returns matching
+  `study_plot_urls` so the grid is web-addressable, not just on disk.
+- The range-safety dashboard study view embeds a lazy trade-grid gallery
+  (`/api/study-plots/{study_key}[/{plot_type}]`, paper/contour toggle),
+  delegating to `study_plot_types` / `plot_study` through its studyfs
+  source. It renders on first view and caches to `studies/{id}/plots/`.
+
 ## How to add a new factory
 
 1. **Create the factory function** in `factories/<tool>.py` matching the signature:

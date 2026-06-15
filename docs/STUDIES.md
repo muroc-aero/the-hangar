@@ -170,8 +170,11 @@ Design decisions baked in:
 
 - [ ] **Dashboard visuals beyond the table**: requirement-tracing view
       (case -> plan requirements -> verdicts), trade-space scatter,
-      2-axis heatmap/contour rendering of output columns, sparkline per
-      output across an axis.
+      sparkline per output across an axis. (2-axis heatmap/contour
+      rendering is DONE -- see the study-plots item below: the study view
+      now embeds a lazy trade-grid gallery with a paper/contour toggle,
+      served by `/api/study-plots/{study_key}[/{plot_type}]`, reaching
+      parity with the per-run plot gallery.)
 - [x] **Study-level plots in omd**: `omd-cli study plot <id>` (and the
       `plot_study` MCP tool) render a 2-axis trade grid from a study's
       cases.csv when it has exactly 2 numeric axes. The generic
@@ -180,9 +183,14 @@ Design decisions baked in:
       `component_type` through a study-plot provider registry, with the
       OCP provider (`omd/plotting/ocp.py`) supplying the brelje fig5/fig6
       four-panel layout and its derived columns (fuel mileage, electric
-      percent, lb-unit MTOW, offline DOC). `pipeline/plotting.py` stays
-      until the study layer is the verified full-grid reproduction path
-      (gated on the retry-heuristics + fig6 warm-from items below).
+      percent, lb-unit MTOW, offline DOC). Now surfaced everywhere the
+      per-run plots are: `study_plot_types(study_id)` lists the renderable
+      grids, the omd viewer serves them at `/omd-study-plot-img` (the
+      `plot_study` MCP tool returns matching `study_plot_urls`), and the
+      range-safety dashboard study view embeds a lazy gallery via
+      `/api/study-plots/...`. `pipeline/plotting.py` stays until the study
+      layer is the verified full-grid reproduction path (gated on the
+      retry-heuristics + fig6 warm-from items below).
 - [ ] **Retry heuristics**: nearest-neighbor warm starts and bracket
       retries (`retry_failed.py` / `retry_stuck_cells.py`) as
       `study retry`; cross-study `warm_from` (cost grid seeded from fuel

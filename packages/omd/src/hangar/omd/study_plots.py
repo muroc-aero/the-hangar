@@ -109,6 +109,39 @@ def _numeric_output_columns(table: dict, axes: list[str]) -> list[str]:
     return cols
 
 
+def study_plot_types(study_id: str) -> list[str]:
+    """List the study-plot names available for *study_id* (no rendering).
+
+    Resolves the study's two grid axes and component type, then returns the
+    study-plot provider's plot names, or ``["grid"]`` for the generic
+    per-output-column fallback. Returns ``[]`` (never raises) when the study
+    cannot be grid-plotted -- missing state, not exactly two numeric axes, or
+    no numeric output columns -- so a caller (the dashboard study panel, the
+    MCP surface) can list plots without guarding each failure mode itself.
+    """
+    from hangar.omd.registry import get_study_plot_provider
+
+    try:
+        store = StudyStore(study_id)
+        spec_path = store.dir / "study.yaml"
+        if not store.state_path.exists() or not spec_path.exists():
+            return []
+        spec, errors = load_study(spec_path)
+        if errors:
+            return []
+        axes = _matrix_axes(spec)
+        if len(axes) != 2:
+            return []
+        table = _build_table(store.load_state(), axes)
+        provider = get_study_plot_provider(_resolve_component_type(store))
+        if provider:
+            return list(provider.keys())
+        return ["grid"] if _numeric_output_columns(table, axes) else []
+    except Exception as exc:  # noqa: BLE001 -- listing must never raise
+        logger.debug("study_plot_types(%s) unavailable: %s", study_id, exc)
+        return []
+
+
 def plot_study(
     study_id: str,
     *,
