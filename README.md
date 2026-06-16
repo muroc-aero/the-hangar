@@ -15,6 +15,8 @@ Public instances are available at `mcp.lakesideai.dev`. Authentication uses Keyc
 | PYC | `https://mcp.lakesideai.dev/pyc/mcp` | Gas turbine engine cycle analysis. Design-point sizing and off-design performance with full thermodynamic station modeling. |
 | OMD | `https://mcp.lakesideai.dev/omd/mcp` | General-purpose OpenMDAO plan runner. Authors and runs YAML optimization plans through a factory registry, composing the other tools into multi-disciplinary studies with a full provenance graph. |
 
+`hangar-evt` (eVTOL sizing and mission-energy analysis, wrapping evtolpy) is included in the repo but **not yet hosted** -- run it locally via `evt-cli`/`evt-server` (see [Packages](#packages)).
+
 ### Connecting
 
 **Claude Code:**
@@ -70,6 +72,7 @@ This copies the CLI-guide skills from each package into `.claude/skills/` where 
 | `hangar-ocp` | `hangar.ocp` | OpenConcept aircraft conceptual design and mission analysis server | `ocp-cli`, `ocp-server` |
 | `hangar-pyc` | `hangar.pyc` | pyCycle gas turbine cycle analysis server | `pyc-cli`, `pyc-server` |
 | `hangar-omd` | `hangar.omd` | General-purpose OpenMDAO plan runner -- YAML plans, factory registry, multi-tool composition, provenance graph | `omd-cli`, `omd-server` |
+| `hangar-evt` | `hangar.evt` | eVTOL aircraft sizing and mission-energy analysis (wraps evtolpy). Not yet hosted -- local CLI/MCP only. | `evt-cli`, `evt-server` |
 | `hangar-results-reader` | `hangar.results_reader` | Read-only access to omd run results for downstream consumers (e.g. dashboards) | -- |
 | `hangar-viewer` | `hangar.viewer` | Unified provenance viewer for Hangar tool servers | `hangar-viewer` |
 
@@ -182,6 +185,10 @@ This project wraps the following open-source tools. If you use them in published
 **pyCycle** -- [OpenMDAO/pyCycle](https://github.com/OpenMDAO/pyCycle)
 
 > Hendricks, E. S. and Gray, J. S., "pyCycle: A Tool for Efficient Optimization of Gas Turbine Engine Cycles," *Aerospace*, Vol. 6, No. 87, 2019. [doi:10.3390/aerospace6080087](https://doi.org/10.3390/aerospace6080087)
+
+**evtolpy** -- [starbelt/evtolpy](https://github.com/starbelt/evtolpy)
+
+> Nguyen, K. D., Hogge, D., Riris, J., Sarojini, D., and Denby, B., "Autonomous Battery Units as an Enabling Technology for Urban Air Mobility," AIAA SciTech 2026 Forum, AIAA Paper 2026-1713, 2026. [doi:10.2514/6.2026-1713](https://doi.org/10.2514/6.2026-1713)
 
 ## License
 

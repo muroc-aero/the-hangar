@@ -13,6 +13,9 @@ uv run python "$HERE/pipeline/aggregate.py"
 echo "== plot: comparison figures =="
 uv run python "$HERE/pipeline/plotting.py"
 
+echo "== plot: wrapper parity (direct evtolpy vs cli/mcp) =="
+uv run python "$HERE/pipeline/compare_lanes_plot.py"
+
 echo "== fidelity: reproduced vs paper =="
 uv run python "$HERE/pipeline/compare_to_paper.py"
 
