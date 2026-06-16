@@ -77,6 +77,8 @@ returns `alpha_deg` / `CL` / `CD` / `L_over_D` arrays plus `best_L_over_D`.
 | `ocp/FullMission` | OpenConcept mission with balanced-field takeoff |
 | `ocp/MissionWithReserve` | OpenConcept mission + reserve/loiter |
 | `pyc/TurbojetDesign`, `pyc/TurbojetMultipoint`, `pyc/HBTFDesign`, `pyc/ABTurbojetDesign`, `pyc/SingleTurboshaftDesign`, `pyc/MultiTurboshaftDesign`, `pyc/MixedFlowDesign` | pyCycle gas turbine cycles |
+| `evt/Sizing` | eVTOL MTOW sizing loop (evtolpy black box, FD partials) |
+| `evt/Mission` | eVTOL as-configured mission energy (no sizing) |
 | `paraboloid/Paraboloid` | Trivial test component |
 
 OCP components accept `slots` (drag/propulsion/weight providers such as
@@ -139,13 +141,22 @@ config:
 - `pyc/*` config keys are the cycle parameters (`comp_PR`, `comp_eff`,
   `burner_FAR`, `turb_eff`, `nozz_Cv`, `initial_guesses`, ...); extras
   pass through to the cycle builder.
+- `evt/*` config selects the evtolpy base config: `template` (default
+  `test_all`) or `config_name`/`config_path` (+ optional `config_dir`) to load a
+  full evtolpy JSON. Per-section override dicts (`aircraft`, `mission`, `power`,
+  `propulsion`, `environ`) and a flat `overrides` dict are merged in;
+  `operating_points` are routed to their owning section. `input_specs` overrides
+  which config keys are exposed as OpenMDAO inputs/DVs.
 
 ## DV / constraint / objective short names
 
 The materializer resolves short names to full OpenMDAO paths per component
 family, e.g. OAS: `twist_cp`, `chord_cp`, `alpha`, `CL`, `CD`, `S_ref`,
 `failure`, `fuelburn`, `structural_mass`, `L_equals_W`; OCP:
-pipe-separated `ac|geom|wing|S_ref` style paths plus `fuel_burn`, `MTOW`.
+pipe-separated `ac|geom|wing|S_ref` style paths plus `fuel_burn`, `MTOW`; evt:
+the exposed input names (`batt_spec_energy_w_h_p_kg`, `payload_kg`, `wingspan_m`,
+`stall_speed_m_p_s`, `rotor_diameter_m`, `tip_mach`, `cruise_s`) and outputs
+(`sized_mtow_kg`, `total_mission_energy_kw_hr`, `peak_power_kw`, ...).
 `plan_add_dv` and `plan_set_objective` validate names against the declared
 components and list the allowed set on error.
 

@@ -138,6 +138,9 @@ class FactoryMetadata(TypedDict, total=False):
     surface_names_list: list[list[str]]
     """Surface names per point (multipoint aerostruct)."""
 
+    evt_mode: str
+    """evt factory mode: ``"sizing"`` (MTOW loop) or ``"mission"`` (as-configured)."""
+
     architecture: str
     """Propulsion architecture (OCP)."""
 

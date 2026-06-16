@@ -58,6 +58,9 @@ All runtime data lives under `hangar_data/omd/` (configurable via `OMD_DATA_ROOT
   - `oas.py` -- `build_oas_aerostruct()`: coupled aero+struct with Newton solver
   - `oas_aero.py` -- `build_oas_aeropoint()`: aero-only VLM analysis
   - `pyc.py` -- `build_pyc_turbojet_design()`, `build_pyc_turbojet_multipoint()`: pyCycle gas turbine
+  - `evt.py` -- `build_evt_sizing()`, `build_evt_mission()`: eVTOL sizing via the
+    `EvtolSizingComp` black-box wrapper in `hangar.evt.omd_component` (evtolpy is
+    not OpenMDAO-native and gradient-free, so the component declares FD partials)
   - `paraboloid.py` -- `build_paraboloid()`: trivial test component
 - `pyc/` -- self-contained pyCycle integration (no dependency on hangar.pyc)
   - `defaults.py` -- default parameters, initial guesses, archetype metadata
@@ -141,6 +144,8 @@ surface over MCP through the shared SDK envelope/provenance/auth stack:
 | `oas/AeroPoint` | `build_oas_aeropoint` | `OAS_AERO_PLOTS` | Aero-only VLM |
 | `pyc/TurbojetDesign` | `build_pyc_turbojet_design` | (generic only) | Single-spool turbojet design point |
 | `pyc/TurbojetMultipoint` | `build_pyc_turbojet_multipoint` | (generic only) | Turbojet design + off-design |
+| `evt/Sizing` | `build_evt_sizing` | `EVT_PLOTS` | eVTOL MTOW sizing loop (evtolpy black box) |
+| `evt/Mission` | `build_evt_mission` | `EVT_PLOTS` | eVTOL as-configured mission energy (no sizing) |
 | `paraboloid/Paraboloid` | `build_paraboloid` | (generic only) | Test component |
 
 ## Plot types
@@ -168,6 +173,14 @@ All aero plots plus:
 All generic plots plus:
 - `station_properties` -- grouped bar chart of total pressure and temperature at flow stations
 - `component_efficiency` -- bar chart of compressor/turbine efficiency and pressure ratio
+
+### evt (evt/Sizing, evt/Mission)
+All generic plots plus:
+- `segment_energy` -- per-segment mission energy (kWh) bar chart
+- `segment_power` -- per-segment average electric power (kW) bar chart
+- `mass_breakdown` -- component empty-mass breakdown (kg)
+- `mtow_convergence` -- MTOW fixed-point sizing history (sizing mode; reads the
+  padded `mtow_history_kg` / `n_iterations` outputs the component records)
 
 ## Study plots (2-axis trade grids)
 
@@ -246,7 +259,8 @@ named subsystem -- internal connections use relative paths and still work.
 | `initial_values_with_units` | dict[str,dict] | materializer | Values with units: `{"val": 1.0, "units": "ft"}` |
 | `_setup_done` | bool | materializer | True if factory already called setup (skip materializer setup) |
 | `_composite` | bool | materializer | Set by materializer for multi-component plans |
-| `component_family` | str | run.py | Dispatch key for result extraction ("ocp" triggers OCP path) |
+| `component_family` | str | run.py | Dispatch key for result extraction ("ocp" / "evt" trigger tool-specific paths) |
+| `evt_mode` | str | run.py | evt factory mode: "sizing" (MTOW loop) or "mission" (as-configured) |
 | `multipoint` | bool | run.py | Triggers per-point result extraction |
 | `archetype_meta` | dict | (available) | pyCycle archetype metadata for rich result extraction |
 
