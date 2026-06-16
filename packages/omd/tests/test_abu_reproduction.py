@@ -2,10 +2,11 @@
 
 Drives the vendored case configs through the evt/Sizing factory (no study CLI)
 and checks the sized MTOW, mission energy, and peak power against the
-ground-truth grid the standalone evt lanes produce. Energy/power must match
-exactly (same evtolpy calls); sized MTOW is allowed the documented upstream
-resizing-loop drift. The two Joby S4 60-mile cases must raise (upstream MTOW
-divergence), not silently pass.
+ground-truth grid the standalone evt lanes produce. Energy/power must match the
+native model to floating point (read pre-sizing); sized MTOW is allowed the
+documented upstream resizing-loop drift. The two Joby S4 60-mile cases must flag
+non-convergence (``converged == 0``), not silently pass -- the native model maps
+upstream's MTOW divergence to a flag rather than the black box's raised error.
 """
 
 from __future__ import annotations
@@ -40,7 +41,9 @@ def _size(stem: str):
     prob, meta = build_evt_sizing(
         {"config_dir": str(_CFG_DIR), "config_name": stem}, {}
     )
-    prob.setup()
+    prob.setup(force_alloc_complex=bool(meta.get("force_alloc_complex")))
+    for name, val in meta.get("initial_values", {}).items():
+        prob.set_val(name, val)
     prob.run_model()
     return prob
 
@@ -49,12 +52,12 @@ def _converged_stems():
     return [s for s in sorted(_golden_rows()) if s not in EXPECTED_DIVERGENCES]
 
 
-@pytest.mark.slow  # each case runs evtolpy's sizing loop to its divergence guard
+@pytest.mark.slow  # each case runs the native MTOW-closure solver to non-convergence
 @pytest.mark.parametrize("stem", sorted(EXPECTED_DIVERGENCES))
-def test_expected_divergences_raise(stem):
-    with pytest.raises(Exception) as exc:
-        _size(stem)
-    assert "diverg" in str(exc.value).lower()
+def test_expected_divergences_flagged(stem):
+    """Native maps upstream MTOW divergence to converged == 0 (outcome parity)."""
+    prob = _size(stem)
+    assert float(prob.get_val("converged")[0]) == 0.0
 
 
 def _check_case(stem: str) -> None:

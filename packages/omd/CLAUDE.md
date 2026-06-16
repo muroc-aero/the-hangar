@@ -59,9 +59,26 @@ All runtime data lives under `hangar_data/omd/` (configurable via `OMD_DATA_ROOT
   - `oas_aero.py` -- `build_oas_aeropoint()`: aero-only VLM analysis
   - `pyc.py` -- `build_pyc_turbojet_design()`, `build_pyc_turbojet_multipoint()`: pyCycle gas turbine
   - `evt.py` -- `build_evt_sizing()`, `build_evt_mission()`: eVTOL sizing via the
-    `EvtolSizingComp` black-box wrapper in `hangar.evt.omd_component` (evtolpy is
-    not OpenMDAO-native and gradient-free, so the component declares FD partials)
+    **native** OpenMDAO model in `hangar.omd.evt` (idiomatic components with
+    complex-step partials + a real MTOW-closure solver, so sizing runs with
+    analytic gradients). `build_evt_sizing_fd()` (`evt/SizingFD`) keeps the
+    gradient-free `EvtolSizingComp` black box as a fallback/parity reference.
   - `paraboloid.py` -- `build_paraboloid()`: trivial test component
+- `evt/` -- self-contained native OpenMDAO formulation of evtolpy (no runtime
+  dependency on `evtolpy` or `hangar.evt` physics; the config-schema constants
+  in `hangar.evt.config.defaults` are pure data and are the only allowed import)
+  - `geometry.py`, `propulsion.py`, `aero.py`, `mission.py`, `mass.py` -- the
+    five domain `ExplicitComponent`s; numpy math, `declare_partials(method="cs")`,
+    evtolpy property names as variable names, real units from `units.py`
+  - `physics.py` -- `EvtolPhysicsGroup`: the feed-forward chain at a fixed MTOW
+  - `sizing.py` -- `EvtolSizingGroup`: two physics instances (as-configured
+    `report` + balance-driven `sized`) reproducing the black box's dual-MTOW
+    reporting, closed by `NonlinearBlockGS` (mirrors evtolpy's fixed-point
+    substitution) or `NewtonSolver` over an implicit lower-bounded MTOW state
+  - `builders.py` -- `build_problem(base_config, mode, solver)` -> problem +
+    factory metadata (sets `force_alloc_complex` so CS partials allocate)
+  - `config.py`, `units.py`, `labels.py` -- config flattening, unit registry,
+    segment/mass ordering. Parity suite: `packages/evt/examples/native_parity`
 - `pyc/` -- self-contained pyCycle integration (no dependency on hangar.pyc)
   - `defaults.py` -- default parameters, initial guesses, archetype metadata
   - `archetypes.py` -- Turbojet, MPTurbojet, and archetype registry (6 engine types)
@@ -144,8 +161,9 @@ surface over MCP through the shared SDK envelope/provenance/auth stack:
 | `oas/AeroPoint` | `build_oas_aeropoint` | `OAS_AERO_PLOTS` | Aero-only VLM |
 | `pyc/TurbojetDesign` | `build_pyc_turbojet_design` | (generic only) | Single-spool turbojet design point |
 | `pyc/TurbojetMultipoint` | `build_pyc_turbojet_multipoint` | (generic only) | Turbojet design + off-design |
-| `evt/Sizing` | `build_evt_sizing` | `EVT_PLOTS` | eVTOL MTOW sizing loop (evtolpy black box) |
-| `evt/Mission` | `build_evt_mission` | `EVT_PLOTS` | eVTOL as-configured mission energy (no sizing) |
+| `evt/Sizing` | `build_evt_sizing` | `EVT_PLOTS` | eVTOL MTOW sizing loop (native OpenMDAO, analytic gradients) |
+| `evt/Mission` | `build_evt_mission` | `EVT_PLOTS` | eVTOL as-configured mission energy (native, no sizing) |
+| `evt/SizingFD` | `build_evt_sizing_fd` | `EVT_PLOTS` | eVTOL sizing via the gradient-free evtolpy black box (FD fallback) |
 | `paraboloid/Paraboloid` | `build_paraboloid` | (generic only) | Test component |
 
 ## Plot types

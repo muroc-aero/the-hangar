@@ -1,19 +1,27 @@
 """evtolpy (eVTOL sizing) component factories for omd plan materialization.
 
-evtolpy is not OpenMDAO-native (it is a pure-Python fixed-point sizing library),
-so these factories wrap it as a single black-box ``ExplicitComponent`` defined in
-``hangar.evt.omd_component``. The component runs evtolpy's existing sizing/mission
-extraction inside ``compute`` and declares finite-difference partials.
+These factories build a **native OpenMDAO** formulation of evtolpy
+(``hangar.omd.evt``): idiomatic components with complex-step partials and a
+real MTOW-closure solver, so sizing runs with analytic gradients and can be
+coupled into a single converged solver. The native model reproduces upstream
+evtolpy to floating point (parity suite:
+``packages/evt/examples/native_parity``).
 
-Two factory types are registered:
-  * ``evt/Sizing``  -- runs the MTOW fixed-point loop (sized MTOW + masses).
-  * ``evt/Mission`` -- reads the as-configured aircraft (no sizing).
+Registered factory types:
+  * ``evt/Sizing``   -- native MTOW-closure sizing (sized MTOW + masses).
+  * ``evt/Mission``  -- native as-configured mission energy (no sizing).
+  * ``evt/SizingFD`` -- the legacy black-box wrapper (``hangar.evt``'s
+    ``EvtolSizingComp``) with finite-difference partials, kept as a fallback for
+    configs that exercise a non-smooth branch the native gradient path cannot
+    cross.
 
 Config resolution (most specific wins):
   * ``config_path`` (+ optional ``config_dir``) -- load a complete evtolpy JSON.
   * ``template`` (default ``"test_all"``) -- seed from a named vehicle template.
   Then inline per-section overrides (``aircraft``/``mission``/``power``/
   ``propulsion``/``environ``) and any ``operating_points`` are merged in.
+  ``solver`` (``"newton"`` default, or ``"gs"``) selects the native MTOW-closure
+  solver; ``native: false`` forces the black-box path for that component.
 """
 
 from __future__ import annotations
@@ -26,8 +34,9 @@ from typing import Any
 import openmdao.api as om
 
 from hangar.omd.factory_metadata import FactoryMetadata
+from hangar.omd.evt.builders import build_problem as build_native_problem
 
-# evtolpy-backed pieces live in the evt package (which owns the coupling).
+# evtolpy-backed black box (the FD fallback / parity reference).
 from hangar.evt.omd_component import (
     EvtolSizingComp,
     DEFAULT_INPUT_SPECS,
@@ -87,17 +96,34 @@ def _resolve_base_config(component_config: dict) -> dict:
     return config
 
 
+def _resolve_with_operating_points(component_config: dict,
+                                   operating_points: dict) -> dict:
+    """Resolve the base config and merge operating-point overrides into it."""
+    base_config = _resolve_base_config(component_config)
+    if operating_points:
+        _route_overrides(base_config, dict(operating_points))
+    return base_config
+
+
+def _build_evt_native(
+    component_config: dict,
+    operating_points: dict,
+    mode: str,
+) -> tuple[om.Problem, FactoryMetadata]:
+    """Native-OpenMDAO evt factory (default path)."""
+    base_config = _resolve_with_operating_points(component_config, operating_points)
+    solver = component_config.get("solver", "newton")
+    prob, metadata = build_native_problem(base_config, mode=mode, solver=solver)
+    return prob, metadata  # type: ignore[return-value]
+
+
 def _build_evt(
     component_config: dict,
     operating_points: dict,
     mode: str,
 ) -> tuple[om.Problem, FactoryMetadata]:
-    """Shared builder for the evt sizing/mission factories."""
-    base_config = _resolve_base_config(component_config)
-
-    # Operating points are flat config overrides (e.g. cruise_s, payload_kg).
-    if operating_points:
-        _route_overrides(base_config, dict(operating_points))
+    """Black-box (FD) builder for the legacy evt path."""
+    base_config = _resolve_with_operating_points(component_config, operating_points)
 
     input_specs = component_config.get("input_specs", DEFAULT_INPUT_SPECS)
     record_history = bool(component_config.get("record_history", True))
@@ -138,7 +164,9 @@ def build_evt_sizing(
     component_config: dict,
     operating_points: dict,
 ) -> tuple[om.Problem, FactoryMetadata]:
-    """Build a sized-MTOW evtolpy problem (runs the fixed-point loop)."""
+    """Build a sized-MTOW evt problem (native MTOW-closure; FD if native=false)."""
+    if component_config.get("native", True):
+        return _build_evt_native(component_config, operating_points, mode="sizing")
     return _build_evt(component_config, operating_points, mode="sizing")
 
 
@@ -146,5 +174,15 @@ def build_evt_mission(
     component_config: dict,
     operating_points: dict,
 ) -> tuple[om.Problem, FactoryMetadata]:
-    """Build an as-configured (unsized) evtolpy mission problem."""
+    """Build an as-configured (unsized) evt mission problem (native; FD if native=false)."""
+    if component_config.get("native", True):
+        return _build_evt_native(component_config, operating_points, mode="mission")
     return _build_evt(component_config, operating_points, mode="mission")
+
+
+def build_evt_sizing_fd(
+    component_config: dict,
+    operating_points: dict,
+) -> tuple[om.Problem, FactoryMetadata]:
+    """Build the legacy black-box (FD) sized-MTOW evt problem (``evt/SizingFD``)."""
+    return _build_evt(component_config, operating_points, mode="sizing")

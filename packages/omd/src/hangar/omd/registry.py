@@ -297,10 +297,13 @@ def _register_builtins() -> None:
     # evt is the first non-OpenMDAO-native factory: it wraps evtolpy as a
     # black-box ExplicitComponent with FD partials (see factories/evt.py).
     try:
-        from hangar.omd.factories.evt import build_evt_sizing, build_evt_mission
+        from hangar.omd.factories.evt import (
+            build_evt_sizing, build_evt_mission, build_evt_sizing_fd,
+        )
         from hangar.omd.plotting.evt import EVT_PLOTS
         register_factory("evt/Sizing", build_evt_sizing, plot_provider=EVT_PLOTS)
         register_factory("evt/Mission", build_evt_mission, plot_provider=EVT_PLOTS)
+        register_factory("evt/SizingFD", build_evt_sizing_fd, plot_provider=EVT_PLOTS)
     except ImportError:
         logger.info("evt/evtolpy not available, evt factories not registered")
 
