@@ -44,6 +44,12 @@ study lane:
   A/B over the 18 configs rather than scalar sweeps.
 
 All three lanes agree to floating-point round-off; any drift is a wrapper bug.
+`figures/reproduced/lane_parity.png` (from `pipeline/compare_lanes_plot.py`)
+draws this directly: Lane A as a line, Lane B (the cli/mcp tool path) as `x`
+markers on top of it, with the max |delta| over all 18 cases in the title
+(0.00e+00 -- exact). The two Joby S4 60-mile points are absent in *both* the
+line and the markers, so the divergence below is visibly upstream, not a
+wrapper artifact.
 
 ## Status / fidelity vs the paper
 
@@ -97,6 +103,7 @@ bash packages/evt/examples/abu_scitech_2026/run_case_study.sh
 # Or the steps individually:
 uv run python packages/evt/examples/abu_scitech_2026/pipeline/aggregate.py
 uv run python packages/evt/examples/abu_scitech_2026/pipeline/plotting.py
+uv run python packages/evt/examples/abu_scitech_2026/pipeline/compare_lanes_plot.py
 uv run python packages/evt/examples/abu_scitech_2026/pipeline/compare_to_paper.py
 
 # Lane C on its own (declarative study via the evt runner):
@@ -124,11 +131,12 @@ packages/evt/examples/abu_scitech_2026/
   lane_c/compare_to_lane_a.py -- run the study, check vs Lane A
 
   pipeline/aggregate.py     -- 18 cases -> results/case_study_grid.csv
-  pipeline/plotting.py      -- figures/reproduced/*.png
+  pipeline/plotting.py      -- figures/reproduced/{sized_mtow,mission_energy}.png
+  pipeline/compare_lanes_plot.py -- figures/reproduced/lane_parity.png (A vs cli/mcp)
   pipeline/compare_to_paper.py -- fidelity table vs the paper xlsx
 
   results/case_study_grid.csv  -- the reproduced 18-row table
-  figures/reproduced/          -- sized_mtow.png, mission_energy.png
+  figures/reproduced/          -- sized_mtow.png, mission_energy.png, lane_parity.png
 
   tests/                    -- parity (A/B/C) + golden (pinned at the ref)
 ```
