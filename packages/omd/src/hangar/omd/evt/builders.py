@@ -54,7 +54,7 @@ def _promoted_inputs(mode: str, solver: str, counts: dict) -> set[str]:
     Used to resolve which config keys are real inputs (and whether they take the
     plain name or the ``_in`` form) without setting up the live problem twice.
     """
-    probe = om.Problem()
+    probe = om.Problem(reports=False)
     probe.model.add_subsystem(POINT_NAME, _make_group(mode, solver, counts),
                               promotes=["*"])
     probe.setup()

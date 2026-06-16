@@ -67,7 +67,7 @@ def external_inputs() -> list[str]:
     """External (config + MTOW) input names of ``EvtolPhysicsGroup``."""
     global _EXTERNAL_INPUTS
     if _EXTERNAL_INPUTS is None:
-        probe = om.Problem()
+        probe = om.Problem(reports=False)
         probe.model.add_subsystem(
             "g",
             EvtolPhysicsGroup(rotor_count=2, lift_rotor_count=1,

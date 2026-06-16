@@ -53,7 +53,7 @@ def _counts(flat: dict) -> dict:
 
 def _drive(comp, flat: dict, ac) -> om.Problem:
     """Run a single component, feeding inputs from the oracle."""
-    p = om.Problem()
+    p = om.Problem(reports=False)
     p.model.add_subsystem("c", comp, promotes=["*"])
     p.setup(force_alloc_complex=True)
     for _, m in p.model.c.list_inputs(out_stream=None, prom_name=True, val=False):
