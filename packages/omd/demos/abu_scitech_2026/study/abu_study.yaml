@@ -1,0 +1,70 @@
+# AIAA SciTech 2026 eVTOL case study -- omd study reproduction.
+#
+# Sizes all 18 vendored configs (3 vehicles x 2 altitudes x 3 ranges) through
+# the omd pipeline via the evt/Sizing factory. Each case loads its exact
+# vendored evtolpy JSON (no scalar re-derivation of altitude/range), so the
+# outputs match the Lane-A ground truth in
+#   packages/evt/examples/abu_scitech_2026/results/case_study_grid.csv
+#
+#   omd-cli study review packages/omd/demos/abu_scitech_2026/study/abu_study.yaml
+#   omd-cli study run    packages/omd/demos/abu_scitech_2026/study/abu_study.yaml --max-cases 3
+#   omd-cli study run    packages/omd/demos/abu_scitech_2026/study/abu_study.yaml --yes
+#   python packages/omd/demos/abu_scitech_2026/compare_to_golden.py <study_id>
+#
+# Single matrix axis (`stem`) over the 18 case names; the abu metric is the
+# *sized* MTOW, so the plan runs in analysis mode (the factory sizes internally).
+metadata:
+  id: demo-abu-scitech-2026
+  name: "ABU SciTech 2026 eVTOL sizing sweep (18 cases)"
+  version: 1
+  description: >
+    eVTOL sizing across the AIAA SciTech 2026 case-study grid (Archer Midnight,
+    Joby S4, Supernal S-A2 at 1500/3000 ft over 30/45/60 mi). Reproduces the
+    sized MTOW, mission energy, and peak power of the standalone evt lanes
+    through omd's evt/Sizing factory.
+
+defaults:
+  runner: omd
+  spec:
+    plan: ../plan/base_plan.yaml
+    mode: analysis
+    timeout_seconds: 300
+
+cases:
+  - matrix:
+      id_template: "{stem}"
+      axes:
+        stem:
+          values:
+            - archer-midnight-1500-30
+            - archer-midnight-1500-45
+            - archer-midnight-1500-60
+            - archer-midnight-3000-30
+            - archer-midnight-3000-45
+            - archer-midnight-3000-60
+            - joby-s4-1500-30
+            - joby-s4-1500-45
+            - joby-s4-1500-60
+            - joby-s4-3000-30
+            - joby-s4-3000-45
+            - joby-s4-3000-60
+            - supernal-1500-30
+            - supernal-1500-45
+            - supernal-1500-60
+            - supernal-3000-30
+            - supernal-3000-45
+            - supernal-3000-60
+      bind:
+        stem:
+          - components[evtol].config.config_name
+
+execution:
+  workers: 3
+  est_case_seconds: 5
+  review_threshold: 20
+  guard_max_cases: 36
+
+outputs:
+  - {name: sized_mtow_kg, path: sized_mtow_kg}
+  - {name: total_mission_energy_kw_hr, path: total_mission_energy_kw_hr}
+  - {name: peak_power_kw, path: peak_power_kw}

@@ -840,6 +840,10 @@ def _extract_summary(prob, metadata: dict, mode: str) -> dict:
     if metadata.get("component_family") == "ocp":
         return _extract_ocp_summary(prob, metadata, mode)
 
+    # Dispatch to evt-specific extraction (evtolpy sizing/mission)
+    if metadata.get("component_family") == "evt":
+        return _extract_evt_summary(prob, metadata, mode)
+
     # Composite plan: extract per-component results
     if metadata.get("_composite"):
         return _extract_composite_summary(prob, metadata, mode)
@@ -881,6 +885,48 @@ def _extract_summary(prob, metadata: dict, mode: str) -> dict:
         # Single-point extraction
         pt_data = _extract_point_summary(prob, point_name, metadata, np)
         summary.update(pt_data)
+
+    return summary
+
+
+def _extract_evt_summary(prob, metadata: dict, mode: str) -> dict:
+    """Extract results from an evtolpy (evt/Sizing|Mission) run.
+
+    Scalars come from the factory's ``output_names``; the per-segment energy
+    and power tables and the component mass breakdown are re-labeled from the
+    evt result definitions so the summary mirrors the standalone evt payload.
+    """
+    import numpy as np
+
+    summary: dict = {"mode": mode, "evt_mode": metadata.get("evt_mode", "")}
+
+    for output_name in metadata.get("output_names", []):
+        try:
+            val = prob.get_val(output_name)
+            key = output_name.split(".")[-1]
+            summary[key] = float(val.flat[0]) if hasattr(val, "flat") else float(val)
+        except Exception:
+            pass
+
+    # Labeled vector tables (import lazily; evt may be absent in some envs).
+    try:
+        from hangar.evt.results import SEGMENT_KEYS, SEGMENT_LABELS, MASS_COMPONENTS
+
+        def _vec(name):
+            return np.atleast_1d(prob.get_val(name)).astype(float).tolist()
+
+        energy = _vec("segment_energy_kw_hr")
+        power = _vec("segment_power_kw")
+        masses = _vec("mass_breakdown_kg")
+        summary["segment_labels"] = dict(zip(SEGMENT_KEYS, SEGMENT_LABELS))
+        summary["energy_kw_hr"] = dict(zip(SEGMENT_KEYS, energy))
+        summary["avg_electric_power_kw"] = dict(zip(SEGMENT_KEYS, power))
+        summary["mass_breakdown_kg"] = {
+            attr: masses[i] for i, (attr, _) in enumerate(MASS_COMPONENTS)
+            if i < len(masses)
+        }
+    except Exception:
+        pass
 
     return summary
 

@@ -1,0 +1,22 @@
+# AIAA SciTech 2026 eVTOL case study -- omd reproduction (base plan).
+#
+# One evt/Sizing component that loads a complete vendored evtolpy config and
+# runs the MTOW fixed-point sizing loop. The study (../study/abu_study.yaml)
+# overrides `config_name` per case to sweep all 18 vendored configs
+# (3 vehicles x 2 altitudes x 3 ranges).
+#
+# `config_dir` is repo-root-relative; run omd from the repo root. The configs
+# are the same files Lane A/B/C of packages/evt/examples/abu_scitech_2026 use,
+# so omd reproduces the same sized-MTOW and mission-energy numbers.
+metadata:
+  id: demo-abu-scitech-2026
+  name: "ABU SciTech 2026 eVTOL sizing (omd reproduction)"
+  version: 1
+operating_points: {}
+components:
+- id: evtol
+  type: evt/Sizing
+  config:
+    config_dir: packages/evt/examples/abu_scitech_2026/cfg
+    config_name: archer-midnight-1500-30
+    record_history: true
