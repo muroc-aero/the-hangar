@@ -7,18 +7,17 @@
 # declares [project.scripts] so the shims are always created.
 #
 # Open vs full-stack clones:
-#   The committed root pyproject.toml lists only the open packages as
-#   dependencies. Closed packages (e.g. hangar-range-safety) live in
-#   private git submodules under packages/. When such a submodule is
+#   The committed root pyproject.toml lists only the core packages as
+#   dependencies. Optional packages (e.g. hangar-range-safety) live in
+#   separate git submodules under packages/. When such a submodule is
 #   present, this script switches to `uv sync --all-packages` so every
-#   workspace member found by the packages/* glob is installed. An
-#   open-only clone (no private submodule) syncs just the open packages
-#   and stays clean.
+#   workspace member found by the packages/* glob is installed. A
+#   submodule-free clone syncs just the core packages and stays clean.
 #
 # Flags:
-#   --pypi   Force open-only mode even if private submodules happen to be
-#            present (skips --all-packages). Useful for testing that an
-#            open-only checkout resolves on its own.
+#   --pypi   Force open-only mode even if optional submodules happen to be
+#            present (skips --all-packages). Useful for testing that a
+#            submodule-free checkout resolves on its own.
 
 set -e
 cd "$(dirname "$0")/.."
@@ -45,28 +44,28 @@ if [ "$NEED_UPSTREAM" = true ]; then
     bash scripts/setup-upstream.sh --required
 fi
 
-# Initialize any private submodules that are wired up but not yet checked
+# Initialize any optional submodules that are wired up but not yet checked
 # out, so their package directories are populated before uv sees them.
 if [ "$PYPI_ONLY" = false ] && [ -f .gitmodules ]; then
     echo "Initializing submodules..."
     git submodule update --init --recursive || true
 fi
 
-# A closed package is "present" when its directory contains a pyproject.
+# An optional package is "present" when its directory contains a pyproject.
 # (A wired-but-uninitialized submodule is an empty dir, which we skip.)
-PRIVATE_PRESENT=false
-for closed in packages/range-safety; do
-    if [ "$PYPI_ONLY" = false ] && [ -f "$closed/pyproject.toml" ]; then
-        PRIVATE_PRESENT=true
+SUBMODULE_PRESENT=false
+for optional in packages/range-safety; do
+    if [ "$PYPI_ONLY" = false ] && [ -f "$optional/pyproject.toml" ]; then
+        SUBMODULE_PRESENT=true
     fi
 done
 
 SYNC_ARGS=()
-if [ "$PRIVATE_PRESENT" = true ]; then
+if [ "$SUBMODULE_PRESENT" = true ]; then
     SYNC_ARGS=(--all-packages)
-    echo "Private packages detected: syncing all workspace members."
+    echo "Submodule packages detected: syncing all workspace members."
 else
-    echo "Open-only sync (no private submodules)."
+    echo "Open-only sync (no optional submodules)."
 fi
 
 echo "Syncing workspace..."

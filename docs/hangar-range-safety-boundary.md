@@ -1,7 +1,7 @@
 # the-hangar / range-safety boundary
 
-This document inventories the contract surface between the public
-`the-hangar` workspace and the private `range-safety` repo. It records
+This document inventories the contract surface between the
+`the-hangar` workspace and the separate `range-safety` repo. It records
 what `the-hangar` provides for `range-safety` to consume, and what
 `range-safety` provides back. It is the only boundary document that
 lives in `the-hangar`. The dashboard design and the build roadmap live
@@ -163,7 +163,7 @@ public side knows what is expected of it.
    `hangar-range-safety` is out of the committed root `pyproject.toml`
    workspace member list / dependency list and is added conditionally in
    `scripts/dev-setup.sh` when the submodule is present. An open-only
-   clone without the private submodule `uv sync`s cleanly.
+   clone without the range-safety submodule `uv sync`s cleanly.
 2. **Results-reader seam.** [Landed, PR #21, 2026-05-29.] The read-only
    query functions and schema constants are extracted from
    `hangar.omd.db` into `hangar-results-reader`, re-exported from

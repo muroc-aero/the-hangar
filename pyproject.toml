@@ -3,12 +3,11 @@ name = "hangar"
 version = "0.1.0"
 description = "Agentic engineering analysis tools"
 requires-python = ">=3.11"
-# Open packages only. Closed packages (e.g. hangar-range-safety) are
+# Core packages only. Optional packages (e.g. hangar-range-safety) are
 # consumed as workspace members via the packages/* glob when their
 # directory is present (e.g. checked out as a git submodule) and are
 # installed by scripts/dev-setup.sh with `uv sync --all-packages`. They
-# are intentionally absent here so an open-only clone (without the private
-# submodules) resolves cleanly.
+# are intentionally absent here so a submodule-free clone resolves cleanly.
 dependencies = [
     "hangar-sdk",
     "hangar-oas",
@@ -42,7 +41,7 @@ asyncio_mode = "auto"
 # upstream/ clones or demo artifacts. Excluded on purpose:
 # - packages/*/examples/*/tests: parity suites with per-example sys.path
 #   setup (colliding `shared` modules); run each directory explicitly.
-# - packages/range-safety/tests: private submodule, tested in its own repo;
+# - packages/range-safety/tests: separate submodule, tested in its own repo;
 #   its `tests` package name collides with packages/omd/tests.
 testpaths = [
     "packages/sdk/tests",

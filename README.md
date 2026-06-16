@@ -73,9 +73,9 @@ This copies the CLI-guide skills from each package into `.claude/skills/` where 
 | `hangar-results-reader` | `hangar.results_reader` | Read-only access to omd run results for downstream consumers (e.g. dashboards) | -- |
 | `hangar-viewer` | `hangar.viewer` | Unified provenance viewer for Hangar tool servers | `hangar-viewer` |
 
-`packages/range-safety/` is a git submodule pointing at a private repo
-(range-safety validators and study dashboard); it is absent on a plain
-clone and not required for any of the public packages.
+`packages/range-safety/` is a git submodule pointing at the separate
+`range-safety` repo (range-safety validators and study dashboard); it is
+absent on a plain clone and not required for any of the other packages.
 
 These packages are not on PyPI. Install from the repo:
 
@@ -107,7 +107,7 @@ the-hangar/
 │   │   └── src/hangar/omd/
 │   ├── results-reader/         # hangar-results-reader (omd results access)
 │   │   └── src/hangar/results_reader/
-│   ├── range-safety/           # private submodule (absent on plain clones)
+│   ├── range-safety/           # submodule (absent on plain clones)
 │   └── viewer/                 # hangar-viewer (provenance viewer)
 │       └── src/hangar/viewer/
 ├── skills/                     # cross-tool workflow skills
