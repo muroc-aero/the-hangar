@@ -60,6 +60,7 @@ Load these on demand; `SKILL.md` is the index:
 | OAS specifics (mesh, wingbox multipoint) | `oas-specifics.md` | Building any `oas/AeroPoint`, `oas/AerostructPoint`, or `oas/AerostructMultipoint` plan |
 | OCP specifics (custom aircraft data, solver settings) | `ocp-specifics.md` | Defining inline `aircraft_data` instead of a template; tuning OCP mission solver settings |
 | pyCycle specifics (operating points, plot types) | `pycycle-specifics.md` | Running any `pyc/*` design or multipoint plan |
+| evt specifics (config resolution, sizing vs mission, native gradients, plot types) | `evt-specifics.md` | Running any `evt/*` plan; loading an evtolpy JSON config; choosing `evt/Sizing` vs `evt/Mission` vs `evt/SizingFD`; optimizing through the MTOW loop |
 | Example workflows | `examples/` | `oas_aero_workflow.md`, `oas_aerostruct_workflow.md`, `paraboloid_workflow.md` — end-to-end worked examples |
 
 ## Study Directory Convention
@@ -119,6 +120,9 @@ hangar_studies/my-plan/
 | `pyc/SingleTurboshaftDesign` | Single-spool turboshaft design point |
 | `pyc/MultiTurboshaftDesign` | Multi-spool turboshaft design point |
 | `pyc/MixedFlowDesign` | Mixed-flow turbofan design point |
+| `evt/Sizing` | eVTOL MTOW-closure sizing (native OpenMDAO, analytic gradients) |
+| `evt/Mission` | eVTOL as-configured mission energy (native, no MTOW loop) |
+| `evt/SizingFD` | eVTOL sizing via the gradient-free evtolpy black box (FD fallback) |
 
 ## Unit Conventions
 
@@ -129,6 +133,7 @@ unless a component type documents otherwise.
 |-----------------|---------------|
 | OAS (oas/*) | SI: velocity in m/s, density (rho) in kg/m^3, angles in deg, lengths in m |
 | OCP (ocp/*) | Mixed: mission_params use suffixed names -- `cruise_altitude_ft` (feet), `mission_range_NM` (nautical miles), `climb_vs_ftmin` (ft/min), `climb_Ueas_kn` (knots). Results are returned in kg for mass, m for distance. |
+| evt (evt/*) | Unit suffix is in the name (evtolpy convention): `*_kg` mass, `*_m` length, `*_m_p_s` speed, `*_kw`/`*_kw_hr` power/energy, `*_w_h_p_kg` battery specific energy. Set values in the suffixed unit; no conversion happens. See `evt-specifics.md`. |
 
 Operating point values can optionally include units:
 
