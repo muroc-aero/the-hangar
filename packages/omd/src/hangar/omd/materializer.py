@@ -134,9 +134,11 @@ def materialize(
     if has_optimization:
         _configure_driver(prob, plan, metadata)
 
-    # Setup the problem (skip if factory already called setup)
+    # Setup the problem (skip if factory already called setup). Components that
+    # declare complex-step partials (e.g. the native evt model) need complex
+    # vectors allocated; the factory signals this via ``force_alloc_complex``.
     if not setup_done:
-        prob.setup()
+        prob.setup(force_alloc_complex=bool(metadata.get("force_alloc_complex")))
 
     # Validate connection units for composite problems
     if metadata.get("_composite"):

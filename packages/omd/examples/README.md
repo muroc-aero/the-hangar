@@ -25,6 +25,7 @@ The agent's output should match Lane A and Lane B.
 | `ocp_hybrid_twin/` | Mission | King Air series-hybrid electric mission |
 | `oas_ocp_combined/` | Composite | OAS wing + OCP mission side-by-side (uncoupled) |
 | `ocp_oas_coupled/` | Slot-coupled | OCP mission with OAS VLM drag via slot system |
+| `evt_native_sizing/` | Sizing | Native (gradient-capable) eVTOL MTOW closure sizing |
 
 ## Prerequisites
 

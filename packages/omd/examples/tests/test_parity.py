@@ -360,6 +360,46 @@ class TestOCPOASDirectCoupledParity:
         )
 
 
+class TestEvtNativeSizingParity:
+
+    @pytest.mark.slow
+    def test_sizing_parity(self, tmp_path):
+        sys.path.insert(0, str(EXAMPLES_DIR / "evt_native_sizing"))
+        from evt_native_sizing.lane_a.sizing import run as lane_a_run
+        from evt_native_sizing.shared import GOLDEN, TOL_GOLDEN, TOL_PARITY
+
+        lane_a = lane_a_run()
+
+        # config_dir in the plan is repo-root-relative; pytest runs from there.
+        plan_path = EXAMPLES_DIR / "evt_native_sizing" / "lane_b" / "sizing" / "plan.yaml"
+        result = run_plan(plan_path, mode="analysis", recording_level="minimal",
+                          db_path=tmp_path / "analysis.db")
+
+        keys = ["sized_mtow_kg", "total_mission_energy_kw_hr", "peak_power_kw"]
+        _print_comparison("Native eVTOL Sizing (Archer Midnight)", lane_a,
+                          result["summary"], keys=keys)
+
+        assert result["status"] in ("completed", "converged")
+        assert result["summary"]["converged"] == 1.0
+        # Lane B drives the same native problem -> agree to round-off.
+        for k in keys:
+            assert result["summary"][k] == pytest.approx(lane_a[k], **TOL_PARITY)
+        # Physics anchor: the native model reproduces the evtolpy golden values.
+        for k, gold in GOLDEN.items():
+            assert lane_a[k] == pytest.approx(gold, **TOL_GOLDEN)
+
+    @pytest.mark.slow
+    def test_analytic_gradient_matches_fd(self):
+        sys.path.insert(0, str(EXAMPLES_DIR / "evt_native_sizing"))
+        from evt_native_sizing.lane_a.sizing import run_gradient
+        from evt_native_sizing.shared import TOL_GRADIENT
+
+        grad = run_gradient()
+        # The native model's headline capability: analytic d(MTOW)/d(payload)
+        # through the implicit closure agrees with a finite difference.
+        assert grad["analytic"] == pytest.approx(grad["fd"], **TOL_GRADIENT)
+
+
 class TestOCPThreeToolParity:
 
     @pytest.mark.slow

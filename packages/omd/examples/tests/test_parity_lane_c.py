@@ -224,3 +224,40 @@ class TestOCPOASCoupledLaneC:
         assert summary["fuel_burn_kg"] == pytest.approx(
             lane_a["fuel_burn_kg"], rel=1e-3,
         )
+
+
+class TestEvtNativeSizingLaneC:
+
+    @pytest.mark.slow
+    async def test_sizing_parity(self):
+        sys.path.insert(0, str(EXAMPLES_DIR / "evt_native_sizing"))
+        from evt_native_sizing.lane_a.sizing import run as lane_a_run
+        from evt_native_sizing.shared import CONFIG_DIR, CONFIG_NAME, TOL_PARITY
+
+        lane_a = lane_a_run()
+
+        await plan_init(
+            "lane-c-evt-native", plan_id="lane-c-evt-native",
+            name="Native eVTOL sizing (Lane C tool surface)",
+        )
+        await plan_add_component(
+            "lane-c-evt-native", comp_id="evtol",
+            comp_type="evt/Sizing",
+            config={
+                "config_dir": CONFIG_DIR,
+                "config_name": CONFIG_NAME,
+                "solver": "newton",
+            },
+        )
+        plan_yaml = await _assemble_and_validate("lane-c-evt-native")
+
+        env = await run_plan(plan_yaml, mode="analysis")
+        summary = _summary(env)
+
+        keys = ["sized_mtow_kg", "total_mission_energy_kw_hr", "peak_power_kw"]
+        _print_comparison("Native eVTOL Sizing (Lane C)", lane_a, summary,
+                          keys=keys)
+
+        assert summary["converged"] == 1.0
+        for k in keys:
+            assert summary[k] == pytest.approx(lane_a[k], **TOL_PARITY)

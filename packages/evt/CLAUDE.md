@@ -31,6 +31,18 @@ tool server for electric VTOL aircraft sizing and mission-energy analysis.
 - `test_all` -- lift+cruise eVTOL reference (6 lift + 6 tilt rotors + 1 pusher,
   3175 kg initial MTOW); the upstream `test-all.json` baseline used for parity.
 
+## Native OpenMDAO model (omd integration)
+
+The omd `evt/Sizing` and `evt/Mission` factories build a **native** OpenMDAO
+formulation of evtolpy that lives in `hangar.omd.evt` (not in this package), so
+eVTOL sizing runs with analytic (complex-step) gradients and can be coupled into
+a single converged solver. It is a faithful transcription of upstream evtolpy
+and matches this package's black box (`omd_component.EvtolSizingComp`) to
+floating point. The black box stays as `evt/SizingFD` (FD fallback / parity
+oracle). The MCP tools and CLI in this package still use the black box directly.
+See `docs/native-openmdao-rewrite-implementation-plan.md` and the parity suite
+`examples/native_parity/`.
+
 ## Upstream packaging
 
 evtolpy ships no `pyproject.toml`. `scripts/evtolpy-packaging.patch` adds one to
