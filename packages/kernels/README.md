@@ -150,3 +150,45 @@ Takeaways that generalize:
 - **Analysis mode (no gradients):** porting the primal alone → 20–150×.
 - **Gradient-based optimization:** port the analytic Jacobian too; complex-step
   through a fast primal is a trap when upstream already differentiates analytically.
+
+## Reality check: time impact in a *full* OAS optimization
+
+The component microbenchmarks above are real but in isolation. The honest
+question is what a kernel does to a whole run. `bench_oas_aerostruct.py` runs the
+canonical tube-model aerostruct optimization (DVs: twist, thickness, alpha;
+objective: fuelburn) stock vs. with `VonMisesTube` monkeypatched to the Rust
+kernels, and profiles the stock run.
+
+| mesh (ny×nx) | elems | stock | rust | speedup | **VonMises % of run** | fuelburn match |
+|---|---:|---:|---:|---:|---:|---:|
+| 5×2 | 4 | 3.35 s | 3.25 s | 1.03× | **1.19%** | rel 2e-15 |
+| 15×3 | 14 | 11.98 s | 11.44 s | 1.05× | **2.34%** | rel 6e-15 |
+| 25×5 | 24 | 112.2 s | 115.6 s | 0.97× | **0.58%** | rel 4e-14 |
+
+Two results, and the second is the point:
+
+1. **Correctness holds inside a real coupled optimization** — the optimized
+   fuelburn is identical to machine precision (rel 1e-14…1e-15) with the kernels
+   swapped in. The drop-in is faithful, not just in a unit test.
+2. **A 2.3× component speedup is invisible end-to-end** (1.0–1.05×), because
+   `VonMisesTube` is only **0.6–2.3% of the run**. Amdahl's law in its cruelest
+   form: making 1% of the work 2.3× faster moves the total by ~0.5%. The
+   microbenchmarks weren't wrong — the component just doesn't dominate the clock.
+
+**So: profile the full run *before* picking a kernel.** `VonMisesTube` was the
+right choice to *prove the technique* (cleanest loop, the analytic-Jacobian
+lesson) and the wrong choice to *move the wall clock*. The stock profile (15×3)
+shows where the time actually goes:
+
+| share | where | portable under strategy 2? |
+|---|---|---|
+| ~2.7 s | `EvalVelMtx.compute` (VLM AIC assembly) — dominated by `np.cross` (30k calls; ~half its cost is numpy's `moveaxis`/`normalize_axis_tuple` axis machinery) + `einsum` | **yes — the real target** |
+| ~2.7 s | scipy SuperLU `gstrf` + `solve` (FEM/coupled LU) | no — already optimal C |
+| ~2.0 s | OpenMDAO `subjac._apply_fwd_input` (linear-solve mat-vec) | no — framework |
+| — | `VonMisesTube` | not in the top 18 |
+
+The actionable conclusion: the kernel worth porting for wall-clock is
+**`EvalVelMtx`** (the VLM AIC / Biot–Savart assembly) — ~18%+ of the run, much of
+it pure `np.cross` overhead a native loop erases — and its primal already lives
+in this package (`assemble_aic`). The remaining time is the sparse LU solve and
+OpenMDAO's own machinery, neither of which strategy 2 touches.
