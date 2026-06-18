@@ -217,6 +217,52 @@ fn rows6<T: numpy::Element + Copy>(a: &numpy::ndarray::ArrayView2<T>) -> Vec<[T;
         .collect()
 }
 
+fn vm_element<T: Scalar>(
+    p0: [T; 3],
+    p1: [T; 3],
+    rad: T,
+    d0: [T; 6],
+    d1: [T; 6],
+    e_mod: f64,
+    g_mod: f64,
+) -> [T; 2] {
+    let x_gl = [T::splat(1.0), T::ZERO, T::ZERO];
+    let e = T::splat(e_mod);
+    let g = T::splat(g_mod);
+    let three = T::splat(3.0);
+
+    let d = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
+    let l = dot(d, d).sqrt();
+    let x_loc = unit(d);
+    let y_loc = unit(cross(x_loc, x_gl));
+    let z_loc = unit(cross(x_loc, y_loc));
+
+    let u0 = [d0[0], d0[1], d0[2]];
+    let r0 = [d0[3], d0[4], d0[5]];
+    let u1 = [d1[0], d1[1], d1[2]];
+    let r1 = [d1[3], d1[4], d1[5]];
+
+    let u0x = dot(x_loc, u0);
+    let u1x = dot(x_loc, u1);
+    let r0x = dot(x_loc, r0);
+    let r0y = dot(y_loc, r0);
+    let r0z = dot(z_loc, r0);
+    let r1x = dot(x_loc, r1);
+    let r1y = dot(y_loc, r1);
+    let r1z = dot(z_loc, r1);
+
+    let dy = r1y - r0y;
+    let dz = r1z - r0z;
+    let tmp = (dy * dy + dz * dz).sqrt();
+    let sxx0 = e * (u1x - u0x) / l + e * rad / l * tmp;
+    let sxx1 = e * (u0x - u1x) / l + e * rad / l * tmp;
+    let sxt = g * rad * (r1x - r0x) / l;
+    [
+        (sxx0 * sxx0 + three * sxt * sxt).sqrt(),
+        (sxx1 * sxx1 + three * sxt * sxt).sqrt(),
+    ]
+}
+
 fn vonmises_tube_generic<T: Scalar>(
     nodes: &[[T; 3]],
     radius: &[T],
@@ -224,47 +270,12 @@ fn vonmises_tube_generic<T: Scalar>(
     e_mod: f64,
     g_mod: f64,
 ) -> Vec<T> {
-    let x_gl = [T::splat(1.0), T::ZERO, T::ZERO];
-    let e = T::splat(e_mod);
-    let g = T::splat(g_mod);
-    let three = T::splat(3.0);
     let num_elems = nodes.len() - 1;
     let mut out = vec![T::ZERO; num_elems * 2];
     for i in 0..num_elems {
-        let p0 = nodes[i];
-        let p1 = nodes[i + 1];
-        let d = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
-        let l = dot(d, d).sqrt();
-        let x_loc = unit(d);
-        let y_loc = unit(cross(x_loc, x_gl));
-        let z_loc = unit(cross(x_loc, y_loc));
-
-        let d0 = disp[i];
-        let d1 = disp[i + 1];
-        let u0 = [d0[0], d0[1], d0[2]];
-        let r0 = [d0[3], d0[4], d0[5]];
-        let u1 = [d1[0], d1[1], d1[2]];
-        let r1 = [d1[3], d1[4], d1[5]];
-
-        let u0x = dot(x_loc, u0);
-        let u1x = dot(x_loc, u1);
-        let r0x = dot(x_loc, r0);
-        let r0y = dot(y_loc, r0);
-        let r0z = dot(z_loc, r0);
-        let r1x = dot(x_loc, r1);
-        let r1y = dot(y_loc, r1);
-        let r1z = dot(z_loc, r1);
-
-        let dy = r1y - r0y;
-        let dz = r1z - r0z;
-        let tmp = (dy * dy + dz * dz).sqrt();
-        let rad = radius[i];
-        let sxx0 = e * (u1x - u0x) / l + e * rad / l * tmp;
-        let sxx1 = e * (u0x - u1x) / l + e * rad / l * tmp;
-        let sxt = g * rad * (r1x - r0x) / l;
-
-        out[2 * i] = (sxx0 * sxx0 + three * sxt * sxt).sqrt();
-        out[2 * i + 1] = (sxx1 * sxx1 + three * sxt * sxt).sqrt();
+        let vm = vm_element(nodes[i], nodes[i + 1], radius[i], disp[i], disp[i + 1], e_mod, g_mod);
+        out[2 * i] = vm[0];
+        out[2 * i + 1] = vm[1];
     }
     out
 }
@@ -303,12 +314,90 @@ fn vonmises_tube_cs<'py>(
     Array2::from_shape_vec((ne, 2), data).unwrap().into_pyarray_bound(py)
 }
 
+/// Exact sparse Jacobian of VonMisesTube via per-element local complex-step,
+/// done entirely in Rust (no pyo3 boundary per perturbation, no OpenMDAO
+/// global complex-step). Each element's 2 stresses depend on only 19 local
+/// inputs, so we complex-step those 19 and emit data arrays matching the
+/// sparse rows/cols the OpenMDAO component declares (upstream layout):
+///   d/dnodes : 12 per elem  [dvm0/dP0, dvm0/dP1, dvm1/dP0, dvm1/dP1]
+///   d/dradius:  2 per elem  [dvm0/drad, dvm1/drad]
+///   d/ddisp  : 24 per elem  [dvm0/dd0, dvm0/dd1, dvm1/dd0, dvm1/dd1]
+#[pyfunction]
+fn vonmises_tube_jac<'py>(
+    py: Python<'py>,
+    nodes: PyReadonlyArray2<'py, f64>,
+    radius: PyReadonlyArray1<'py, f64>,
+    disp: PyReadonlyArray2<'py, f64>,
+    e_mod: f64,
+    g_mod: f64,
+) -> (
+    Bound<'py, PyArray1<f64>>,
+    Bound<'py, PyArray1<f64>>,
+    Bound<'py, PyArray1<f64>>,
+) {
+    let nd = rows3(&nodes.as_array());
+    let rad = radius.as_array().to_vec();
+    let dp = rows6(&disp.as_array());
+    let ne = nd.len() - 1;
+    const H: f64 = 1e-30;
+    let ih = Complex64::new(0.0, H);
+    let cf = |x: f64| Complex64::new(x, 0.0);
+
+    let mut jn = vec![0.0f64; 12 * ne];
+    let mut jr = vec![0.0f64; 2 * ne];
+    let mut jd = vec![0.0f64; 24 * ne];
+
+    for i in 0..ne {
+        let p0 = [cf(nd[i][0]), cf(nd[i][1]), cf(nd[i][2])];
+        let p1 = [cf(nd[i + 1][0]), cf(nd[i + 1][1]), cf(nd[i + 1][2])];
+        let r = cf(rad[i]);
+        let d0 = [cf(dp[i][0]), cf(dp[i][1]), cf(dp[i][2]), cf(dp[i][3]), cf(dp[i][4]), cf(dp[i][5])];
+        let d1 = [cf(dp[i + 1][0]), cf(dp[i + 1][1]), cf(dp[i + 1][2]), cf(dp[i + 1][3]), cf(dp[i + 1][4]), cf(dp[i + 1][5])];
+
+        for c in 0..3 {
+            let mut pp = p0; pp[c] = pp[c] + ih;
+            let vm = vm_element(pp, p1, r, d0, d1, e_mod, g_mod);
+            jn[12 * i + c] = vm[0].im / H;
+            jn[12 * i + 6 + c] = vm[1].im / H;
+        }
+        for c in 0..3 {
+            let mut pp = p1; pp[c] = pp[c] + ih;
+            let vm = vm_element(p0, pp, r, d0, d1, e_mod, g_mod);
+            jn[12 * i + 3 + c] = vm[0].im / H;
+            jn[12 * i + 9 + c] = vm[1].im / H;
+        }
+        {
+            let vm = vm_element(p0, p1, r + ih, d0, d1, e_mod, g_mod);
+            jr[2 * i] = vm[0].im / H;
+            jr[2 * i + 1] = vm[1].im / H;
+        }
+        for c in 0..6 {
+            let mut dd = d0; dd[c] = dd[c] + ih;
+            let vm = vm_element(p0, p1, r, dd, d1, e_mod, g_mod);
+            jd[24 * i + c] = vm[0].im / H;
+            jd[24 * i + 12 + c] = vm[1].im / H;
+        }
+        for c in 0..6 {
+            let mut dd = d1; dd[c] = dd[c] + ih;
+            let vm = vm_element(p0, p1, r, d0, dd, e_mod, g_mod);
+            jd[24 * i + 6 + c] = vm[0].im / H;
+            jd[24 * i + 18 + c] = vm[1].im / H;
+        }
+    }
+    (
+        jn.into_pyarray_bound(py),
+        jr.into_pyarray_bound(py),
+        jd.into_pyarray_bound(py),
+    )
+}
+
 #[pymodule]
 fn hangar_kernels(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(vec_add, m)?)?;
     m.add_function(wrap_pyfunction!(segment_vel, m)?)?;
     m.add_function(wrap_pyfunction!(vonmises_tube, m)?)?;
     m.add_function(wrap_pyfunction!(vonmises_tube_cs, m)?)?;
+    m.add_function(wrap_pyfunction!(vonmises_tube_jac, m)?)?;
     m.add_function(wrap_pyfunction!(assemble_aic, m)?)?;
     m.add_function(wrap_pyfunction!(assemble_aic_par, m)?)?;
     m.add_function(wrap_pyfunction!(assemble_aic_cs, m)?)?;

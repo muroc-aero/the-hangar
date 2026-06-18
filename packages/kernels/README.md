@@ -110,28 +110,43 @@ OAS component as golden reference: the Rust primal matches OAS's `compute`, and
 the complex-step-through-Rust Jacobian matches OAS's analytic `compute_partials`
 to a relative error < 1e-7.
 
-Measured (`bench_vonmises.py`), Rust drop-in vs the upstream OAS component:
+Three drop-in variants are measured (`bench_vonmises.py`) against the upstream
+OAS component, which uses hand-coded analytic partials:
 
-| ny | elems | `compute` (primal) | `compute_totals` (derivatives) |
-|---:|---:|---:|---:|
-| 21 | 20 | **22.6×** | 0.9× |
-| 51 | 50 | **46.3×** | 0.9× |
-| 101 | 100 | **93.3×** | 0.7× |
-| 201 | 200 | **156.9×** | 0.5× |
+| ny | elems | `compute` (primal) | `compute_totals` — **rust-cs** | `compute_totals` — **rust-analytic** |
+|---:|---:|---:|---:|---:|
+| 21 | 20 | **22.6×** | 1.1× | **2.5×** |
+| 51 | 50 | **46.3×** | 1.0× | **2.3×** |
+| 101 | 100 | **93.3×** | 0.7× | **2.2×** |
+| 201 | 200 | **156.9×** | 0.6× | **2.1×** |
 
-**The lesson — and it refines the AIC story:** the primal is a huge win (20–150×,
-growing with element count), but **end-to-end derivatives via complex-step are a
-net *loss* here (0.5–0.9×)**. Why: complex-step re-runs the primal once per input
-direction (nodes + radius + disp ≈ 10·ny directions ≈ 2000 at ny=201), while
-upstream computes the whole Jacobian in *one* analytic pass. Even a 100×-faster
-primal can't outrun 2000 complex evaluations versus one analytic sweep.
+**The lesson — and it refines the AIC story.** The primal is a huge win (20–150×,
+growing with element count). But end-to-end *derivatives* depend entirely on how
+you compute them:
 
-So the win depends on how the component is used:
-- **Analysis mode (no gradients):** port the primal → 20–150× immediately.
-- **Gradient-based optimization:** porting the primal alone is *not enough* — you
-  must also port the analytic `compute_partials` loop to Rust to beat upstream.
-  (The AIC kernel won end-to-end only because that comparison was complex-step on
-  both sides; against a hand-coded analytic Jacobian the bar is higher.)
+- **`rust-cs`** (Rust primal, derivatives via OpenMDAO global complex-step) is a
+  net **loss** (0.6–1.1×). Complex-step re-runs the primal once per input
+  direction (nodes+radius+disp ≈ 10·ny ≈ 2000 at ny=201), while upstream gets the
+  whole Jacobian in one analytic pass. A 100×-faster primal can't outrun 2000
+  complex evaluations vs one analytic sweep.
+- **`rust-analytic`** (Rust primal **+ Rust sparse Jacobian**) is a **2.1–2.5×
+  win** over upstream's already-analytic partials, validated to rel error < 1e-7.
 
-The analytic-partials port is the obvious follow-up that turns the 0.5–0.9× into
-an end-to-end win for optimization.
+How the Rust Jacobian is built without hand-transcribing 160 lines of chain rule:
+each element's two stresses depend on only **19 local inputs** (2 nodes, 1 radius,
+2×6 disp), so `vonmises_tube_jac` complex-steps those 19 *inside Rust* per element
+and emits the block-sparse data arrays matching the rows/cols the component
+declares. Exact to machine precision, fully native, no pyo3 boundary per
+perturbation and no OpenMDAO global complex-step.
+
+Why "only" ~2.3× end-to-end (not 20×)? Because `compute_totals` also pays
+OpenMDAO's framework overhead — linearization bookkeeping and the
+unified-derivatives solve over the sparse Jacobian — which strategy 2 leaves in
+Python. The kernel math is now a small fraction of the total, so that framework
+cost is the ceiling. 2.3× over an *already-analytic* upstream is the honest,
+real win.
+
+Takeaways that generalize:
+- **Analysis mode (no gradients):** porting the primal alone → 20–150×.
+- **Gradient-based optimization:** port the analytic Jacobian too; complex-step
+  through a fast primal is a trap when upstream already differentiates analytically.

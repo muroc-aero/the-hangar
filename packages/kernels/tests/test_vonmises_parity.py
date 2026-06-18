@@ -90,6 +90,57 @@ class VonMisesTubeRust(om.ExplicitComponent):
             outputs["vonmises"] = rk.vonmises_tube(n, r, d, E, G)
 
 
+def _vm_sparse_pattern(ny):
+    """Sparse rows/cols for the block-diagonal Jacobian (upstream layout)."""
+    row = np.concatenate([np.zeros(6), np.ones(6)])
+    n_rows = np.tile(row, ny - 1) + np.repeat(2 * np.arange(ny - 1), 12)
+    n_cols = np.tile(np.tile(np.arange(6), 2), ny - 1) + np.repeat(3 * np.arange(ny - 1), 12)
+    r_rows = np.arange(2 * (ny - 1))
+    r_cols = np.repeat(np.arange(ny - 1), 2)
+    row = np.concatenate([np.zeros(12), np.ones(12)])
+    d_rows = np.tile(row, ny - 1) + np.repeat(2 * np.arange(ny - 1), 24)
+    d_cols = np.tile(np.tile(np.arange(12), 2), ny - 1) + np.repeat(6 * np.arange(ny - 1), 24)
+    return (n_rows, n_cols), (r_rows, r_cols), (d_rows, d_cols)
+
+
+class VonMisesTubeRustAnalytic(om.ExplicitComponent):
+    """Fully native: Rust primal + Rust sparse Jacobian (per-element local
+    complex-step inside Rust). No OpenMDAO global complex-step."""
+
+    def initialize(self):
+        self.options.declare("ny")
+        self.options.declare("E", default=E_AL)
+        self.options.declare("G", default=G_AL)
+
+    def setup(self):
+        ny = self.options["ny"]
+        self.add_input("nodes", val=np.zeros((ny, 3)))
+        self.add_input("radius", val=np.zeros(ny - 1))
+        self.add_input("disp", val=np.zeros((ny, 6)))
+        self.add_output("vonmises", val=np.zeros((ny - 1, 2)))
+        (nr, nc), (rr, rc), (dr, dc) = _vm_sparse_pattern(ny)
+        self.declare_partials("vonmises", "nodes", rows=nr, cols=nc)
+        self.declare_partials("vonmises", "radius", rows=rr, cols=rc)
+        self.declare_partials("vonmises", "disp", rows=dr, cols=dc)
+
+    def compute(self, inputs, outputs):
+        outputs["vonmises"] = rk.vonmises_tube(
+            np.ascontiguousarray(inputs["nodes"]),
+            np.ascontiguousarray(inputs["radius"]),
+            np.ascontiguousarray(inputs["disp"]),
+            self.options["E"], self.options["G"])
+
+    def compute_partials(self, inputs, partials):
+        jn, jr, jd = rk.vonmises_tube_jac(
+            np.ascontiguousarray(inputs["nodes"]),
+            np.ascontiguousarray(inputs["radius"]),
+            np.ascontiguousarray(inputs["disp"]),
+            self.options["E"], self.options["G"])
+        partials["vonmises", "nodes"] = jn
+        partials["vonmises", "radius"] = jr
+        partials["vonmises", "disp"] = jd
+
+
 def _build_rust(ny):
     p = om.Problem()
     p.model.add_subsystem("vm", VonMisesTubeRust(ny=ny), promotes=["*"])
@@ -136,6 +187,28 @@ def test_complex_step_jacobian_matches_oas_analytic():
 
     p_rust = _build_rust(ny); _set(p_rust, nodes, radius, disp); p_rust.run_model()
     Jr = p_rust.compute_totals(of=["vonmises"], wrt=wrt)
+
+    p_oas = _build_oas(ny); _set(p_oas, nodes, radius, disp); p_oas.run_model()
+    Jo = p_oas.compute_totals(of=["vonmises"], wrt=wrt)
+
+    for k in wrt:
+        a, b = Jr["vonmises", k], Jo["vonmises", k]
+        rel = np.linalg.norm(a - b) / (np.linalg.norm(b) + 1e-30)
+        assert rel < 1e-7, f"{k}: relative jacobian error {rel:.2e}"
+
+
+def test_native_analytic_jacobian_matches_oas():
+    """The fully-native component's Jacobian (Rust local-CS) matches OAS's
+    hand-coded analytic compute_partials to machine precision."""
+    ny = 21
+    nodes, radius, disp = make_case(ny)
+    wrt = ["nodes", "radius", "disp"]
+
+    p = om.Problem()
+    p.model.add_subsystem("vm", VonMisesTubeRustAnalytic(ny=ny), promotes=["*"])
+    p.setup()
+    _set(p, nodes, radius, disp); p.run_model()
+    Jr = p.compute_totals(of=["vonmises"], wrt=wrt)
 
     p_oas = _build_oas(ny); _set(p_oas, nodes, radius, disp); p_oas.run_model()
     Jo = p_oas.compute_totals(of=["vonmises"], wrt=wrt)
