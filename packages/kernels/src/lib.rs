@@ -198,10 +198,117 @@ fn assemble_aic_cs<'py>(
     Array2::from_shape_vec((n, n), data).unwrap().into_pyarray_bound(py)
 }
 
+// ======================================================================
+// VonMisesTube -- OAS structures/vonmises_tube.py. Per-element FEM stress:
+// build the local frame, rotate the end displacements/rotations into it,
+// and form the axial + torsional von Mises stress at each element end.
+// Generic over scalar so complex-step runs through Rust (the upstream
+// `compute` flips to complex via `under_complex_step`).
+// ======================================================================
+#[inline]
+fn unit<T: Scalar>(v: [T; 3]) -> [T; 3] {
+    let n = dot(v, v).sqrt();
+    [v[0] / n, v[1] / n, v[2] / n]
+}
+
+fn rows6<T: numpy::Element + Copy>(a: &numpy::ndarray::ArrayView2<T>) -> Vec<[T; 6]> {
+    (0..a.shape()[0])
+        .map(|i| [a[[i, 0]], a[[i, 1]], a[[i, 2]], a[[i, 3]], a[[i, 4]], a[[i, 5]]])
+        .collect()
+}
+
+fn vonmises_tube_generic<T: Scalar>(
+    nodes: &[[T; 3]],
+    radius: &[T],
+    disp: &[[T; 6]],
+    e_mod: f64,
+    g_mod: f64,
+) -> Vec<T> {
+    let x_gl = [T::splat(1.0), T::ZERO, T::ZERO];
+    let e = T::splat(e_mod);
+    let g = T::splat(g_mod);
+    let three = T::splat(3.0);
+    let num_elems = nodes.len() - 1;
+    let mut out = vec![T::ZERO; num_elems * 2];
+    for i in 0..num_elems {
+        let p0 = nodes[i];
+        let p1 = nodes[i + 1];
+        let d = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
+        let l = dot(d, d).sqrt();
+        let x_loc = unit(d);
+        let y_loc = unit(cross(x_loc, x_gl));
+        let z_loc = unit(cross(x_loc, y_loc));
+
+        let d0 = disp[i];
+        let d1 = disp[i + 1];
+        let u0 = [d0[0], d0[1], d0[2]];
+        let r0 = [d0[3], d0[4], d0[5]];
+        let u1 = [d1[0], d1[1], d1[2]];
+        let r1 = [d1[3], d1[4], d1[5]];
+
+        let u0x = dot(x_loc, u0);
+        let u1x = dot(x_loc, u1);
+        let r0x = dot(x_loc, r0);
+        let r0y = dot(y_loc, r0);
+        let r0z = dot(z_loc, r0);
+        let r1x = dot(x_loc, r1);
+        let r1y = dot(y_loc, r1);
+        let r1z = dot(z_loc, r1);
+
+        let dy = r1y - r0y;
+        let dz = r1z - r0z;
+        let tmp = (dy * dy + dz * dz).sqrt();
+        let rad = radius[i];
+        let sxx0 = e * (u1x - u0x) / l + e * rad / l * tmp;
+        let sxx1 = e * (u0x - u1x) / l + e * rad / l * tmp;
+        let sxt = g * rad * (r1x - r0x) / l;
+
+        out[2 * i] = (sxx0 * sxx0 + three * sxt * sxt).sqrt();
+        out[2 * i + 1] = (sxx1 * sxx1 + three * sxt * sxt).sqrt();
+    }
+    out
+}
+
+#[pyfunction]
+fn vonmises_tube<'py>(
+    py: Python<'py>,
+    nodes: PyReadonlyArray2<'py, f64>,
+    radius: PyReadonlyArray1<'py, f64>,
+    disp: PyReadonlyArray2<'py, f64>,
+    e_mod: f64,
+    g_mod: f64,
+) -> Bound<'py, PyArray2<f64>> {
+    let nd = rows3(&nodes.as_array());
+    let rad = radius.as_array().to_vec();
+    let dp = rows6(&disp.as_array());
+    let ne = nd.len() - 1;
+    let data = vonmises_tube_generic(&nd, &rad, &dp, e_mod, g_mod);
+    Array2::from_shape_vec((ne, 2), data).unwrap().into_pyarray_bound(py)
+}
+
+#[pyfunction]
+fn vonmises_tube_cs<'py>(
+    py: Python<'py>,
+    nodes: PyReadonlyArray2<'py, Complex64>,
+    radius: PyReadonlyArray1<'py, Complex64>,
+    disp: PyReadonlyArray2<'py, Complex64>,
+    e_mod: f64,
+    g_mod: f64,
+) -> Bound<'py, PyArray2<Complex64>> {
+    let nd = rows3(&nodes.as_array());
+    let rad = radius.as_array().to_vec();
+    let dp = rows6(&disp.as_array());
+    let ne = nd.len() - 1;
+    let data = vonmises_tube_generic(&nd, &rad, &dp, e_mod, g_mod);
+    Array2::from_shape_vec((ne, 2), data).unwrap().into_pyarray_bound(py)
+}
+
 #[pymodule]
 fn hangar_kernels(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(vec_add, m)?)?;
     m.add_function(wrap_pyfunction!(segment_vel, m)?)?;
+    m.add_function(wrap_pyfunction!(vonmises_tube, m)?)?;
+    m.add_function(wrap_pyfunction!(vonmises_tube_cs, m)?)?;
     m.add_function(wrap_pyfunction!(assemble_aic, m)?)?;
     m.add_function(wrap_pyfunction!(assemble_aic_par, m)?)?;
     m.add_function(wrap_pyfunction!(assemble_aic_cs, m)?)?;

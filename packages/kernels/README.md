@@ -1,10 +1,13 @@
 # hangar-kernels — native Rust hot kernels (proof of concept)
 
-A small, self-contained experiment: take the single hottest numerical kernel in
-the OAS VLM path — assembling the N×N aerodynamic influence-coefficient (AIC)
-matrix (Biot–Savart from every ring vortex onto every collocation point, OAS's
-`EvalVelMtx`) — and reimplement it in Rust behind pyo3, then prove it is a true
-drop-in inside an OpenMDAO `ExplicitComponent`.
+A small, self-contained experiment: take the hottest numerical kernels in the
+OAS path and reimplement them in Rust behind pyo3, then prove each is a true
+drop-in inside an OpenMDAO `ExplicitComponent`. Two kernels so far:
+
+- **`EvalVelMtx`** — the N×N aerodynamic influence-coefficient (AIC) matrix
+  (Biot–Savart from every ring vortex onto every collocation point).
+- **`VonMisesTube`** — per-element FEM beam stress (local-frame transform +
+  cross products + axial/torsional stress for each of ny−1 elements).
 
 This is **strategy 2** from the omd→Rust discussion: keep OpenMDAO and all of
 omd's internals in Python, rewrite only the hot inner kernels in Rust. The
@@ -95,3 +98,40 @@ i.e. what an optimizer pays per iteration):
 - This is a standalone reconstruction of the OAS kernel for measurement, not yet
   wired into upstream `openaerostruct`. Doing that — replacing `EvalVelMtx`'s
   body with a call here — is the natural next step the numbers justify.
+
+## Second kernel: VonMisesTube (FEM stress) — and a sharp lesson
+
+`VonMisesTube` is a per-element Python loop (`for ielem in range(ny-1)`), so the
+primal is a textbook ≥5× target. The kernel (`vonmises_tube` / `..._cs`) is
+generic over the scalar type, same as the AIC kernel, so complex-step runs
+through Rust. Crucially, upstream OAS **ships hand-coded analytic partials** for
+this component — so `tests/test_vonmises_parity.py` validates against the *real*
+OAS component as golden reference: the Rust primal matches OAS's `compute`, and
+the complex-step-through-Rust Jacobian matches OAS's analytic `compute_partials`
+to a relative error < 1e-7.
+
+Measured (`bench_vonmises.py`), Rust drop-in vs the upstream OAS component:
+
+| ny | elems | `compute` (primal) | `compute_totals` (derivatives) |
+|---:|---:|---:|---:|
+| 21 | 20 | **22.6×** | 0.9× |
+| 51 | 50 | **46.3×** | 0.9× |
+| 101 | 100 | **93.3×** | 0.7× |
+| 201 | 200 | **156.9×** | 0.5× |
+
+**The lesson — and it refines the AIC story:** the primal is a huge win (20–150×,
+growing with element count), but **end-to-end derivatives via complex-step are a
+net *loss* here (0.5–0.9×)**. Why: complex-step re-runs the primal once per input
+direction (nodes + radius + disp ≈ 10·ny directions ≈ 2000 at ny=201), while
+upstream computes the whole Jacobian in *one* analytic pass. Even a 100×-faster
+primal can't outrun 2000 complex evaluations versus one analytic sweep.
+
+So the win depends on how the component is used:
+- **Analysis mode (no gradients):** port the primal → 20–150× immediately.
+- **Gradient-based optimization:** porting the primal alone is *not enough* — you
+  must also port the analytic `compute_partials` loop to Rust to beat upstream.
+  (The AIC kernel won end-to-end only because that comparison was complex-step on
+  both sides; against a hand-coded analytic Jacobian the bar is higher.)
+
+The analytic-partials port is the obvious follow-up that turns the 0.5–0.9× into
+an end-to-end win for optimization.
