@@ -391,6 +391,64 @@ fn vonmises_tube_jac<'py>(
     )
 }
 
+// ======================================================================
+// VLM vortex helpers -- OAS aerodynamics/eval_mtx.py inner functions.
+// These are where EvalVelMtx (the AIC assembly) spends its time: per-pair
+// Biot-Savart over big broadcast arrays, most of numpy's cost being np.cross
+// axis machinery. f64 only; OAS's rare complex-step (alpha) falls back to
+// numpy in the Python wrapper.
+// ======================================================================
+const TOL: f64 = 1e-10;
+
+#[pyfunction]
+fn vlm_finite_vortex<'py>(
+    py: Python<'py>,
+    r1: PyReadonlyArray2<'py, f64>,
+    r2: PyReadonlyArray2<'py, f64>,
+) -> Bound<'py, PyArray2<f64>> {
+    let a = rows3(&r1.as_array());
+    let b = rows3(&r2.as_array());
+    let m = a.len();
+    let mut out = Array2::<f64>::zeros((m, 3));
+    for k in 0..m {
+        let (u, v) = (a[k], b[k]);
+        let un = dot(u, u).sqrt();
+        let vn = dot(v, v).sqrt();
+        let den = un * vn + dot(u, v);
+        if den.abs() > TOL {
+            let cx = cross(u, v);
+            let s = (1.0 / un + 1.0 / vn) * INV_4PI / den;
+            out[[k, 0]] = s * cx[0];
+            out[[k, 1]] = s * cx[1];
+            out[[k, 2]] = s * cx[2];
+        }
+    }
+    out.into_pyarray_bound(py)
+}
+
+#[pyfunction]
+fn vlm_semi_infinite_vortex<'py>(
+    py: Python<'py>,
+    u: PyReadonlyArray2<'py, f64>,
+    r: PyReadonlyArray2<'py, f64>,
+) -> Bound<'py, PyArray2<f64>> {
+    let uu = rows3(&u.as_array());
+    let rr = rows3(&r.as_array());
+    let m = uu.len();
+    let mut out = Array2::<f64>::zeros((m, 3));
+    for k in 0..m {
+        let (uv, rv) = (uu[k], rr[k]);
+        let rn = dot(rv, rv).sqrt();
+        let den = rn * (rn - dot(uv, rv));
+        let cx = cross(uv, rv);
+        let s = INV_4PI / den;
+        out[[k, 0]] = s * cx[0];
+        out[[k, 1]] = s * cx[1];
+        out[[k, 2]] = s * cx[2];
+    }
+    out.into_pyarray_bound(py)
+}
+
 #[pymodule]
 fn hangar_kernels(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(vec_add, m)?)?;
@@ -398,6 +456,8 @@ fn hangar_kernels(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(vonmises_tube, m)?)?;
     m.add_function(wrap_pyfunction!(vonmises_tube_cs, m)?)?;
     m.add_function(wrap_pyfunction!(vonmises_tube_jac, m)?)?;
+    m.add_function(wrap_pyfunction!(vlm_finite_vortex, m)?)?;
+    m.add_function(wrap_pyfunction!(vlm_semi_infinite_vortex, m)?)?;
     m.add_function(wrap_pyfunction!(assemble_aic, m)?)?;
     m.add_function(wrap_pyfunction!(assemble_aic_par, m)?)?;
     m.add_function(wrap_pyfunction!(assemble_aic_cs, m)?)?;

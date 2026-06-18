@@ -122,14 +122,19 @@ def profile_fraction(num_y, num_x):
     return total, vm
 
 
-print(f"{'mesh (ny x nx)':>16}{'elems':>7} | {'stock (s)':>10}{'rust (s)':>10}{'speedup':>9} | "
-      f"{'VonMises % of run':>18}  fuelburn match")
-print("-" * 92)
-for num_y, num_x in ((5, 2), (15, 3), (25, 5)):
-    t_stock, fb_stock = run_timed(num_y, num_x, False)
-    t_rust, fb_rust = run_timed(num_y, num_x, True)
-    total, vm = profile_fraction(num_y, num_x)
-    match = abs(fb_stock - fb_rust) / abs(fb_stock)
-    elems = num_y - 1
-    print(f"{f'{num_y} x {num_x}':>16}{elems:>7} | {t_stock:>10.2f}{t_rust:>10.2f}{t_stock/t_rust:>8.2f}x | "
-          f"{100*vm/total:>17.2f}%  rel {match:.1e}")
+def main():
+    print(f"{'mesh (ny x nx)':>16}{'elems':>7} | {'stock (s)':>10}{'rust (s)':>10}{'speedup':>9} | "
+          f"{'VonMises % of run':>18}  fuelburn match")
+    print("-" * 92)
+    for num_y, num_x in ((5, 2), (15, 3), (25, 5)):
+        t_stock, fb_stock = run_timed(num_y, num_x, False)
+        t_rust, fb_rust = run_timed(num_y, num_x, True)
+        total, vm = profile_fraction(num_y, num_x)
+        match = abs(fb_stock - fb_rust) / abs(fb_stock)
+        elems = num_y - 1
+        print(f"{f'{num_y} x {num_x}':>16}{elems:>7} | {t_stock:>10.2f}{t_rust:>10.2f}{t_stock/t_rust:>8.2f}x | "
+              f"{100*vm/total:>17.2f}%  rel {match:.1e}")
+
+
+if __name__ == "__main__":
+    main()
