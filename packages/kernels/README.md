@@ -180,15 +180,63 @@ right choice to *prove the technique* (cleanest loop, the analytic-Jacobian
 lesson) and the wrong choice to *move the wall clock*. The stock profile (15×3)
 shows where the time actually goes:
 
-| share | where | portable under strategy 2? |
+| share (15×3) | where | portable under strategy 2? |
 |---|---|---|
-| ~2.7 s | `EvalVelMtx.compute` (VLM AIC assembly) — dominated by `np.cross` (30k calls; ~half its cost is numpy's `moveaxis`/`normalize_axis_tuple` axis machinery) + `einsum` | **yes — the real target** |
+| ~2.7 s | `EvalVelMtx.compute` (VLM AIC assembly) — dominated by `np.cross` (30k calls; ~half its cost is numpy's `moveaxis`/`normalize_axis_tuple` axis machinery) + `einsum` | yes — *the apparent target* |
 | ~2.7 s | scipy SuperLU `gstrf` + `solve` (FEM/coupled LU) | no — already optimal C |
 | ~2.0 s | OpenMDAO `subjac._apply_fwd_input` (linear-solve mat-vec) | no — framework |
 | — | `VonMisesTube` | not in the top 18 |
 
-The actionable conclusion: the kernel worth porting for wall-clock is
-**`EvalVelMtx`** (the VLM AIC / Biot–Savart assembly) — ~18%+ of the run, much of
-it pure `np.cross` overhead a native loop erases — and its primal already lives
-in this package (`assemble_aic`). The remaining time is the sparse LU solve and
-OpenMDAO's own machinery, neither of which strategy 2 touches.
+At this small mesh `EvalVelMtx` looked like the kernel worth porting (~18%). The
+next section **tests that hypothesis at scale — and disproves it.**
+
+## Third kernel: EvalVelMtx (VLM AIC) — tested at tripled mesh sizes
+
+`EvalVelMtx`'s two primal vortex helpers (`_compute_finite_vortex`,
+`_compute_semi_infinite_vortex`) are ported to Rust (`vlm_finite_vortex` /
+`vlm_semi_infinite_vortex`) and monkeypatched into OAS; `bench_oas_vlm.py`
+asserts helper parity vs the OAS originals, then runs the full tube aerostruct
+optimization stock vs patched (capped iterations). Results:
+
+| mesh (ny×nx) | panels | stock | rust | **end-to-end speedup** | fuelburn match |
+|---|---:|---:|---:|---:|---:|
+| 15×4 | 42 | 4.50 s | 3.99 s | **1.13×** | rel 1e-14 |
+| 45×6 | 220 | 209 s | 211 s | **0.99×** | rel 7e-10 |
+
+**The speedup *shrinks* as the mesh grows — the opposite of what you'd hope.**
+The mechanism is scaling, confirmed by profiling `EvalVelMtx.compute`'s share of
+the run vs mesh size:
+
+| mesh | panels | EvalVelMtx.compute % of run |
+|---|---:|---:|
+| 15×4 | 42 | 11.1% |
+| 25×5 | 96 | 6.4% |
+| 35×6 | 170 | 1.8% |
+| 45×6 | 220 | 2.8% |
+
+The AIC **assembly** is O(panels²), but the dense AIC/coupled **linear solve** is
+O(panels³) (LAPACK/SuperLU) and OpenMDAO's derivative machinery scales
+super-linearly too. So as the mesh grows the solve and framework overtake the
+assembly, and the fraction strategy 2 can touch collapses from ~11% to ~3%.
+Amdahl then caps the win: a free assembly at 3% of the run is a 1.03× ceiling.
+(75×8 was abandoned as impractically slow — O(N³) — but the trend already
+answers the question.)
+
+## Overall conclusion of the experiment
+
+Across three real OAS kernels the picture is consistent and sobering:
+
+- **Microbenchmarks win big** (10–150× on an isolated kernel; 2.1–2.5× on a
+  component's `compute_totals`) and every drop-in is correct to machine
+  precision inside a real coupled optimization.
+- **Full-run wall-clock barely moves** (1.0–1.13×, best at the *smallest* mesh)
+  because the dominant costs at realistic sizes are the dense/sparse linear
+  solves (already optimal LAPACK/SuperLU) and OpenMDAO's own framework — none of
+  which strategy 2 touches — and the portable fraction *shrinks* as problems grow.
+
+So strategy 2 (Rust kernels under Python OpenMDAO) is the right tool for
+**speeding up a specific expensive leaf component in analysis-mode loops**, not
+for accelerating a whole gradient-based OAS optimization. A real end-to-end win
+there would require attacking the linear algebra (not portable — already
+optimal) or OpenMDAO's framework overhead itself, which is the **strategy 3**
+("minimal native MDAO core") question, not strategy 2.
