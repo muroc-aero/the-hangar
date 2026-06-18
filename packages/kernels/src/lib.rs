@@ -9,6 +9,8 @@ use numpy::{
 use pyo3::prelude::*;
 use rayon::prelude::*;
 
+mod faer_solver;
+
 const INV_4PI: f64 = 0.079_577_471_545_947_67; // 1/(4*pi)
 const EPS: f64 = 1e-12;
 
@@ -461,5 +463,7 @@ fn hangar_kernels(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(assemble_aic, m)?)?;
     m.add_function(wrap_pyfunction!(assemble_aic_par, m)?)?;
     m.add_function(wrap_pyfunction!(assemble_aic_cs, m)?)?;
+    m.add_function(wrap_pyfunction!(faer_solver::faer_set_threads, m)?)?;
+    m.add_class::<faer_solver::FaerLU>()?;
     Ok(())
 }

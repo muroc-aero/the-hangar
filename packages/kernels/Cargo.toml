@@ -15,6 +15,7 @@ numpy = "0.22"
 ndarray = "0.16"
 num-complex = "0.4"
 rayon = "1"
+faer = "0.24.0"
 
 [profile.release]
 opt-level = 3

@@ -253,6 +253,47 @@ So **a pure-Python solver swap gives 1.7–3.5× on the whole optimization**, sc
 with both problem size and core count, and changes no answers — exactly the
 multithreading win that kernel porting could not deliver.
 
+## Can a *permissive* Rust solver ship that win? — the faer test
+
+PARDISO is proprietary and UMFPACK/SuiteSparse is GPL, which is exactly why
+neither is scipy's default. The obvious question: rewrite the solver in Rust
+with a permissive license and a pyo3 bridge — then the parallel-solver win is
+*shippable* (pip wheel, even vendorable) with no license wall. `faer`
+(MIT/Apache, pure Rust, multithreaded) already provides sparse LU, so this is
+testable today rather than hypothetical.
+
+`src/faer_solver.rs` wraps `faer`'s sparse LU behind the same `splu`-compatible
+`.solve(b, trans)` contract as the PARDISO wrapper (CSC in — faer's native
+layout — transpose solve via `solve_transpose`). `bench_faer_oas.py` drops it
+into OpenMDAO's DirectSolver and runs the same full optimization. It is correct
+to machine precision (identical fuelburn, transpose path verified to ~1e-16).
+Wall time on the **268,853-DOF** coupled solve (45×6), all back-ends solving the
+*same* factorization at every step:
+
+| solver | license | wall time | vs SuperLU |
+|---|---|---:|---:|
+| scipy SuperLU (1 thread) | BSD ✓ | 189 s | 1.00× (baseline) |
+| **faer** sparse LU (1 thread) | MIT/Apache ✓ | 291 s | **0.65×** |
+| **faer** sparse LU (4 threads) | MIT/Apache ✓ | 281 s | **0.67×** |
+| MKL PARDISO (1 thread) | proprietary ✗ | 113 s | 1.68× |
+| MKL PARDISO (4 threads) | proprietary ✗ | 51 s | **3.72×** |
+
+The verdict is honest and negative on performance: **the license problem is
+solved but the speed problem is not.** faer's sparse LU is **~1.5× slower than
+SuperLU single-threaded**, and its threading adds almost nothing here
+(291→281 s) — whereas PARDISO threads cleanly (113→51 s) on the *same* metric,
+proving the solve dominates and faer's LU simply doesn't scale on it yet. Two
+reasons, both predicted by the earlier caveats: (1) **ordering** — PARDISO uses
+nested dissection (METIS-class); faer's LU uses COLAMD/AMD, a weaker fill
+reducer on these systems; (2) **maturity** — faer's *dense* and sparse
+*Cholesky* are competitive, but its unsymmetric sparse LU (partial pivoting, the
+exact case OAS Jacobians need) is its least-tuned path and isn't supernodally
+parallelized to PARDISO's level. So the language was never the lever: a
+permissive Rust wrapper is genuinely drop-in and shippable, but *reproducing
+PARDISO's numerical engineering* — not rewriting it in Rust — is the hard part,
+and `faer 0.24` isn't there for unsymmetric LU. The shippable-permissive win is
+real in principle; the existing permissive building block doesn't yet deliver it.
+
 ## Overall conclusion of the experiment
 
 - **Strategy 2 (Rust kernels under Python OpenMDAO)** wins big in microbenchmarks
@@ -265,6 +306,13 @@ multithreading win that kernel porting could not deliver.
   (PARDISO) buys 1.7–3.5×, from a better algorithm *and* true multicore threading.
   This is the answer to "can more cores / better architecture beat the numpy
   core?" — yes, but through the solver library, not through Rust kernels.
+- **A permissive Rust solver (faer) is drop-in but not yet fast enough.** It
+  ships the *license*, not the *speed*: correct to machine precision but ~1.5×
+  slower than SuperLU and non-scaling on OAS's unsymmetric Jacobians. Matching
+  PARDISO is a numerical-engineering problem (nested-dissection ordering,
+  supernodal parallel LU), not a language choice — so the realistic
+  permissive-and-fast option remains a future faer (or a wrapper around a
+  permissive METIS-class ordering), not a quick rewrite.
 
 Net: for speeding up an OAS optimization, **swap the linear solver first** (huge
 ratio of payoff to effort, no new language). Rust kernels are the right tool only
