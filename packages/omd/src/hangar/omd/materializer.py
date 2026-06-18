@@ -990,6 +990,15 @@ def _configure_recorder(
 
     recorder = om.SqliteRecorder(str(recorder_path))
 
+    # Record inputs on the final problem case so mission boundary conditions that
+    # are prescribed as inputs (fltcond|Ueas, fltcond|vs) are persisted -- without
+    # this they are absent from the recording and the mission_profile V/S panel is
+    # blank while the airspeed trace falls back to true airspeed.
+    try:
+        prob.recording_options["record_inputs"] = True
+    except (AttributeError, KeyError):
+        pass
+
     level_opts = RECORDING_LEVELS.get(recording_level, RECORDING_LEVELS["driver"])
 
     if recording_level in ("driver", "solver", "full"):
