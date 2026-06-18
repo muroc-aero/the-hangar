@@ -183,7 +183,7 @@ shows where the time actually goes:
 | share (15×3) | where | portable under strategy 2? |
 |---|---|---|
 | ~2.7 s | `EvalVelMtx.compute` (VLM AIC assembly) — dominated by `np.cross` (30k calls; ~half its cost is numpy's `moveaxis`/`normalize_axis_tuple` axis machinery) + `einsum` | yes — *the apparent target* |
-| ~2.7 s | scipy SuperLU `gstrf` + `solve` (FEM/coupled LU) | no — already optimal C |
+| ~2.7 s | scipy SuperLU `gstrf` + `solve` (FEM/coupled LU) | not via Rust — but a *parallel solver* helps a lot (see below) |
 | ~2.0 s | OpenMDAO `subjac._apply_fwd_input` (linear-solve mat-vec) | no — framework |
 | — | `VonMisesTube` | not in the top 18 |
 
@@ -222,21 +222,52 @@ Amdahl then caps the win: a free assembly at 3% of the run is a 1.03× ceiling.
 (75×8 was abandoned as impractically slow — O(N³) — but the trend already
 answers the question.)
 
+## Where the time really goes: the sparse solve is NOT optimal
+
+The strategy-2 results above show kernel porting doesn't move the wall clock. So
+where *is* the time, and is it actually untouchable? Measuring the coupled
+DirectSolver shows OAS factorizes a **large** sparse Jacobian — 55k DOF at 25×5,
+**269k DOF at 45×6** — with scipy's `splu` (SuperLU): single-threaded, and a
+weaker fill-reducing ordering than modern solvers. That is **not** "already
+optimal," and it is the dominant cost.
+
+`bench_pardiso_oas.py` monkeypatches MKL PARDISO into OpenMDAO's DirectSolver
+(replaces `scipy.sparse.linalg.splu`) and runs the full tube aerostruct
+optimization. `bench_solver.py` is the matching standalone solver microbench
+(SuperLU vs PARDISO across system size and thread count). Full-optimization
+results (maxiter capped; fuelburn identical to the last digit in every case):
+
+| mesh | coupled DOF | SuperLU | PARDISO ×1 | PARDISO ×4 | algo | threads | **total** |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 25×5 | 54,915 | 19.9 s | 16.9 s | 12.0 s | 1.17× | 1.41× | **1.66×** |
+| 45×6 | 268,853 | 187 s | 84.8 s | 52.7 s | 2.20× | 1.61× | **3.5×** |
+
+Two separable effects, both real and growing with system size:
+- **Algorithm** (PARDISO single-thread vs SuperLU): up to **2.2×** — better
+  ordering / supernodal factorization, no parallelism involved.
+- **Threading** (PARDISO 4 vs 1 thread): up to **1.6×** on 4 cores — genuine
+  multicore scaling, matching the `bench_solver.py` crossover (parallel sparse
+  factorization pays above ~16k DOF; OAS is well past it at 55k–269k).
+
+So **a pure-Python solver swap gives 1.7–3.5× on the whole optimization**, scales
+with both problem size and core count, and changes no answers — exactly the
+multithreading win that kernel porting could not deliver.
+
 ## Overall conclusion of the experiment
 
-Across three real OAS kernels the picture is consistent and sobering:
+- **Strategy 2 (Rust kernels under Python OpenMDAO)** wins big in microbenchmarks
+  (10–150× isolated; 2.1–2.5× on a component's `compute_totals`), correct to
+  machine precision, but **barely moves full-optimization wall-clock** (1.0–1.13×)
+  — the portable assembly fraction *shrinks* as problems grow while the sparse
+  solve dominates.
+- **The dominant cost — the large sparse coupled solve — is the real lever, and
+  it is reachable from pure Python**: swapping SuperLU → a parallel solver
+  (PARDISO) buys 1.7–3.5×, from a better algorithm *and* true multicore threading.
+  This is the answer to "can more cores / better architecture beat the numpy
+  core?" — yes, but through the solver library, not through Rust kernels.
 
-- **Microbenchmarks win big** (10–150× on an isolated kernel; 2.1–2.5× on a
-  component's `compute_totals`) and every drop-in is correct to machine
-  precision inside a real coupled optimization.
-- **Full-run wall-clock barely moves** (1.0–1.13×, best at the *smallest* mesh)
-  because the dominant costs at realistic sizes are the dense/sparse linear
-  solves (already optimal LAPACK/SuperLU) and OpenMDAO's own framework — none of
-  which strategy 2 touches — and the portable fraction *shrinks* as problems grow.
-
-So strategy 2 (Rust kernels under Python OpenMDAO) is the right tool for
-**speeding up a specific expensive leaf component in analysis-mode loops**, not
-for accelerating a whole gradient-based OAS optimization. A real end-to-end win
-there would require attacking the linear algebra (not portable — already
-optimal) or OpenMDAO's framework overhead itself, which is the **strategy 3**
-("minimal native MDAO core") question, not strategy 2.
+Net: for speeding up an OAS optimization, **swap the linear solver first** (huge
+ratio of payoff to effort, no new language). Rust kernels are the right tool only
+for an expensive leaf component in analysis-mode loops. Beating OpenMDAO's own
+framework overhead is a separate, larger question — **strategy 3** (a native MDAO
+core) — and is the only place Rust's GIL-free threading would uniquely apply.
