@@ -95,6 +95,19 @@ def _extract_trajectory_from_case(case, phases: list[str]) -> dict:
     """
     outputs = case.list_outputs(out_stream=None, return_format="dict")
 
+    # Mission boundary conditions such as fltcond|Ueas (equivalent airspeed) and
+    # fltcond|vs (vertical speed) are prescribed as INPUTS, not outputs, so
+    # list_outputs() alone misses them -- leaving the V/S panel blank and forcing
+    # the airspeed trace to fall back to fltcond|Utrue (true airspeed). Merge the
+    # inputs in as a fallback, letting outputs win on any key collision so the
+    # integrated trajectory (altitude, range, fuel) is unaffected.
+    try:
+        inputs = case.list_inputs(out_stream=None, return_format="dict")
+    except Exception:
+        inputs = {}
+    for name, info in inputs.items():
+        outputs.setdefault(name, info)
+
     trajectory = {}
     for phase in phases:
         phase_data: dict = {}

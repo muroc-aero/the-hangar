@@ -25,7 +25,7 @@ components:
       mission_range_NM: 1500
       climb_vs_ftmin: 2000
       climb_Ueas_kn: 250
-      cruise_Ueas_kn: 460
+      cruise_Ueas_kn: 256
       descent_vs_ftmin: 1500
       descent_Ueas_kn: 250
     slots:

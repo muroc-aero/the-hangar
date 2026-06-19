@@ -14,7 +14,7 @@ propulsion (in place of the default CFM56).
   35,000 ft, M = 0.8, Fn = 5,900 lbf, T4 = 2,857 °R, TABULAR thermo
 - Mission: 1,500 NM range, 35,000 ft cruise
 - Climb: 2,000 ft/min at 250 KEAS
-- Cruise: 460 KEAS
+- Cruise: 256 KEAS
 - Descent: 1,500 ft/min at 250 KEAS
 
 ## Tools
