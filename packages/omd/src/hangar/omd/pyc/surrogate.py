@@ -35,10 +35,13 @@ DEFAULT_TURBOJET_GRID = {
     "throttle": [0.5, 0.65, 0.8, 0.9, 1.0],
 }
 
-# HBTF: cruise design, wider envelope
+# HBTF: cruise design, wider envelope. The grid includes the typical
+# turbofan cruise design point (35,000 ft, M0.80) as an explicit node so the
+# surrogate interpolates accurately there instead of undershooting between
+# the 30k/40k ft and 0.7/0.85 MN nodes.
 DEFAULT_HBTF_GRID = {
-    "alt_ft": [0.0, 10000.0, 20000.0, 30000.0, 40000.0],
-    "MN": [0.2, 0.4, 0.55, 0.7, 0.85],
+    "alt_ft": [0.0, 10000.0, 20000.0, 30000.0, 35000.0, 40000.0],
+    "MN": [0.2, 0.4, 0.55, 0.7, 0.8, 0.85],
     "throttle": [0.3, 0.5, 0.7, 0.85, 1.0],
 }
 
@@ -272,7 +275,22 @@ def _run_hbtf_deck(
             thrust_all[i] = float(prob.get_val("OD_0.perf.Fn", units="lbf"))
             fuel_all[i] = float(prob.get_val("OD_0.burner.Wfuel", units="lbm/s"))
             T4_all[i] = float(prob.get_val("OD_0.burner.Fl_O:tot:T", units="degR"))
-            if thrust_all[i] <= 0 or fuel_all[i] <= 0:
+            # pyCycle's off-design Newton occasionally reports success at a
+            # nonphysical root (thrust ~1e7-1e10 lbf), which passes the >0
+            # check and silently poisons the Kriging surrogate. A converged
+            # point cannot exceed a few times the design thrust (sea-level
+            # static is the realistic maximum, ~2-3x design); reject anything
+            # beyond a generous physical multiple.
+            if (
+                thrust_all[i] <= 0
+                or fuel_all[i] <= 0
+                or thrust_all[i] > 5.0 * design_Fn
+            ):
+                if thrust_all[i] > 5.0 * design_Fn:
+                    logger.debug(
+                        "HBTF OD point %d nonphysical thrust %.3e lbf "
+                        "(design %.0f lbf); rejecting", i, thrust_all[i], design_Fn,
+                    )
                 converged_all[i] = False
             prob.cleanup()
         except Exception as e:
@@ -351,52 +369,90 @@ class PyCycleSurrogateGroup(om.Group):
         # Load or generate deck
         deck = self._get_deck()
 
-        # Filter to converged points only
-        mask = deck["converged"].astype(bool)
-        alt_ft = deck["alt_ft"][mask]
-        MN = deck["MN"][mask]
-        throttle = deck["throttle"][mask]
-        thrust_lbf = deck["thrust_lbf"][mask]
-        fuel_flow_lbm_s = deck["fuel_flow_lbm_s"][mask]
+        # The deck is a regular outer-product grid (alt x MN x throttle), so
+        # use a STRUCTURED akima interpolant rather than unstructured Kriging.
+        # Kriging on this data is non-monotonic and extrapolates explosively
+        # (10^6+ kN) below the throttle-training floor, which lets the coupled
+        # mission solver land on spurious multi-valued cruise solutions. Akima
+        # is monotonic between nodes with smooth analytic derivatives and
+        # extrapolates linearly, giving a single well-posed thrust(throttle).
+        alt_ft_axis = np.unique(deck["alt_ft"])
+        mn_axis = np.unique(deck["MN"])
+        thr_axis = np.unique(deck["throttle"])
+        shape = (alt_ft_axis.size, mn_axis.size, thr_axis.size)
 
-        if len(alt_ft) < 4:
+        if deck["alt_ft"].size != int(np.prod(shape)):
             raise RuntimeError(
-                f"Only {len(alt_ft)} converged points in deck; need at least 4 "
-                f"for Kriging. Check engine params and grid spec."
+                "pyCycle deck is not a full outer-product grid "
+                f"({deck['alt_ft'].size} points != {shape}); cannot build a "
+                "structured surrogate."
+            )
+        conv = deck["converged"].astype(bool)
+        if conv.sum() < 8:
+            raise RuntimeError(
+                f"Only {conv.sum()} converged points in deck; too few to build "
+                f"a surrogate. Check engine params and grid spec."
             )
 
-        # Convert units to match OCP interface
-        alt_m = alt_ft * 0.3048  # ft -> m
-        thrust_kN = thrust_lbf * 4.44822e-3  # lbf -> kN
-        fuel_flow_kg_s = fuel_flow_lbm_s * 0.453592  # lbm/s -> kg/s
+        # Convert units to match the OCP propulsion interface.
+        alt_m_axis = alt_ft_axis * 0.3048  # ft -> m
+        thrust_kN = deck["thrust_lbf"] * 4.44822e-3  # lbf -> kN
+        fuel_flow_kg_s = deck["fuel_flow_lbm_s"] * 0.453592  # lbm/s -> kg/s
 
-        # Build surrogate for thrust
-        thrust_mm = om.MetaModelUnStructuredComp(vec_size=nn)
-        thrust_mm.add_input("throttle", training_data=throttle, val=np.ones(nn) * 0.8)
-        thrust_mm.add_input("alt", training_data=alt_m, units="m",
-                            val=np.ones(nn) * 10000.0)
-        thrust_mm.add_input("MN", training_data=MN, val=np.ones(nn) * 0.5)
-        thrust_mm.add_output(
-            "thrust", training_data=thrust_kN, units="kN",
-            val=np.ones(nn) * 10.0,
-            surrogate=om.KrigingSurrogate(),
+        # Non-converged nodes hold garbage; a structured grid cannot have gaps,
+        # so fill them by interpolating the converged neighbours.
+        thrust_grid = self._fill_to_grid(deck, thrust_kN, conv, shape)
+        fuel_grid = self._fill_to_grid(deck, fuel_flow_kg_s, conv, shape)
+
+        mm = om.MetaModelStructuredComp(
+            method="akima", vec_size=nn, extrapolate=True,
         )
-        thrust_mm.add_output(
-            "fuel_flow", training_data=fuel_flow_kg_s, units="kg/s",
-            val=np.ones(nn) * 0.5,
-            surrogate=om.KrigingSurrogate(),
-        )
+        # Input order must match the grid dimension order (alt, MN, throttle).
+        mm.add_input("alt", val=np.full(nn, 10000.0), training_data=alt_m_axis,
+                     units="m")
+        mm.add_input("MN", val=np.full(nn, 0.5), training_data=mn_axis)
+        mm.add_input("throttle", val=np.full(nn, 0.8), training_data=thr_axis)
+        mm.add_output("thrust", val=np.full(nn, 10.0), training_data=thrust_grid,
+                      units="kN")
+        mm.add_output("fuel_flow", val=np.full(nn, 0.5), training_data=fuel_grid,
+                      units="kg/s")
 
         self.add_subsystem(
             "surrogate",
-            thrust_mm,
+            mm,
             promotes_inputs=[
-                ("throttle", "throttle"),
                 ("alt", "fltcond|h"),
                 ("MN", "fltcond|M"),
+                ("throttle", "throttle"),
             ],
             promotes_outputs=["thrust", "fuel_flow"],
         )
+
+    @staticmethod
+    def _fill_to_grid(deck, values, conv, shape):
+        """Fill non-converged nodes and reshape to the structured grid.
+
+        Holes are filled by interpolating the converged points in normalized
+        (alt, MN, throttle) space (linear, with a nearest-neighbour fallback
+        outside the convex hull) so every grid node has a physical value.
+        """
+        from scipy.interpolate import griddata
+
+        def _norm(x):
+            lo, hi = float(x.min()), float(x.max())
+            return (x - lo) / (hi - lo) if hi > lo else np.zeros_like(x)
+
+        pts = np.column_stack([
+            _norm(deck["alt_ft"]), _norm(deck["MN"]), _norm(deck["throttle"]),
+        ])
+        filled = np.array(values, dtype=float)
+        if (~conv).any():
+            lin = griddata(pts[conv], values[conv], pts[~conv], method="linear")
+            near = griddata(pts[conv], values[conv], pts[~conv], method="nearest")
+            bad = np.isnan(lin)
+            lin[bad] = near[bad]
+            filled[~conv] = lin
+        return filled.reshape(shape)
 
     def _get_deck(self) -> dict[str, np.ndarray]:
         """Load deck from file or generate on-the-fly."""

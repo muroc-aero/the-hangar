@@ -67,7 +67,12 @@ class B738ThreeToolModel(om.Group):
     def setup(self):
         nn = self.options["num_nodes"]
 
-        # Propulsion: pyCycle HBTF Kriging surrogate
+        # Propulsion: pyCycle HBTF Kriging surrogate. The surrogate models a
+        # SINGLE engine (the deck is generated at the per-engine design
+        # thrust); the B738 is a twin, so thrust and fuel flow are scaled by
+        # the engine count. Without this the aircraft is thrust-deficient and
+        # no steady cruise solution exists. Mirrors the ocp/BasicMission
+        # factory's engine_scaler for slot propulsion.
         self.add_subsystem(
             "propmodel",
             PyCycleSurrogateGroup(
@@ -78,10 +83,28 @@ class B738ThreeToolModel(om.Group):
                 design_Fn=PYC_SURR_CONFIG["design_Fn"],
                 design_T4=PYC_SURR_CONFIG["design_T4"],
                 engine_params=PYC_SURR_CONFIG.get("engine_params", {}),
+                deck_path=PYC_SURR_CONFIG.get("deck_path"),
             ),
             promotes_inputs=["fltcond|h", "fltcond|M", "throttle"],
-            promotes_outputs=["fuel_flow", "thrust"],
+            promotes_outputs=[
+                ("fuel_flow", "fuel_flow_per_engine"),
+                ("thrust", "thrust_per_engine"),
+            ],
         )
+        self.add_subsystem(
+            "engine_scaler",
+            om.ExecComp(
+                ["thrust = 2*thrust_in", "fuel_flow = 2*fuel_flow_in"],
+                thrust_in={"val": np.ones((nn,)), "units": "kN"},
+                thrust={"val": np.ones((nn,)), "units": "kN"},
+                fuel_flow_in={"val": np.ones((nn,)), "units": "kg/s"},
+                fuel_flow={"val": np.ones((nn,)), "units": "kg/s"},
+                has_diag_partials=True,
+            ),
+            promotes_outputs=["thrust", "fuel_flow"],
+        )
+        self.connect("thrust_per_engine", "engine_scaler.thrust_in")
+        self.connect("fuel_flow_per_engine", "engine_scaler.fuel_flow_in")
 
         # Drag: VLMDragPolar (replaces PolarDrag)
         self.add_subsystem(
@@ -181,12 +204,21 @@ def run() -> dict:
     prob = om.Problem(reports=False)
     prob.model = B738ThreeToolAnalysis()
 
-    # Dual-surrogate coupling uses NLBGS with Aitken relaxation to avoid
-    # the ill-conditioned Jacobian that causes Newton to diverge.
-    prob.model.nonlinear_solver = om.NonlinearBlockGS(
-        iprint=0, maxiter=200, atol=1e-8, rtol=1e-8,
-        use_aitken=True,
-    )
+    # The mission's altitude/duration and throttle BalanceComps are implicit
+    # and need a Newton solver (NLBGS leaves them at their default values).
+    # An ArmijoGoldstein backtracking linesearch tames the steps from the
+    # Kriging surrogate's noisy partials; rtol is set to the surrogate's
+    # achievable precision floor (~1e-6 relative). Matches the ocp/BasicMission
+    # factory solver used by the omd plan (lane B).
+    newton = om.NewtonSolver(iprint=2, solve_subsystems=True)
+    newton.options["maxiter"] = 30
+    newton.options["atol"] = 1e-8
+    newton.options["rtol"] = 1e-6
+    ls = om.ArmijoGoldsteinLS(bound_enforcement="scalar")
+    ls.options["maxiter"] = 20
+    newton.linesearch = ls
+    prob.model.nonlinear_solver = newton
+    prob.model.linear_solver = om.DirectSolver()
     prob.setup(check=False, mode="fwd")
 
     prob.set_val(
