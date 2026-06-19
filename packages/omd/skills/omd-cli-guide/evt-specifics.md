@@ -38,6 +38,27 @@ block. Most specific wins:
 3. **`template`** (default `"test_all"`) -- seed from a named vehicle
    template when no path/name is given.
 
+> **Portable vs filesystem.** `config_path` / `config_name` read a file from
+> the server's filesystem -- fine for a local server run from the repo root,
+> but the deployed image does **not** ship the example config dirs, so those
+> forms fail there. **`template` needs no filesystem and works on any server
+> (local or deployed/remote claude.ai).** Prefer `template` + overrides for
+> portable, MCP-only work; use `config_path`/`config_name` for local studies
+> over a directory of JSONs.
+
+### Built-in vehicle templates (ship in the evt package)
+
+| Template | Vehicle | Native `evt/Sizing` result |
+|----------|---------|----------------------------|
+| `test_all` | Lift+cruise reference: 6 lift + 6 tilt + 1 pusher, 3175 kg initial MTOW. The parity baseline. | -- |
+| `archer_midnight` | Archer Midnight-class: vectored thrust, 6 tilt + 6 lift, no pusher; ~30 mi / 1500 ft mission. | sized MTOW ~2020 kg, battery ~288 kg, energy ~66 kWh |
+
+Overrides **set** keys, they cannot **delete** them: starting from `test_all`
+keeps its pusher rotor, and a partial override set leaves ~50 other keys at the
+baseline (e.g. `test_all`'s high `landing_gear_drag_area_m2`), giving a heavier,
+draggier aircraft. To reproduce a *specific* vehicle faithfully, start from the
+matching `template`, not a few overrides on a generic baseline.
+
 Then overrides merge in, in this order:
 
 4. **Inline per-section dicts** -- a dict under any of the five section
@@ -55,29 +76,43 @@ from the evtolpy schema; common keys: `payload_kg` (aircraft),
 Paths resolve relative to the current working directory, so **run omd-cli
 from the repo root** when a config lives under `packages/`.
 
-### Minimal sizing component
+### Minimal sizing component (portable -- named template, no file)
 
 ```yaml
 # components/evtol.yaml
 id: evtol
 type: evt/Sizing
 config:
-  config_dir: packages/evt/examples/abu_scitech_2026/cfg
-  config_name: archer-midnight-1500-30
-  solver: newton          # MTOW-closure solver; "newton" (default) or "gs"
+  template: archer_midnight   # faithful Midnight baseline, ships in the package
+  solver: newton              # MTOW-closure solver; "newton" (default) or "gs"
 ```
 
-### Template + inline overrides (no JSON file)
+### Build a vehicle from a template + overrides (no JSON file)
+
+The portable way to set vehicle specs through the MCP: seed a template, then
+override only what you change. Each section dict (`aircraft`, `mission`,
+`power`, `propulsion`, `environ`) takes any of that section's keys.
 
 ```yaml
 id: evtol
 type: evt/Sizing
 config:
-  template: test_all
-  aircraft:
-    payload_kg: 400
-  power:
-    batt_spec_energy_w_h_p_kg: 285
+  template: archer_midnight
+  solver: newton
+  mission:  { cruise_s: 900 }                 # retarget range
+  power:    { batt_spec_energy_w_h_p_kg: 285 } # higher-energy cell
+  aircraft: { payload_kg: 500 }
+```
+
+### Local study over a directory of full configs (filesystem)
+
+```yaml
+id: evtol
+type: evt/Sizing
+config:
+  config_dir: packages/evt/examples/abu_scitech_2026/cfg
+  config_name: archer-midnight-1500-30   # local-only; not on the deployed image
+  solver: newton
 ```
 
 ## Sizing solver: newton vs gs

@@ -110,6 +110,22 @@ CASES: dict[str, Case] = {
             Metric("MTOW_kg", "coupled_mission", "MTOW_kg", rtol=1e-6),
         ],
     ),
+    # Open-ended evt sizing: the prompt (sizing_open) states the engineering
+    # goal but names no factory, template, solver, or parameter keys -- the
+    # agent must self-serve from omd://reference to land on evt/Sizing plus the
+    # built-in archer_midnight template. Lane A loads that vehicle from its
+    # JSON; the template is vendored from the same file, so a template-built
+    # result matches the file-based reference to round-off.
+    "evt_open_sizing": Case(
+        example="evt_native_sizing",
+        prompt_file="sizing_open.prompt.md",
+        metrics=[
+            Metric("sized_mtow_kg", "sizing", "sized_mtow_kg", rtol=1e-3),
+            Metric("total_mission_energy_kw_hr", "sizing",
+                   "total_mission_energy_kw_hr", rtol=1e-3),
+            Metric("peak_power_kw", "sizing", "peak_power_kw", rtol=1e-3),
+        ],
+    ),
 }
 
 

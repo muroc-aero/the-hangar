@@ -13,9 +13,8 @@ Public instances are available at `mcp.lakesideai.dev`. Authentication uses Keyc
 | OAS | `https://mcp.lakesideai.dev/oas/mcp` | Aerostructural analysis and optimization of lifting surfaces. Couples VLM aerodynamics with finite-element structures for wing design. |
 | OCP | `https://mcp.lakesideai.dev/ocp/mcp` | Aircraft conceptual design and mission analysis. Fuel burn, takeoff performance, and battery SOC for conventional and hybrid-electric architectures. |
 | PYC | `https://mcp.lakesideai.dev/pyc/mcp` | Gas turbine engine cycle analysis. Design-point sizing and off-design performance with full thermodynamic station modeling. |
-| OMD | `https://mcp.lakesideai.dev/omd/mcp` | General-purpose OpenMDAO plan runner. Authors and runs YAML optimization plans through a factory registry, composing the other tools into multi-disciplinary studies with a full provenance graph. |
-
-`hangar-evt` (eVTOL sizing and mission-energy analysis, wrapping evtolpy) is included in the repo but **not yet hosted** -- run it locally via `evt-cli`/`evt-server` (see [Packages](#packages)).
+| OMD | `https://mcp.lakesideai.dev/omd/mcp` | General-purpose OpenMDAO plan runner. Authors and runs YAML optimization plans through a factory registry, composing the other tools into multi-disciplinary studies with a full provenance graph. Includes native, gradient-capable eVTOL sizing (`evt/Sizing`, `evt/Mission`). |
+| EVT | `https://mcp.lakesideai.dev/evt/mcp` | Electric VTOL aircraft sizing and mission-energy analysis (wraps evtolpy). MTOW-closure sizing, per-segment energy/power, and mass breakdown from named vehicle templates. |
 
 ### Connecting
 
@@ -26,6 +25,7 @@ claude mcp add --transport http oas https://mcp.lakesideai.dev/oas/mcp
 claude mcp add --transport http ocp https://mcp.lakesideai.dev/ocp/mcp
 claude mcp add --transport http pyc https://mcp.lakesideai.dev/pyc/mcp
 claude mcp add --transport http omd https://mcp.lakesideai.dev/omd/mcp
+claude mcp add --transport http evt https://mcp.lakesideai.dev/evt/mcp
 ```
 
 **claude.ai:** Settings > Integrations > Add MCP Server, then enter the endpoint URL.
@@ -71,14 +71,24 @@ This copies the CLI-guide skills from each package into `.claude/skills/` where 
 | `hangar-oas` | `hangar.oas` | OpenAeroStruct aerostructural analysis server | `oas-cli`, `oas-server` |
 | `hangar-ocp` | `hangar.ocp` | OpenConcept aircraft conceptual design and mission analysis server | `ocp-cli`, `ocp-server` |
 | `hangar-pyc` | `hangar.pyc` | pyCycle gas turbine cycle analysis server | `pyc-cli`, `pyc-server` |
-| `hangar-omd` | `hangar.omd` | General-purpose OpenMDAO plan runner -- YAML plans, factory registry, multi-tool composition, provenance graph | `omd-cli`, `omd-server` |
-| `hangar-evt` | `hangar.evt` | eVTOL aircraft sizing and mission-energy analysis (wraps evtolpy). Not yet hosted -- local CLI/MCP only. | `evt-cli`, `evt-server` |
+| `hangar-omd` | `hangar.omd` | General-purpose OpenMDAO plan runner -- YAML plans, factory registry, multi-tool composition, provenance graph. Includes a native, gradient-capable eVTOL formulation (`evt/Sizing`, `evt/Mission`) plus the `evt/SizingFD` black-box fallback. | `omd-cli`, `omd-server` |
+| `hangar-evt` | `hangar.evt` | eVTOL aircraft sizing and mission-energy analysis (wraps evtolpy). Ships named vehicle templates (`test_all`, `archer_midnight`). | `evt-cli`, `evt-server` |
 | `hangar-results-reader` | `hangar.results_reader` | Read-only access to omd run results for downstream consumers (e.g. dashboards) | -- |
 | `hangar-viewer` | `hangar.viewer` | Unified provenance viewer for Hangar tool servers | `hangar-viewer` |
 
 `packages/range-safety/` is a git submodule pointing at the separate
 `range-safety` repo (range-safety validators and study dashboard); it is
 absent on a plain clone and not required for any of the other packages.
+
+**Native eVTOL sizing in omd.** Beyond the `hangar-evt` black box, omd ships a
+native OpenMDAO formulation of evtolpy (`evt/Sizing`, `evt/Mission`) with
+analytic complex-step gradients and a real MTOW-closure solver, so eVTOL
+sizing is optimizable and composable like any other omd factory. Vehicles are
+built from in-package templates (`test_all`, `archer_midnight`) plus inline
+per-section overrides supplied through the plan or MCP call -- no filesystem
+config, so it works against a hosted server. The `omd-cli-guide` skill
+(`evt-specifics.md`) and the `omd://reference` MCP resource document the full
+config surface.
 
 These packages are not on PyPI. Install from the repo:
 

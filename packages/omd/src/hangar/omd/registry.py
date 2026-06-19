@@ -293,9 +293,12 @@ def _register_builtins() -> None:
     except ImportError:
         logger.info("pyCycle not available, pyCycle factories not registered")
 
-    # evt factories: optional, require the evt package (which wraps evtolpy).
-    # evt is the first non-OpenMDAO-native factory: it wraps evtolpy as a
-    # black-box ExplicitComponent with FD partials (see factories/evt.py).
+    # evt factories: the native evt/Sizing and evt/Mission build the in-tree
+    # OpenMDAO model (hangar.omd.evt) and need only hangar.evt's pure-data
+    # config schema -- no evtolpy upstream lib. evt/SizingFD wraps evtolpy as a
+    # black box and imports it lazily, so it registers here but errors at call
+    # time if evtolpy is absent (see factories/evt.py). All three register as
+    # long as hangar-evt is importable.
     try:
         from hangar.omd.factories.evt import (
             build_evt_sizing, build_evt_mission, build_evt_sizing_fd,

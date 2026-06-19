@@ -34,18 +34,18 @@ from typing import Any
 import openmdao.api as om
 
 from hangar.omd.factory_metadata import FactoryMetadata
-from hangar.omd.evt.builders import build_problem as build_native_problem
+from hangar.omd.evt.builders import build_problem as build_native_problem, SCALAR_OUTPUTS
 
-# evtolpy-backed black box (the FD fallback / parity reference).
-from hangar.evt.omd_component import (
-    EvtolSizingComp,
-    DEFAULT_INPUT_SPECS,
-    SCALAR_OUTPUTS,
-)
+# Only the pure-data config schema is imported at module level (no evtolpy
+# dependency), so the native ``evt/Sizing`` / ``evt/Mission`` factories register
+# and run wherever ``hangar-evt`` is installed -- even without the evtolpy
+# upstream lib (e.g. the deployed omd image). The evtolpy-backed black box is
+# imported lazily inside ``_build_evt`` so only ``evt/SizingFD`` requires it.
 from hangar.evt.config.defaults import SECTIONS, SECTION_SCHEMA, get_template
 
 # Outputs surfaced into the run summary (scalars; vectors go via the evt
-# result-extraction branch in run.py).
+# result-extraction branch in run.py). The native builders expose the same
+# black-box SCALAR_OUTPUTS contract.
 _OUTPUT_NAMES = list(SCALAR_OUTPUTS)
 
 
@@ -122,7 +122,26 @@ def _build_evt(
     operating_points: dict,
     mode: str,
 ) -> tuple[om.Problem, FactoryMetadata]:
-    """Black-box (FD) builder for the legacy evt path."""
+    """Black-box (FD) builder for the legacy evt path.
+
+    Imports the evtolpy-backed black box lazily: the native path needs no
+    evtolpy, so deferring this import keeps ``evt/Sizing`` / ``evt/Mission``
+    usable where evtolpy is absent. Only this FD fallback requires it. evtolpy
+    itself is imported lazily inside the black box (at compute), so probe for it
+    up front to fail at plan-build time with a clear message rather than
+    cryptically mid-run.
+    """
+    import importlib.util
+
+    if importlib.util.find_spec("evtol") is None:
+        raise ImportError(
+            "evt/SizingFD (the evtolpy black box) requires the evtolpy upstream "
+            "library, which is not installed here. Use the native evt/Sizing or "
+            "evt/Mission factory (the default native path) instead, or install "
+            "evtolpy."
+        )
+    from hangar.evt.omd_component import EvtolSizingComp, DEFAULT_INPUT_SPECS
+
     base_config = _resolve_with_operating_points(component_config, operating_points)
 
     input_specs = component_config.get("input_specs", DEFAULT_INPUT_SPECS)

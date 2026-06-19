@@ -24,6 +24,15 @@ RUN pip install --no-cache-dir "packages/sdk[all]"
 COPY packages/results-reader/ packages/results-reader/
 RUN pip install --no-cache-dir packages/results-reader
 
+# hangar-evt: the native evt/Sizing and evt/Mission factories live in
+# hangar.omd.evt but read the pure-data config schema from
+# hangar.evt.config.defaults, so the package must be importable. Installed
+# WITHOUT deps on purpose -- the native path needs no evtolpy upstream lib.
+# (evt/SizingFD, the black-box fallback, does; it errors with a clear message
+# if invoked here.)
+COPY packages/evt/ packages/evt/
+RUN pip install --no-cache-dir --no-deps packages/evt
+
 # Copy and install the omd package (openaerostruct dep already satisfied;
 # ocp/pyc factories degrade gracefully when those extras are absent)
 COPY packages/omd/ packages/omd/

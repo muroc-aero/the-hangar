@@ -77,8 +77,9 @@ returns `alpha_deg` / `CL` / `CD` / `L_over_D` arrays plus `best_L_over_D`.
 | `ocp/FullMission` | OpenConcept mission with balanced-field takeoff |
 | `ocp/MissionWithReserve` | OpenConcept mission + reserve/loiter |
 | `pyc/TurbojetDesign`, `pyc/TurbojetMultipoint`, `pyc/HBTFDesign`, `pyc/ABTurbojetDesign`, `pyc/SingleTurboshaftDesign`, `pyc/MultiTurboshaftDesign`, `pyc/MixedFlowDesign` | pyCycle gas turbine cycles |
-| `evt/Sizing` | eVTOL MTOW sizing loop (evtolpy black box, FD partials) |
-| `evt/Mission` | eVTOL as-configured mission energy (no sizing) |
+| `evt/Sizing` | eVTOL MTOW-closure sizing (native OpenMDAO, analytic complex-step gradients) |
+| `evt/Mission` | eVTOL as-configured mission energy, no sizing loop (native OpenMDAO) |
+| `evt/SizingFD` | eVTOL sizing via the gradient-free evtolpy black box (FD-partial fallback / parity oracle) |
 | `paraboloid/Paraboloid` | Trivial test component |
 
 OCP components accept `slots` (drag/propulsion/weight providers such as
@@ -141,12 +142,68 @@ config:
 - `pyc/*` config keys are the cycle parameters (`comp_PR`, `comp_eff`,
   `burner_FAR`, `turb_eff`, `nozz_Cv`, `initial_guesses`, ...); extras
   pass through to the cycle builder.
-- `evt/*` config selects the evtolpy base config: `template` (default
-  `test_all`) or `config_name`/`config_path` (+ optional `config_dir`) to load a
-  full evtolpy JSON. Per-section override dicts (`aircraft`, `mission`, `power`,
-  `propulsion`, `environ`) and a flat `overrides` dict are merged in;
-  `operating_points` are routed to their owning section. `input_specs` overrides
-  which config keys are exposed as OpenMDAO inputs/DVs.
+- `evt/*` (`evt/Sizing`, `evt/Mission`, `evt/SizingFD`) build an eVTOL from a
+  complete evtolpy config. The config has five sections -- `aircraft`,
+  `mission`, `power`, `propulsion`, `environ` -- with units baked into every
+  key name (`_kg`, `_kw`, `_kw_hr`, `_m`, `_m_p_s`, `_s`); never convert
+  implicitly.
+
+  **Base config (pick one), most specific wins:**
+  1. `template` (default `test_all`) -- a named, in-package baseline. **This is
+     the portable path: it needs no server filesystem, so it works on a
+     deployed/remote server.** Built-in templates:
+     - `test_all` -- lift+cruise reference (6 lift + 6 tilt + 1 pusher, 3175 kg
+       initial MTOW); the parity baseline.
+     - `archer_midnight` -- Archer Midnight-class (6 tilt + 6 lift, no pusher,
+       ~30 mi / 1500 ft mission); native `evt/Sizing` closes it to ~2020 kg
+       sized MTOW.
+  2. `config_name` (a stem; `.json` appended) or `config_path` (+ optional
+     `config_dir`) -- load a full evtolpy JSON from the server filesystem.
+     **Caveat: the file must exist on the server. This works for a local
+     server run from the repo root but NOT on the deployed image, which does
+     not ship the example config dirs. Prefer `template` for remote use.**
+
+  **Customize on top of the base** (this is how an agent sets vehicle specs
+  through the MCP, no file needed): supply per-section override dicts under any
+  of the five section names, and/or a flat `overrides: {key: value}` dict
+  (each key is routed to its owning section). `operating_points` merge the same
+  way. Unknown keys **raise** with a typo suggestion (evtolpy would silently
+  ignore them). Example -- a longer-range, higher-energy-cell Midnight:
+
+  ```yaml
+  type: evt/Sizing
+  config:
+    template: archer_midnight
+    solver: newton            # MTOW-closure solver: "newton" (default) or "gs"
+    mission:   { cruise_s: 900 }              # retarget range
+    power:     { batt_spec_energy_w_h_p_kg: 285 }
+    aircraft:  { payload_kg: 500 }
+  ```
+
+  **Overrides set keys; they cannot delete them.** Starting from `test_all`
+  and overriding will not remove its pusher rotor, so it cannot become a
+  faithful no-pusher vehicle, and a partial override set leaves the other ~50
+  keys at the baseline (e.g. `test_all`'s high `landing_gear_drag_area_m2`),
+  producing a heavier, draggier aircraft than a purpose-built config. To
+  reproduce a *specific* vehicle faithfully, start from the matching `template`
+  (or a full `config_path`), not a handful of overrides on a generic baseline.
+
+  Common override keys by section: `payload_kg`, `wingspan_m`,
+  `wing_taper_ratio`, `vehicle_cl_max`, `stall_speed_m_p_s` (aircraft);
+  `cruise_s` and the per-segment `*_s` / `*_m_p_s` timings (mission);
+  `batt_spec_energy_w_h_p_kg`, `batt_eol_capacity`, `epu_effic` (power);
+  `rotor_count`, `lift_rotor_count`, `tilt_rotor_count`, `rotor_diameter_m`,
+  `tip_mach`, `rotor_effic` (propulsion).
+
+  Scalar outputs in the run summary: `sized_mtow_kg`, `max_takeoff_mass_kg`,
+  `empty_mass_kg`, `battery_mass_kg`, `total_mission_energy_kw_hr`,
+  `total_reserve_mission_energy_kw_hr`, `payload_mass_frac`, `peak_power_kw`,
+  `disk_loading_kg_p_m2`, and `converged` (`1.0` ok / `0.0` diverged -- always
+  check it). `evt/Sizing` runs the native MTOW closure with analytic
+  complex-step gradients (optimizable); `evt/Mission` reports energy at the
+  as-configured MTOW (no loop); `evt/SizingFD` is the gradient-free black-box
+  fallback. `input_specs` overrides which config keys are exposed as
+  OpenMDAO inputs/DVs.
 
 ## DV / constraint / objective short names
 
