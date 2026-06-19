@@ -11,7 +11,7 @@ full solvers at every Newton iteration.
 - Cruise altitude: 35,000 ft
 - Range: 1,500 NM
 - Climb: 2,000 ft/min at 250 KEAS
-- Cruise: 460 KEAS
+- Cruise: 256 KEAS
 - Descent: 1,500 ft/min at 250 KEAS
 
 ## Slots
