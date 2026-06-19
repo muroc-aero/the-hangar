@@ -30,6 +30,11 @@ tool server for electric VTOL aircraft sizing and mission-energy analysis.
 
 - `test_all` -- lift+cruise eVTOL reference (6 lift + 6 tilt rotors + 1 pusher,
   3175 kg initial MTOW); the upstream `test-all.json` baseline used for parity.
+- `archer_midnight` -- Archer Midnight-class (vectored thrust, 6 tilt + 6 lift,
+  no pusher; ~30 mi / 1500 ft mission), vendored from the AIAA SciTech 2026
+  case-study config. Native `evt/Sizing` closes it to ~2020 kg sized MTOW. A
+  faithful named baseline that ships in the package, so it is reachable on a
+  deployed server with no filesystem config; override sections to customize.
 
 ## Native OpenMDAO model (omd integration)
 

@@ -51,11 +51,25 @@ uv run --with claude-agent-sdk \
 | `paraboloid` | `opt_x`, `opt_y` (warn-only: DV retrieval is a known tool-surface gap, see FEATURE_BACKLOG) | 1e-3 |
 | `ocp_caravan_basic` | `fuel_burn_kg`, `OEW_kg`, `MTOW_kg` | 1e-3, 1e-3, 1e-6 |
 | `ocp_oas_coupled` | `fuel_burn_kg`, `OEW_kg`, `MTOW_kg` | 1e-3, 1e-3, 1e-6 |
+| `evt_open_sizing` | `sized_mtow_kg`, `total_mission_energy_kw_hr`, `peak_power_kw` | 1e-3 |
 
 The `ocp_oas_coupled` prompt gets a supplement with the baseline
 mission profile (climb/cruise/descent speeds, node count) because the
 lane_c prompt delegates those to the `ocp_caravan_basic` example files,
 which a blind MCP-only agent cannot read.
+
+`evt_open_sizing` is the **open-ended** case: its prompt
+(`evt_native_sizing/lane_c/sizing_open.prompt.md`) states only the
+engineering goal -- size a ~2-tonne Archer Midnight eVTOL and report
+sized MTOW, mission energy, and peak power. It deliberately names no
+factory, vehicle template, solver, or parameter keys, so the agent must
+self-serve from the `omd://reference` resource to land on `evt/Sizing`
+with the built-in `archer_midnight` template. It also tests the portable
+(filesystem-free) path: the agent has no config file, so it must use the
+in-package template. Lane A loads that same vehicle from its JSON, and the
+template is vendored from that file, so a template-built result matches the
+file-based reference to round-off (hence a single 1e-3 rtol catches a
+wrong-vehicle or wrong-path mistake by orders of magnitude).
 
 The agent's friction log (tool errors, confusing parameters,
 workarounds) is printed with each case; feed recurring items into
