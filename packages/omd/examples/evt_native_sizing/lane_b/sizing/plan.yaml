@@ -1,0 +1,19 @@
+metadata:
+  id: ex-evt-native-sizing
+  name: Native eVTOL MTOW-closure sizing (Archer Midnight)
+  version: 1
+  description: >
+    Native (gradient-capable) OpenMDAO sizing of the Archer Midnight
+    lift+cruise eVTOL from the vendored SciTech 2026 config grid, via the
+    evt/Sizing factory with a Newton MTOW-closure solver. config_dir is
+    repo-root-relative; run omd from the repo root.
+
+operating_points: {}
+
+components:
+- id: evtol
+  type: evt/Sizing
+  config:
+    config_dir: packages/evt/examples/abu_scitech_2026/cfg
+    config_name: archer-midnight-1500-30
+    solver: newton

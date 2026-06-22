@@ -1,0 +1,39 @@
+metadata:
+  id: ex-ocp-oas-direct
+  name: Caravan mission with direct-coupled OAS VLM drag slot
+  version: 1
+  description: >
+    OCP Caravan basic mission with direct-coupled OAS VLM drag via the
+    drag slot (the full VLM solver runs at every Newton iteration),
+    matching the Lane A reference. Mesh is kept coarse (num_y 5) for
+    direct-coupling performance.
+
+operating_points: {}
+
+components:
+- id: mission
+  type: ocp/BasicMission
+  config:
+    aircraft_template: caravan
+    architecture: turboprop
+    num_nodes: 11
+    solver_settings:
+      solver_type: newton
+      maxiter: 30
+      atol: 1.0e-8
+      rtol: 1.0e-8
+    mission_params:
+      cruise_altitude_ft: 18000.0
+      mission_range_NM: 250.0
+      climb_vs_ftmin: 850.0
+      climb_Ueas_kn: 104.0
+      cruise_Ueas_kn: 129.0
+      descent_vs_ftmin: 400.0
+      descent_Ueas_kn: 100.0
+    slots:
+      drag:
+        provider: oas/vlm-direct
+        config:
+          num_x: 2
+          num_y: 5
+          num_twist: 4

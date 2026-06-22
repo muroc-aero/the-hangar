@@ -1,0 +1,53 @@
+metadata:
+  id: ex-oas-ocp-combined
+  name: OAS wing aero + OCP Caravan mission (uncoupled composite)
+  version: 1
+  description: >
+    Composite plan running an OAS VLM wing analysis at cruise conditions
+    alongside an OCP Caravan basic mission in one Problem, mirroring the
+    Lane A composition. The two components are uncoupled (explicit
+    policy); the top-level operating_points drive the OAS analysis point
+    while the mission reads its profile from mission_params.
+
+operating_points:
+  velocity: 66.4
+  alpha: 3.0
+  Mach_number: 0.194
+  re: 1.0e+6
+  rho: 1.225
+
+composition_policy: explicit
+
+components:
+- id: wing
+  type: oas/AeroPoint
+  config:
+    surfaces:
+    - name: wing
+      wing_type: rect
+      num_x: 2
+      num_y: 7
+      span: 15.87
+      root_chord: 1.64
+      symmetry: true
+      with_viscous: true
+      CD0: 0.015
+- id: mission
+  type: ocp/BasicMission
+  config:
+    aircraft_template: caravan
+    architecture: turboprop
+    num_nodes: 11
+    solver_settings:
+      solver_type: newton
+      maxiter: 20
+      atol: 1.0e-10
+      rtol: 1.0e-10
+    mission_params:
+      cruise_altitude_ft: 18000.0
+      mission_range_NM: 250.0
+      climb_vs_ftmin: 850.0
+      climb_Ueas_kn: 104.0
+      cruise_Ueas_kn: 129.0
+      descent_vs_ftmin: 400.0
+      descent_Ueas_kn: 100.0
