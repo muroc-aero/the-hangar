@@ -1,0 +1,31 @@
+metadata:
+  id: ex-ocp-caravan-basic
+  name: Caravan basic mission (climb/cruise/descent)
+  version: 1
+  description: >
+    Cessna 208 Caravan single-turboprop basic mission (climb/cruise/
+    descent) at the same profile as the Lane A reference script. Newton/
+    Direct solver matches the raw-OpenConcept setup.
+
+operating_points: {}
+
+components:
+- id: caravan-mission
+  type: ocp/BasicMission
+  config:
+    aircraft_template: caravan
+    architecture: turboprop
+    num_nodes: 11
+    solver_settings:
+      solver_type: newton
+      maxiter: 20
+      atol: 1.0e-10
+      rtol: 1.0e-10
+    mission_params:
+      cruise_altitude_ft: 18000.0
+      mission_range_NM: 250.0
+      climb_vs_ftmin: 850.0
+      climb_Ueas_kn: 104.0
+      cruise_Ueas_kn: 129.0
+      descent_vs_ftmin: 400.0
+      descent_Ueas_kn: 100.0

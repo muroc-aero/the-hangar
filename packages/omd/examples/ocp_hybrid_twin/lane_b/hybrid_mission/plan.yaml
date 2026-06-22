@@ -1,0 +1,36 @@
+metadata:
+  id: ex-ocp-hybrid-twin
+  name: King Air series-hybrid twin full mission
+  version: 1
+  description: >
+    King Air C90GT series-hybrid electric twin turboprop full mission
+    (balanced-field takeoff + climb/cruise/descent) matching the Lane A
+    reference script. Battery specific energy and cruise hybridization
+    are set to the shared example values.
+
+operating_points: {}
+
+components:
+- id: hybrid-mission
+  type: ocp/FullMission
+  config:
+    aircraft_template: kingair
+    architecture: twin_series_hybrid
+    num_nodes: 11
+    propulsion_overrides:
+      battery_specific_energy: 450
+    solver_settings:
+      solver_type: newton
+      maxiter: 20
+      atol: 1.0e-10
+      rtol: 1.0e-10
+    mission_params:
+      cruise_altitude_ft: 29000.0
+      mission_range_NM: 500.0
+      climb_vs_ftmin: 1500.0
+      climb_Ueas_kn: 124.0
+      cruise_Ueas_kn: 170.0
+      descent_vs_ftmin: 600.0
+      descent_Ueas_kn: 140.0
+      cruise_hybridization: 0.058
+      payload_lb: 1000.0
