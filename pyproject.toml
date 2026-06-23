@@ -20,6 +20,10 @@ dependencies = [
 
 [tool.uv.workspace]
 members = ["packages/*"]
+# hangar-kernels is a maturin (Rust) member: excluded so the default
+# `uv sync` / CI needs no Rust toolchain. Build it on demand with
+# `cd packages/kernels && maturin develop --release`. See its README.
+exclude = ["packages/kernels"]
 
 [tool.uv.sources]
 hangar-sdk = { workspace = true }
