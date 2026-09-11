@@ -97,14 +97,52 @@ def _make_aircraft_model_class(
             if propulsion_slot is not None:
                 from hangar.omd.slots import get_slot_provider
                 prop_provider_fn = get_slot_provider(propulsion_slot["provider"])
+                prop_cfg = propulsion_slot.get("config", {})
                 prop_comp, prop_prom_in, prop_prom_out = prop_provider_fn(
-                    nn, flight_phase, propulsion_slot.get("config", {}),
+                    nn, flight_phase, prop_cfg,
                 )
-                self.add_subsystem(
-                    "propmodel", prop_comp,
-                    promotes_inputs=prop_prom_in,
-                    promotes_outputs=prop_prom_out,
-                )
+                # Every pyCycle slot provider models ONE engine, but the
+                # mission needs installed thrust. The CFM56 default path
+                # doubles through its own `doubler` ExecComp; the slot path
+                # needs the same scaling or a twin flies on one engine's
+                # thrust and the throttle balance has no solution. Providers
+                # that already model the whole installation opt out with
+                # engine_count: 1 in the slot config.
+                n_eng = int(prop_cfg.get("engine_count", num_engines))
+                scaled = [o for o in ("thrust", "fuel_flow")
+                          if o in prop_prom_out]
+                if n_eng > 1 and scaled:
+                    per_engine = [
+                        (o, f"{o}_per_engine") if o in scaled else o
+                        for o in prop_prom_out
+                    ]
+                    self.add_subsystem(
+                        "propmodel", prop_comp,
+                        promotes_inputs=prop_prom_in,
+                        promotes_outputs=per_engine,
+                    )
+                    units = {"thrust": "kN", "fuel_flow": "kg/s"}
+                    kwargs = {}
+                    for o in scaled:
+                        kwargs[o] = {"val": np.ones((nn,)), "units": units[o]}
+                        kwargs[f"{o}_per_engine"] = {
+                            "val": np.ones((nn,)), "units": units[o],
+                        }
+                    self.add_subsystem(
+                        "n_engines",
+                        om.ExecComp(
+                            [f"{o} = {n_eng} * {o}_per_engine" for o in scaled],
+                            has_diag_partials=True, **kwargs,
+                        ),
+                        promotes_inputs=[f"{o}_per_engine" for o in scaled],
+                        promotes_outputs=scaled,
+                    )
+                else:
+                    self.add_subsystem(
+                        "propmodel", prop_comp,
+                        promotes_inputs=prop_prom_in,
+                        promotes_outputs=prop_prom_out,
+                    )
             elif is_cfm56:
                 self.add_subsystem(
                     "propmodel",

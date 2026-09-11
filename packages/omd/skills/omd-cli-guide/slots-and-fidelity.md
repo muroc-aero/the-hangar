@@ -51,15 +51,20 @@ Slot providers come in two flavors:
 
 **Surrogate-coupled** (`oas/vlm`, `oas/aerostruct`, `pyc/surrogate`):
 Build a response surface offline, then evaluate cheaply during mission
-analysis. Fast (~1ms per node), no convergence risk. Use NLBGS solver
-when combining two surrogate slots (dual-surrogate Jacobian is
-ill-conditioned for Newton).
+analysis. Fast (~1ms per node). The convergence risk moves rather than
+disappears: a surrogate is only as good as its training data and only
+valid inside its training envelope, and Kriging extrapolates badly (and
+non-monotonically) outside it.
 
 **Direct-coupled** (`oas/vlm-direct`, `pyc/turbojet`, `pyc/hbtf`):
 Native OpenMDAO Group runs inside the OCP mission solver. Analytic
-partials, higher fidelity, but slower (~2s per node for pyCycle) and
-requires Newton convergence. Use at least one direct-coupled provider
-when combining drag + propulsion slots to avoid singular Jacobians.
+partials, higher fidelity, but slower (~2s per node for pyCycle).
+
+Use `newton` in both cases -- see "OCP Solver Settings" in
+`ocp-specifics.md` for why `nlbgs` cannot solve a mission at all. When two
+surrogate slots are combined and Newton struggles, the cause is usually
+the training data or the thrust/drag balance being infeasible, not the
+Jacobian; `hangar.omd.diagnostics` has the checks.
 
 ## Surrogate Propulsion Config (`pyc/surrogate`)
 

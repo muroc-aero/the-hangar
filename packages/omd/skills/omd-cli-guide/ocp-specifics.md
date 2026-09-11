@@ -99,6 +99,26 @@ solver_settings:
   use_aitken: true        # NLBGS Aitken relaxation (default true)
 ```
 
-Use `nlbgs` when combining two surrogate slots (drag + propulsion) to
-avoid ill-conditioned Newton Jacobian. Use `newton` for single-slot
-or direct-coupled configurations.
+**Always use `newton` for a mission.** OpenConcept's mission groups carry
+no solvers of their own, and every phase contains three `BalanceComp`s --
+throttle (thrust = drag), alpha (to hit the target CL), and phase duration.
+Only a residual-driving solver closes those.
+
+`nlbgs` does **not**. `NonlinearBlockGS` only *calls* each subsystem's
+`_solve_nonlinear`, and a `BalanceComp` defines none, so every balance keeps
+its initial value -- throttle frozen at 0.5, alpha at 1 deg -- while NLBGS
+reports convergence in a handful of iterations. The numbers it returns are
+the initial guesses propagated through the explicit components, not a
+solution. Do not reach for `nlbgs` to quiet a Newton that will not converge:
+it hides the failure rather than fixing it.
+
+If Newton diverges, the model is telling you something. Check, in order:
+whether the thrust available can meet the thrust required at all (a slot
+provider models ONE engine; the mission scales by the architecture's
+engine count), whether a surrogate's training envelope covers the
+conditions the mission asks for, and whether the surrogate was trained on
+physically admissible data (`hangar.omd.diagnostics.check_deck`).
+
+`hangar.omd.diagnostics.find_unsolved_implicit(prob)` lists any balance no
+solver can reach; it needs only `final_setup()`, so it answers in about a
+second on a plan that takes an hour to run.

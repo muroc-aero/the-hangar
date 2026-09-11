@@ -18,6 +18,12 @@ This package splits those checks out so each stage can be tested on its own:
     physically admissible (it held its commanded T4, its thrust is a sane
     multiple of design thrust, thrust rises with throttle) rather than
     merely non-negative.
+
+``thrust_margin``
+    Feasibility. Compare the thrust each mission node requires against what
+    the deck can deliver there. A node outside the envelope gives the
+    throttle balance no root, so Newton cannot converge -- a mission-
+    definition problem that presents as a solver problem.
 """
 
 from hangar.omd.diagnostics.deck_quality import (
@@ -30,12 +36,24 @@ from hangar.omd.diagnostics.solver_coverage import (
     find_unsolved_implicit,
     format_unsolved,
 )
+from hangar.omd.diagnostics.thrust_margin import (
+    NodeMargin,
+    check_mission_thrust,
+    format_margins,
+    max_thrust_surface,
+    required_thrust_kN,
+)
 
 __all__ = [
     "DeckFinding",
+    "NodeMargin",
     "UnsolvedBalance",
     "check_deck",
+    "check_mission_thrust",
     "find_unsolved_implicit",
+    "format_margins",
     "format_unsolved",
+    "max_thrust_surface",
     "physically_converged",
+    "required_thrust_kN",
 ]

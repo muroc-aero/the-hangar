@@ -35,11 +35,22 @@ DEFAULT_TURBOJET_GRID = {
     "throttle": [0.5, 0.65, 0.8, 0.9, 1.0],
 }
 
-# HBTF: cruise design, wider envelope
+# HBTF: cruise design, wider envelope.
+#
+# 35,000 ft is on the grid because it is the archetype's design altitude and
+# a typical cruise altitude -- without it the most important line in the deck
+# was interpolated between 30,000 ft and a 40,000 ft line whose off-design
+# solves mostly fail.
+#
+# The throttle floor is 0.15 rather than 0.30 because OpenConcept's throttle
+# balance is bounded [0.01, 1.05] and descent asks for near-idle. A floor of
+# 0.30 put every descent node into Kriging extrapolation, which is
+# non-monotonic and can go negative. Idle points do not converge at low
+# altitude; the admissibility filter drops those rather than poisoning the fit.
 DEFAULT_HBTF_GRID = {
-    "alt_ft": [0.0, 10000.0, 20000.0, 30000.0, 40000.0],
+    "alt_ft": [0.0, 10000.0, 20000.0, 30000.0, 35000.0, 40000.0],
     "MN": [0.2, 0.4, 0.55, 0.7, 0.85],
-    "throttle": [0.3, 0.5, 0.7, 0.85, 1.0],
+    "throttle": [0.15, 0.3, 0.5, 0.7, 0.85, 1.0],
 }
 
 
@@ -272,15 +283,39 @@ def _run_hbtf_deck(
             thrust_all[i] = float(prob.get_val("OD_0.perf.Fn", units="lbf"))
             fuel_all[i] = float(prob.get_val("OD_0.burner.Wfuel", units="lbm/s"))
             T4_all[i] = float(prob.get_val("OD_0.burner.Fl_O:tot:T", units="degR"))
-            if thrust_all[i] <= 0 or fuel_all[i] <= 0:
-                converged_all[i] = False
             prob.cleanup()
         except Exception as e:
             logger.debug("HBTF OD point %d failed: %s", i, e)
             converged_all[i] = False
 
+    # A pyCycle off-design solve can settle on a spurious root without ever
+    # reporting failure: it returns positive thrust and positive fuel flow
+    # while ignoring the T4 it was commanded. `thrust > 0` keeps those, and
+    # because KrigingSurrogate normalizes by the training standard deviation,
+    # one runaway point flattens every real point into noise. Judge each
+    # point on physics instead.
+    from hangar.omd.diagnostics.deck_quality import physically_converged
+
+    admissible = physically_converged(
+        {
+            "thrust_lbf": thrust_all,
+            "fuel_flow_lbm_s": fuel_all,
+            "T4_degR": T4_all,
+            "throttle": np.array(
+                [pt["Fn_target"] / design_Fn for pt in od_points]
+            ),
+        },
+        design_Fn=design_Fn,
+        design_T4=design_T4,
+        idle_T4=idle_T4,
+    )
+    converged_all &= admissible
+
     n_ok = converged_all.sum()
-    logger.info("HBTF deck: %d/%d points converged", n_ok, n)
+    logger.info(
+        "HBTF deck: %d/%d points physically admissible (%d rejected)",
+        n_ok, n, n - n_ok,
+    )
     return thrust_all, fuel_all, T4_all, converged_all
 
 

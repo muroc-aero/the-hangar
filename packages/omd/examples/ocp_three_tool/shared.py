@@ -35,20 +35,50 @@ PYC_DIRECT_CONFIG = dict(
     thermo_method="TABULAR",
 )
 
-# OCP mission parameters -- B738-class mission
+# OCP mission parameters -- B738-class mission.
+#
+# Climb and descent rates decay with altitude, following OpenConcept's own
+# B738 examples. A CONSTANT 2000 ft/min climb to FL350 was tried here and is
+# outside this aircraft's envelope: top of climb demands 75 kN while the
+# engine pair can make 52 kN, so the throttle balance has no root and Newton
+# cannot converge however good the solver is. Likewise a constant -1500
+# ft/min descent to sea level demands negative thrust at the bottom.
+#
+# Two-element [start, end] values are expanded with np.linspace over the
+# phase's nodes -- the same convention omd's `_phase_array` uses, so Lane A
+# and Lane B build identical profiles from identical numbers.
 MISSION = dict(
     cruise_altitude_ft=35000.0,
     mission_range_NM=1500.0,
-    climb_vs_ftmin=2000.0,
-    climb_Ueas_kn=250.0,
+    climb_vs_ftmin=[2300.0, 600.0],
+    climb_Ueas_kn=[230.0, 220.0],
     cruise_Ueas_kn=256.0,   # EAS for M0.80 at 35,000 ft (was 460, a TAS value)
-    descent_vs_ftmin=1500.0,
+    descent_vs_ftmin=[1000.0, 150.0],
     descent_Ueas_kn=250.0,
     num_nodes=3,
 )
 
+
+def phase_array(nn, value):
+    """Expand a mission param to a per-node array.
+
+    Mirrors ``hangar.omd.factories.ocp.mission_values._phase_array`` so the
+    two lanes cannot drift apart on profile shape.
+    """
+    import numpy as np
+
+    if isinstance(value, (list, tuple)):
+        if len(value) == 2:
+            return np.linspace(float(value[0]), float(value[1]), nn)
+        return np.array(value, dtype=float)
+    return np.ones((nn,)) * float(value)
+
 # OEW from the factory's _B738_DATA
 B738_OEW_KG = 41871.0
+
+# The B738 is a twin. pyCycle slot providers model ONE engine, so both lanes
+# scale by this; it must match PROPULSION_ARCHITECTURES["twin_turbofan"].
+N_ENGINES = 2
 
 # Fields removed by VLM drag slot
 VLM_REMOVES_FIELDS = [

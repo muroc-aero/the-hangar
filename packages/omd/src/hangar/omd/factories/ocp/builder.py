@@ -345,6 +345,9 @@ def _build_mission_problem(
             bound_enforcement="scalar",
             print_bound_enforce=False,
         )
+        prob.model.nonlinear_solver.options["err_on_non_converge"] = bool(
+            settings.get("err_on_non_converge", False)
+        )
 
     params = {**DEFAULT_MISSION_PARAMS, **mission_params}
 

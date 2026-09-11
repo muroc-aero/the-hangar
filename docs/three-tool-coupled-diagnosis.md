@@ -133,37 +133,113 @@ driven into Kriging extrapolation, where the fit is non-monotonic and can go
 negative. Even with a clean deck and the engine count fixed, descent thrust
 still reaches -3.1 kN and Newton does not fully converge.
 
+## The fix, and what it produced
+
+All four defects are fixed. Lane A now converges in **6 Newton iterations**
+(worst residual 2.3e-10) where NLBGS previously "converged" in 3 on a model
+it never solved.
+
+| Lane | fuel_burn_kg | OEW_kg | MTOW_kg | Solver |
+|------|--------------|--------|---------|--------|
+| A (direct OpenMDAO) | 10645.149781505615 | 41871.0 | 79002.0 | Newton, 6 iters |
+| B (omd plan pipeline) | 10645.149781505615 | 41871.0 | 79002.0 | Newton, 6 iters |
+
+Lanes A and B agree to the last digit, against a parity tolerance of 1e-3.
+
+Physical plausibility of the converged state, which the old answer had none of:
+
+* Cruise thrust equals drag to 7e-8 kN at every node (43.76 / 42.32 / 41.01 kN).
+* Throttle is interior everywhere -- [0.41, 1.02] against bounds [0.01, 1.05] --
+  rather than frozen at its 0.5 initial value.
+* Alpha solves to 6.3-9.4 deg rather than sitting at 1.0 deg.
+* 10,645 kg for a 737-800 flying 1500 NM at FL350 is in the right band
+  (roughly 2.5 t/h in cruise over a ~3.7 h block).
+
+The answer is tolerance-stable: 10645.1498 at atol/rtol 1e-10 and
+10645.1508 at 1e-12 (1e-7 relative). At the 1e-8 the example previously used
+it lands 1.9e-4 from the root -- inside the parity band but close enough to
+it that the example now runs at 1e-10.
+
+### 4. The mission profile was outside the aircraft's envelope
+
+Found only after fixing 1-3, because until then nothing was solving well
+enough to notice. The example prescribed a **constant** 2000 ft/min climb to
+FL350 and a constant -1500 ft/min descent to sea level. Measured against the
+deck:
+
+| Node | Required | Available | |
+|------|----------|-----------|---|
+| climb, 17,500 ft | 86.7 kN | 83.7 kN | infeasible |
+| climb, 35,000 ft | 75.2 kN | 52.0 kN | infeasible |
+| descent, sea level | **-3.1 kN** | 110.6 kN | needs drag devices |
+
+A steady-flight throttle balance has a root only where required thrust lies
+inside what the engine can produce. Two nodes were outside it and one wanted
+negative thrust, so Newton could not converge however good the solver was --
+a mission-definition problem wearing a solver problem's clothes.
+
+OpenConcept's own `B738.py` and `B738_VLM_drag.py` decay both rates:
+`linspace(2300, 600)` ft/min on climb and `linspace(-1000, -150)` on descent.
+The example now uses that shape (omd's `_phase_array` already expanded
+`[start, end]` pairs; `shared.phase_array` mirrors it so the two lanes cannot
+drift). With it, every node is inside the envelope and Newton converges.
+
 ## What is in this change
 
-Diagnostics and tests only — no lane physics or reference values were
-changed, since those feed the published parity tables.
+### Fixes
 
-* `hangar.omd.diagnostics.solver_coverage` — find implicit components no
-  solver in their ancestry can solve. Needs only `final_setup()`.
-* `hangar.omd.diagnostics.deck_quality` — admissibility checks for a
-  pyCycle deck: T4 held, thrust in range, monotone in throttle, per-line
-  coverage.
-* `pyc/surrogate.py` — deck memoization keyed on the generating inputs,
-  plus `deck_cache_key` / `clear_deck_cache`.
-* `packages/omd/tests/test_solver_coverage.py`,
-  `packages/omd/tests/test_deck_quality.py` — 13 tests, 1.4 s total.
+* `factories/ocp/aircraft_model.py` -- installed-thrust scaling for the
+  propulsion slot, mirroring the CFM56 `doubler`. Driven by the
+  architecture's `num_engines`; a provider that already models the whole
+  installation opts out with `engine_count: 1`.
+* `pyc/surrogate.py` -- deck points are judged on physics rather than
+  `thrust > 0`; the HBTF grid gains a 35,000 ft line (the design and cruise
+  altitude, previously interpolated between 30,000 ft and a mostly-broken
+  40,000 ft line) and a 0.15 throttle floor so descent interpolates instead
+  of extrapolating; decks are memoized on their generating inputs so the
+  three flight phases share one.
+* `factories/ocp/{builder,defaults}.py` -- `err_on_non_converge` is now a
+  solver setting (off by default to preserve existing plans; on for the
+  three-tool example).
+* `examples/ocp_three_tool/` -- Newton everywhere, engine-count scaling in
+  Lane A, decaying climb/descent rates, and a `HANGAR_HBTF_DECK` escape
+  hatch so Lane A can reuse a saved deck.
 
-## Recommended fixes, in dependency order
+### Diagnostics
 
-1. **Deck admissibility** — have `_run_hbtf_deck` reject points via
-   `physically_converged` instead of `thrust > 0`, and add continuation from
-   the design point (or per-condition `guess_nonlinear`) so the 40,000 ft
-   edge converges rather than being dropped.
-2. **Engine count** — give the propulsion slot an engine-count multiplier,
-   matching the CFM56 `doubler`; mirror it in Lane A.
-3. **Deck envelope** — extend the throttle grid down toward idle so descent
-   is interpolated, not extrapolated.
-4. **Solver** — with 1-3 done, move `ocp_three_tool` back to
-   `NewtonSolver(solve_subsystems=True)` and set `err_on_non_converge=True`
-   in the OCP builder so a non-converged mission fails loudly. Then correct
-   `skills/omd-cli-guide/ocp-specifics.md`, which currently tells agents to
-   pick `nlbgs` for dual-surrogate slots — that advice reaches Lane C agents
-   and reproduces this failure.
+* `diagnostics/solver_coverage.py` -- implicit components no solver in their
+  ancestry can solve. Needs only `final_setup()`.
+* `diagnostics/deck_quality.py` -- deck admissibility: commanded T4 held,
+  thrust in range, monotone in throttle, per-line coverage.
+* `diagnostics/thrust_margin.py` -- required vs available thrust per mission
+  node, from the deck alone.
+* `python -m hangar.omd.diagnostics {solver,deck}` -- both as one-liners.
 
-Until 1-4 land, `ocp_three_tool`'s Lane A numbers are not a physical
-reference and should not anchor an eval.
+### Guidance
+
+`skills/omd-cli-guide/{ocp-specifics,slots-and-fidelity}.md` and
+`packages/omd/CLAUDE.md` told agents to pick `nlbgs` for dual-surrogate
+slots. That advice reaches Lane C agents and reproduces this failure, so
+Lane C was not independently broken -- it was following instructions. All
+three now say why NLBGS cannot solve an OCP mission and point at the
+diagnostics instead.
+
+## Running the checks
+
+```bash
+# the fast tiers -- ~4 s total
+uv run pytest packages/omd/tests/test_solver_coverage.py \
+              packages/omd/tests/test_deck_quality.py \
+              packages/omd/tests/test_slot_engine_count.py \
+              packages/omd/tests/test_thrust_margin.py -v
+
+# audit any plan for balances no solver can reach (~1 s, stubs the training)
+uv run python -m hangar.omd.diagnostics solver \
+  packages/omd/examples/ocp_three_tool/lane_b/coupled_mission/plan.yaml
+
+# audit a saved deck
+uv run python -m hangar.omd.diagnostics deck /path/to/hbtf_deck.npz
+
+# the real thing (~30 min for the deck, then seconds)
+uv run pytest packages/omd/examples/tests/test_parity.py::TestOCPThreeToolParity -v -s
+```

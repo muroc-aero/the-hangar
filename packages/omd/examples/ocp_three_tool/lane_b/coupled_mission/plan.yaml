@@ -5,8 +5,10 @@ metadata:
   description: >
     B738 basic mission with both slots filled: OAS VLM surrogate
     drag replacing PolarDrag, and pyCycle HBTF surrogate propulsion
-    replacing the default CFM56. Uses NLBGS solver to avoid the
-    ill-conditioned Jacobian from dual-surrogate coupling.
+    replacing the default CFM56. Newton with solve_subsystems, because
+    the mission's throttle, alpha and phase-duration balances need a
+    residual-driving solver; err_on_non_converge so a mission that hits
+    maxiter fails loudly instead of reporting initial guesses.
 
 components:
 - id: mission
@@ -16,17 +18,22 @@ components:
     architecture: twin_turbofan
     num_nodes: 3
     solver_settings:
-      solver_type: nlbgs
-      maxiter: 200
-      atol: 1e-8
-      rtol: 1e-8
+      solver_type: newton
+      maxiter: 60
+      atol: 1e-10
+      rtol: 1e-10
+      solve_subsystems: true
+      err_on_non_converge: true
     mission_params:
       cruise_altitude_ft: 35000
       mission_range_NM: 1500
-      climb_vs_ftmin: 2000
-      climb_Ueas_kn: 250
+      # Rates decay with altitude (OpenConcept's own B738 shape). A constant
+      # 2000 ft/min to FL350 demands 75 kN at top of climb against 52 kN
+      # available, so the throttle balance has no root.
+      climb_vs_ftmin: [2300, 600]
+      climb_Ueas_kn: [230, 220]
       cruise_Ueas_kn: 256
-      descent_vs_ftmin: 1500
+      descent_vs_ftmin: [1000, 150]
       descent_Ueas_kn: 250
     slots:
       drag:

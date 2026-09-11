@@ -29,6 +29,10 @@ DEFAULT_SOLVER_SETTINGS: dict = {
     "rtol": 1e-10,
     "solve_subsystems": True,
     "use_aitken": True,
+    # Off by default to preserve existing plans' behaviour. Set it in a plan
+    # whose numbers are a reference: a mission that hit maxiter is not a
+    # solution, and silently reporting one is how a broken model looks healthy.
+    "err_on_non_converge": False,
 }
 
 BASIC_MISSION_PHASES = ["climb", "cruise", "descent"]

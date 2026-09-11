@@ -328,8 +328,15 @@ Key lessons from integration:
 - ExecComp unit passthrough: use same units on input/output, let connections convert
 - `apply_initial_guesses` must handle both promoted and non-promoted paths
 - Direct-coupled pyCycle converges in a full OCP mission (Newton-in-Newton works)
-- Dual-surrogate coupling (VLM + pyCycle surrogates) produces singular Jacobians;
-  use at least one direct-coupled provider when combining both slots
+- Dual-surrogate coupling (VLM + pyCycle surrogates) can make Newton struggle,
+  but NLBGS is never the answer for an OCP mission: OpenConcept's phases carry
+  no solvers, so `NonlinearBlockGS` leaves every BalanceComp (throttle, alpha,
+  phase duration) at its initial value and still reports convergence. Diagnose
+  with `hangar.omd.diagnostics.find_unsolved_implicit` / `check_deck`
+- Propulsion slot providers model ONE engine; the aircraft model scales by the
+  architecture's `num_engines` (opt out with `engine_count: 1` in the slot
+  config). Without it a twin flies on half its thrust and the throttle balance
+  has no solution
 
 ## Slot provider design variables
 
