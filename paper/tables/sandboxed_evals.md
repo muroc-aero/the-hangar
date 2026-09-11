@@ -1,6 +1,40 @@
-<!-- source: /Users/alexanderbraafladt/Developer/muroc-aero/hangar-evals/results -->
-| Case | Harness | Model | Seeds | Completed | Passed | Valid-call rate (med) | Turns (med) | Wall clock s (med) |
-|---|---|---|---|---|---|---|---|---|
-| paraboloid | claude | claude-opus-4-8 | 1 | 1/1 | 1/1 | 1 | 47 | 202 |
-| paraboloid | opencode | qwen3.6:35b-mlx | 3 | 0/3 | 0/3 | 0.881 | 44 | 288 |
-| paraboloid | opencode | qwen3:8b | 3 | 1/3 | 0/3 | 0 | 1 | 65.4 |
+<!-- source: ../hangar-evals/results/regraded -- Passed/Failed are results over graded seeds. Lost: seeds the harness never measured (crash, credential, network); these are not failures and a nonzero count means the arm needs re-running, not annotating. Review: seeds whose agent-reported verdict contradicts the effect grade, awaiting a human look (`evals review`). -->
+| Case | Harness | Model | Seeds | Passed | Failed | Lost | Review | Valid-call rate (med) | Turns (med) | Wall clock s (med) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| evt_native_sizing | claude | claude-opus-4-8 | 1 | 1/1 | 0 | 0 | 0 | 1 | 22 | 364 |
+| evt_native_sizing | claude | claude-opus-5 | 3 | 3/3 | 0 | 0 | 0 | 1 | 39 | 173 |
+| evt_native_sizing | opencode | gemma4:26b-mlx | 5 | 0/5 | 5 | 0 | 0 | 0.857 | 38 | 581 |
+| oas_aero_rect | claude | claude-opus-4-8 | 1 | 1/1 | 0 | 0 | 0 | 1 | 30 | 241 |
+| oas_aero_rect | claude | claude-opus-5 | 3 | 3/3 | 0 | 0 | 0 | 1 | 56 | 286 |
+| oas_aero_rect | opencode | gemma4:26b-mlx | 5 | 0/5 | 5 | 0 | 0 | 1 | 3 | 52.4 |
+| oas_aerostruct_rect | claude | claude-opus-4-8 | 1 | 1/1 | 0 | 0 | 0 | 1 | 41 | 422 |
+| oas_aerostruct_rect | claude | claude-opus-5 | 3 | 2/3 | 1 | 0 | 1 | 1 | 57 | 376 |
+| oas_aerostruct_rect | opencode | gemma4:26b-mlx | 5 | 0/5 | 5 | 0 | 0 | 1 | 10 | 83.1 |
+| oas_ocp_combined | claude | claude-opus-4-8 | 1 | 1/1 | 0 | 0 | 0 | 1 | 37 | 264 |
+| oas_ocp_combined | claude | claude-opus-5 | 3 | 3/3 | 0 | 0 | 0 | 1 | 53 | 336 |
+| oas_ocp_combined | opencode | gemma4:26b-mlx | 5 | 0/5 | 5 | 0 | 0 | 0.843 | 52 | 428 |
+| ocp_caravan_basic | claude | claude-opus-4-8 | 3 | 3/3 | 0 | 0 | 0 | 1 | 24 | 157 |
+| ocp_caravan_basic | claude | claude-opus-5 | 3 | 3/3 | 0 | 0 | 0 | 1 | 41 | 208 |
+| ocp_caravan_basic | opencode | gemma4:26b-mlx | 5 | 0/5 | 5 | 0 | 0 | 0.722 | 21 | 254 |
+| ocp_caravan_full | claude | claude-opus-4-8 | 1 | 0/1 | 1 | 0 | 1 | 1 | 26 | 142 |
+| ocp_caravan_full | claude | claude-opus-5 | 3 | 0/3 | 3 | 0 | 3 | 1 | 44 | 275 |
+| ocp_caravan_full | opencode | gemma4:26b-mlx | 5 | 0/5 | 5 | 0 | 0 | 0.935 | 26 | 620 |
+| ocp_hybrid_twin | claude | claude-opus-4-8 | 1 | 0/1 | 0 | 1 | 0 | -- | -- | -- |
+| ocp_hybrid_twin | claude | claude-opus-5 | 3 | 1/3 | 2 | 0 | 2 | 1 | 42 | 260 |
+| ocp_hybrid_twin | opencode | gemma4:26b-mlx | 5 | 0/5 | 5 | 0 | 0 | 0.842 | 22 | 519 |
+| ocp_oas_coupled | claude | claude-opus-4-8 | 1 | 1/1 | 0 | 0 | 0 | 1 | 22 | 124 |
+| ocp_oas_coupled | claude | claude-opus-5 | 3 | 3/3 | 0 | 0 | 0 | 1 | 49 | 366 |
+| ocp_oas_coupled | opencode | gemma4:26b-mlx | 5 | 0/5 | 5 | 0 | 0 | 0.824 | 27 | 278 |
+| ocp_oas_direct | claude | claude-opus-4-8 | 1 | 1/1 | 0 | 0 | 0 | 1 | 24 | 153 |
+| ocp_oas_direct | claude | claude-opus-5 | 3 | 2/3 | 1 | 0 | 1 | 1 | 39 | 374 |
+| ocp_oas_direct | opencode | gemma4:26b-mlx | 5 | 0/5 | 5 | 0 | 0 | 0.829 | 24 | 434 |
+| ocp_three_tool | claude | claude-opus-4-8 | 1 | 0/1 | 1 | 0 | 0 | 0.976 | 42 | 1.31e+03 |
+| ocp_three_tool | opencode | gemma4:26b-mlx | 1 | 0/1 | 1 | 0 | 0 | 1 | 2 | 44.8 |
+| paraboloid | claude | claude-opus-4-8 | 1 | 1/1 | 0 | 0 | 0 | 1 | 43 | 190 |
+| paraboloid | claude | claude-opus-5 | 3 | 2/3 | 0 | 1 | 0 | 1 | 66.5 | 404 |
+| paraboloid | opencode | gemma4:26b-mlx | 5 | 0/5 | 5 | 0 | 0 | 0.902 | 66 | 296 |
+| paraboloid | opencode | qwen3.6:35b-mlx | 3 | 0/3 | 3 | 0 | 0 | 0.881 | 44 | 288 |
+| paraboloid | opencode | qwen3:8b | 3 | 0/3 | 3 | 0 | 0 | 0 | 1 | 26.7 |
+| pyc_turbojet | claude | claude-opus-4-8 | 1 | 1/1 | 0 | 0 | 0 | 1 | 36 | 238 |
+| pyc_turbojet | claude | claude-opus-5 | 3 | 2/3 | 1 | 0 | 0 | 0.982 | 57 | 900 |
+| pyc_turbojet | opencode | gemma4:26b-mlx | 5 | 0/5 | 5 | 0 | 0 | 0.917 | 9 | 117 |

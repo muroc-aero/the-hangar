@@ -5,8 +5,9 @@ Inputs (all optional except the first):
   paper/results/lane_parity.jsonl   -- written by paper/run_lanes.py
   paper/results/lane_c_agent.json   -- written by
       packages/omd/examples/agent_eval/eval_lane_c.py --save-json
-  ../hangar-evals/results/*_summary.json -- sandboxed local-model evals
-      (override the directory with --evals-dir)
+  ../hangar-evals/results/regraded/*_summary.json -- sandboxed evals, with
+      the ambiguity counts (falls back to results/ if not regraded yet;
+      override with --evals-dir)
 
 Outputs:
   paper/tables/lane_parity.{csv,md,tex}
@@ -22,6 +23,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -29,7 +31,13 @@ PAPER_DIR = Path(__file__).resolve().parent
 REPO_ROOT = PAPER_DIR.parent
 RESULTS_DIR = PAPER_DIR / "results"
 TABLES_DIR = PAPER_DIR / "tables"
-DEFAULT_EVALS_DIR = REPO_ROOT.parent / "hangar-evals" / "results"
+_EVALS_ROOT = REPO_ROOT.parent / "hangar-evals" / "results"
+# Prefer the REGRADED summaries: they carry n_ambiguous / n_report_disagrees,
+# the two counts that say whether a Passed cell can be read at face value.
+# Defaulting to the raw directory meant a bare `make_tables.py` silently
+# overwrote a table that had those columns with one that did not.
+DEFAULT_EVALS_DIR = (_EVALS_ROOT / "regraded" if (_EVALS_ROOT / "regraded").is_dir()
+                     else _EVALS_ROOT)
 
 # Presentation order, short description, and the metrics worth printing
 # for each parity case (case slugs match the `case=` tags in
@@ -251,6 +259,22 @@ def write_tex(path: Path, header: list[str], rows: list[list[str]],
     path.write_text("\n".join(lines) + "\n")
 
 
+def _portable(path: Path) -> str:
+    """A path fit to commit: relative to the repo root when it can be.
+
+    The note lands in a tracked file, so an absolute path would bake one
+    machine's home directory into the paper's table and make an otherwise
+    byte-identical re-render show up as a diff.
+
+    Rendered relative to the repo root, which is also the form you would pass
+    back in as ``--evals-dir``.
+    """
+    try:
+        return os.path.relpath(path.resolve(), REPO_ROOT)
+    except ValueError:      # different drive on Windows
+        return str(path)
+
+
 def _median_of(block: dict | None, default: str = "--") -> str:
     if not isinstance(block, dict) or "median" not in block:
         return default
@@ -258,8 +282,9 @@ def _median_of(block: dict | None, default: str = "--") -> str:
 
 
 def build_evals_rows(evals_dir: Path) -> tuple[list[str], list[list[str]]]:
-    header = ["Case", "Harness", "Model", "Seeds", "Completed", "Passed",
-              "Valid-call rate (med)", "Turns (med)", "Wall clock s (med)"]
+    header = ["Case", "Harness", "Model", "Seeds", "Passed", "Failed", "Lost",
+              "Review", "Valid-call rate (med)", "Turns (med)",
+              "Wall clock s (med)"]
     latest: dict[tuple, tuple[str, dict]] = {}
     for path in sorted(evals_dir.glob("*_summary.json")):
         try:
@@ -271,11 +296,18 @@ def build_evals_rows(evals_dir: Path) -> tuple[list[str], list[list[str]]]:
             latest[key] = (path.name, rec)  # sorted glob -> last wins
     rows = []
     for (case, harness, model), (_, rec) in sorted(latest.items()):
+        n = rec.get("n_seeds", 0)
+        passed = rec.get("n_passed", 0)
+        lost = rec.get("n_harness_errors")
         rows.append([
-            str(case), str(harness), str(model),
-            str(rec.get("n_seeds", "--")),
-            f"{rec.get('n_completed', 0)}/{rec.get('n_seeds', 0)}",
-            f"{rec.get('n_passed', 0)}/{rec.get('n_seeds', 0)}",
+            str(case), str(harness), str(model), str(n),
+            f"{passed}/{n}",
+            # Failed = ran, was graded, did not pass. Seeds the harness lost
+            # were never measured, so they come out of the middle rather than
+            # being counted against the agent.
+            "--" if lost is None else str(max(0, n - passed - lost)),
+            "--" if lost is None else str(lost),
+            str(rec.get("n_needs_review", "--")),
             _median_of(rec.get("valid_call_rate")),
             _median_of(rec.get("turns")),
             _median_of(rec.get("wall_clock_s")),
@@ -323,10 +355,18 @@ def main() -> int:
         eheader, erows = build_evals_rows(args.evals_dir)
         if erows:
             write_csv(TABLES_DIR / "sandboxed_evals.csv", eheader, erows)
+            evals_note = (
+                f"source: {_portable(args.evals_dir)} -- Passed/Failed are "
+                "results over graded seeds. Lost: seeds the harness never "
+                "measured (crash, credential, network); these are not failures "
+                "and a nonzero count means the arm needs re-running, not "
+                "annotating. Review: seeds whose agent-reported verdict "
+                "contradicts the effect grade, awaiting a human look "
+                "(`evals review`).")
             write_md(TABLES_DIR / "sandboxed_evals.md", eheader, erows,
-                     f"source: {args.evals_dir}")
+                     evals_note)
             write_tex(TABLES_DIR / "sandboxed_evals.tex", eheader, erows,
-                      f"source: {args.evals_dir}")
+                      evals_note)
             print(f"Sandboxed evals table: {len(erows)} rows -> "
                   f"{TABLES_DIR}/sandboxed_evals.{{csv,md,tex}}")
         else:
