@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -251,6 +252,22 @@ def write_tex(path: Path, header: list[str], rows: list[list[str]],
     path.write_text("\n".join(lines) + "\n")
 
 
+def _portable(path: Path) -> str:
+    """A path fit to commit: relative to the repo root when it can be.
+
+    The note lands in a tracked file, so an absolute path would bake one
+    machine's home directory into the paper's table and make an otherwise
+    byte-identical re-render show up as a diff.
+
+    Rendered relative to the repo root, which is also the form you would pass
+    back in as ``--evals-dir``.
+    """
+    try:
+        return os.path.relpath(path.resolve(), REPO_ROOT)
+    except ValueError:      # different drive on Windows
+        return str(path)
+
+
 def _median_of(block: dict | None, default: str = "--") -> str:
     if not isinstance(block, dict) or "median" not in block:
         return default
@@ -330,7 +347,7 @@ def main() -> int:
         if erows:
             write_csv(TABLES_DIR / "sandboxed_evals.csv", eheader, erows)
             evals_note = (
-                f"source: {args.evals_dir} -- Ambig: seeds where the oracle "
+                f"source: {_portable(args.evals_dir)} -- Ambig: seeds where the oracle "
                 "skipped a successful same-mode run (score depends on run "
                 "order); Rep-dis: seeds where the agent's own verdict differs "
                 "from the effect grade. Read Passed at face value only where "
