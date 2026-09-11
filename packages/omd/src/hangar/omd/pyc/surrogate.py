@@ -318,6 +318,46 @@ def load_deck(path: str | Path) -> dict[str, np.ndarray]:
 
 
 # ---------------------------------------------------------------------------
+# Deck cache
+# ---------------------------------------------------------------------------
+
+# A deck is a pure function of (archetype, design conditions, engine params,
+# grid). An OCP mission instantiates the propulsion slot once PER FLIGHT
+# PHASE, so without this cache a three-phase mission pays the off-design sweep
+# three times -- ~20 min each for the 125-point HBTF grid -- and builds three
+# independently-fitted surrogates from what should be identical data. Keyed on
+# the inputs, so a differently-configured engine still generates its own deck.
+_DECK_CACHE: dict[tuple, dict[str, np.ndarray]] = {}
+
+
+def deck_cache_key(
+    archetype: str,
+    design_conditions: dict | None,
+    engine_params: dict | None,
+    grid_spec: dict | None,
+) -> tuple:
+    """Hashable key identifying the deck these inputs produce."""
+    def freeze(obj):
+        if isinstance(obj, dict):
+            return tuple(sorted((k, freeze(v)) for k, v in obj.items()))
+        if isinstance(obj, (list, tuple, np.ndarray)):
+            return tuple(freeze(v) for v in obj)
+        return obj
+
+    return (
+        archetype,
+        freeze(design_conditions or {}),
+        freeze(engine_params or {}),
+        freeze(grid_spec or {}),
+    )
+
+
+def clear_deck_cache() -> None:
+    """Drop every cached deck (tests that vary engine internals in place)."""
+    _DECK_CACHE.clear()
+
+
+# ---------------------------------------------------------------------------
 # OpenMDAO surrogate group
 # ---------------------------------------------------------------------------
 
@@ -399,7 +439,7 @@ class PyCycleSurrogateGroup(om.Group):
         )
 
     def _get_deck(self) -> dict[str, np.ndarray]:
-        """Load deck from file or generate on-the-fly."""
+        """Load deck from file, process cache, or generate on-the-fly."""
         deck_path = self.options["deck_path"]
         if deck_path is not None:
             return load_deck(deck_path)
@@ -413,13 +453,24 @@ class PyCycleSurrogateGroup(om.Group):
         }
         grid_spec = self.options["grid_spec"]
 
+        key = deck_cache_key(
+            archetype, design_conditions, self.options["engine_params"],
+            grid_spec,
+        )
+        cached = _DECK_CACHE.get(key)
+        if cached is not None:
+            logger.info("Reusing cached %s surrogate deck", archetype)
+            return {k: v.copy() for k, v in cached.items()}
+
         logger.info(
             "Generating %s surrogate deck (this may take a few minutes)...",
             archetype,
         )
-        return generate_deck(
+        deck = generate_deck(
             archetype=archetype,
             design_conditions=design_conditions,
             engine_params=self.options["engine_params"],
             grid_spec=grid_spec,
         )
+        _DECK_CACHE[key] = {k: np.asarray(v).copy() for k, v in deck.items()}
+        return deck
