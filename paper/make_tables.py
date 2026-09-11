@@ -282,8 +282,8 @@ def _median_of(block: dict | None, default: str = "--") -> str:
 
 
 def build_evals_rows(evals_dir: Path) -> tuple[list[str], list[list[str]]]:
-    header = ["Case", "Harness", "Model", "Seeds", "Completed", "Passed",
-              "Ambig", "Rep-dis", "Valid-call rate (med)", "Turns (med)",
+    header = ["Case", "Harness", "Model", "Seeds", "Passed", "Failed", "Lost",
+              "Review", "Valid-call rate (med)", "Turns (med)",
               "Wall clock s (med)"]
     latest: dict[tuple, tuple[str, dict]] = {}
     for path in sorted(evals_dir.glob("*_summary.json")):
@@ -296,16 +296,18 @@ def build_evals_rows(evals_dir: Path) -> tuple[list[str], list[list[str]]]:
             latest[key] = (path.name, rec)  # sorted glob -> last wins
     rows = []
     for (case, harness, model), (_, rec) in sorted(latest.items()):
+        n = rec.get("n_seeds", 0)
+        passed = rec.get("n_passed", 0)
+        lost = rec.get("n_harness_errors")
         rows.append([
-            str(case), str(harness), str(model),
-            str(rec.get("n_seeds", "--")),
-            f"{rec.get('n_completed', 0)}/{rec.get('n_seeds', 0)}",
-            f"{rec.get('n_passed', 0)}/{rec.get('n_seeds', 0)}",
-            # Ambig / Rep-dis come from hangar.evals.regrade; "--" when the
-            # summary predates it. A Passed count is only safe to read at face
-            # value when both are 0 -- see the note under the table.
-            str(rec.get("n_ambiguous", "--")),
-            str(rec.get("n_report_disagrees", "--")),
+            str(case), str(harness), str(model), str(n),
+            f"{passed}/{n}",
+            # Failed = ran, was graded, did not pass. Seeds the harness lost
+            # were never measured, so they come out of the middle rather than
+            # being counted against the agent.
+            "--" if lost is None else str(max(0, n - passed - lost)),
+            "--" if lost is None else str(lost),
+            str(rec.get("n_needs_review", "--")),
             _median_of(rec.get("valid_call_rate")),
             _median_of(rec.get("turns")),
             _median_of(rec.get("wall_clock_s")),
@@ -354,11 +356,13 @@ def main() -> int:
         if erows:
             write_csv(TABLES_DIR / "sandboxed_evals.csv", eheader, erows)
             evals_note = (
-                f"source: {_portable(args.evals_dir)} -- Ambig: seeds where the oracle "
-                "skipped a successful same-mode run (score depends on run "
-                "order); Rep-dis: seeds where the agent's own verdict differs "
-                "from the effect grade. Read Passed at face value only where "
-                "both are 0.")
+                f"source: {_portable(args.evals_dir)} -- Passed/Failed are "
+                "results over graded seeds. Lost: seeds the harness never "
+                "measured (crash, credential, network); these are not failures "
+                "and a nonzero count means the arm needs re-running, not "
+                "annotating. Review: seeds whose agent-reported verdict "
+                "contradicts the effect grade, awaiting a human look "
+                "(`evals review`).")
             write_md(TABLES_DIR / "sandboxed_evals.md", eheader, erows,
                      evals_note)
             write_tex(TABLES_DIR / "sandboxed_evals.tex", eheader, erows,

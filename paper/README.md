@@ -18,7 +18,7 @@ paper/
     lane_parity_meta.json    # timestamp, git sha, pytest exit code
     lane_c_agent.json        # optional: live-agent Lane C runs (eval_lane_c.py)
   (../hangar-evals/results/)
-    regraded/                # per-cell summaries + the ambiguity counts
+    regraded/                # per-cell summaries + outcome counts
     campaigns/<arm>_<stamp>/ # per-run table.md, manifest.json, campaign.log
   tables/
     lane_parity.{csv,md,tex}      # Lane A vs B vs C per example/metric
@@ -98,11 +98,13 @@ cases carrying error rows resume on just those seeds. `scripts/evals table`
 re-renders without running anything.
 
 Pass `--evals-dir ../hangar-evals/results/regraded` to `make_tables.py`
-(the runner does): the regraded summaries add `n_ambiguous` and
-`n_report_disagrees`, the two counts that say whether a `Passed` cell can
-be read at face value. `make_tables.py` keeps the latest summary per
-(case, harness, model), so arms accumulate across runs and retired model
-generations stay in for comparison.
+(the runner does, and it is now the default): the regraded summaries add
+`Lost` -- seeds the harness never measured, which are not failures and
+mean the arm needs re-running -- and `Review`, seeds whose reported
+verdict contradicts the grade and need a human look (`evals review`).
+`make_tables.py` keeps the latest summary per (case, harness, model), so
+arms accumulate across runs and retired model generations stay in for
+comparison.
 
 ### 4. Brelje 2018a Figs 5 & 6
 

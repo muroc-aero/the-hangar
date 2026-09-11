@@ -73,12 +73,35 @@ Before using the rendered tables:
 - `lane_parity.md`'s header comment: pytest exit 0, and a git SHA matching the
   code the numbers should describe.
 - Every case you expect is present — a missing arm is an absent row, not an error.
-- **No cell with `Ambig > 0` is being read as a clean fail.** The oracle grades
-  the last successful run of the matching mode, and several Lane C prompts ask
-  for a comparison run, so an agent that obeys can leave a control run last. The
-  score then turns on run order. `Rep-dis > 0` means the agent's own verdict
-  contradicts the effect grade — in the 2026-09-10 anchor arm every such seed
-  reported the Lane A value exactly. See `ocp_caravan_full`.
+- **`Lost` is 0 everywhere.** A lost seed is one the harness never measured — it
+  crashed, or its credential or network went. That is not a result, and the fix
+  is to repair the cause and run the case again, never to footnote it. A table
+  with a nonzero `Lost` is not finished.
+- **`Review` is 0, or you have looked at each one.** These are seeds whose
+  agent-reported verdict contradicts the effect grade. No rule can settle that —
+  the same signature covers an agent that misreported its numbers and a grading
+  policy that scored the wrong one of the agent's own runs — so a person opens
+  the artifacts:
+
+```bash
+cd ../hangar-evals && scripts/evals review
+```
+
+  It prints each flagged seed, which metrics diverged, and the paths to that
+  seed's provenance DB and agent transcript.
+
+`Passed` and `Failed` are results about the agent and need no caveat: a graded
+FAIL means the agent did the work and got it wrong, and re-running it would just
+be sampling until the answer flatters.
+
+## Harness health
+
+`scripts/evals run` ends with a `harness health` section when the measurement
+itself misbehaved — seeds scored on whichever same-mode run happened to execute
+last, or seeds that graded but whose harness exited abnormally. These never
+change a verdict and are deliberately kept out of the table: they are defects to
+fix, not caveats to carry. The end state is a `--force` re-run that reports none
+of them.
 
 ## Single cases, by hand
 
