@@ -29,6 +29,7 @@ This package splits those checks out so each stage can be tested on its own:
 from hangar.omd.diagnostics.deck_quality import (
     DeckFinding,
     check_deck,
+    command_held,
     physically_converged,
 )
 from hangar.omd.diagnostics.solver_coverage import (
@@ -50,6 +51,7 @@ __all__ = [
     "UnsolvedBalance",
     "check_deck",
     "check_mission_thrust",
+    "command_held",
     "find_unsolved_implicit",
     "format_margins",
     "format_unsolved",

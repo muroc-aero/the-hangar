@@ -189,3 +189,22 @@ def test_real_hbtf_deck_is_admissible(tmp_path):
         )
     report = check_deck(deck, DESIGN_FN, DESIGN_T4)
     assert len(report.rejected) == 0, report.summary()
+
+
+# --- command_held (used by both deck paths) ---------------------------------
+
+
+def test_command_held_accepts_a_point_that_reached_its_target():
+    from hangar.omd.diagnostics import command_held
+
+    assert command_held([5900.0], [5900.0]).all()
+    assert command_held([2857.0], [2857.0]).all()
+
+
+def test_command_held_rejects_a_point_that_settled_elsewhere():
+    """The turbojet OD balances FAR to Fn_target; the HBTF is given a T4."""
+    from hangar.omd.diagnostics import command_held
+
+    assert not command_held([4200.0], [5900.0]).any()   # missed commanded Fn
+    assert not command_held([2394.5], [2857.0]).any()   # missed commanded T4
+    assert not command_held([np.nan], [5900.0]).any()

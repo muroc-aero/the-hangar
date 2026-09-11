@@ -132,15 +132,19 @@ Completed:
 - Example in `examples/ocp_three_tool/` (lane_b plan, lane_c prompt)
 - `TestThreeToolMission::test_three_tool_factory_builds` passes
 
-Blocked:
-- **Dual-surrogate convergence**: VLM surrogate drag + pyCycle surrogate
-  propulsion together produce a singular Jacobian in the DirectSolver.
-  Both surrogates provide FD-based partials that make the Newton system
-  ill-conditioned. The test is marked xfail.
-- Potential fixes: (a) use NLBGS instead of Newton, (b) use direct-coupled
-  VLM drag (`oas/vlm-direct`) instead of surrogate (analytic partials),
-  (c) use direct-coupled pyCycle (`pyc/turbojet`) instead of surrogate.
-  Options b and c validated independently in two-tool tests.
+Resolved (see `docs/three-tool-coupled-diagnosis.md`):
+- **Dual-surrogate convergence** was misdiagnosed as an ill-conditioned
+  Jacobian. Newton was reporting real problems: the pyCycle deck was trained
+  on diverged points (one at 6.56e10 lbf, which Kriging's stddev
+  normalization turned into a ~2.3e6 kN thrust prediction), the propulsion
+  slot applied no engine-count scaling so a twin flew on half its thrust,
+  and the mission prescribed a climb rate outside the aircraft's envelope.
+  With those fixed the three-tool B738 converges in 6 Newton iterations and
+  Lanes A and B agree to the last digit.
+- NLBGS is NOT a fix and must not be used for an OCP mission: OpenConcept's
+  mission groups carry no solvers, so NonlinearBlockGS leaves every
+  BalanceComp at its initial value while reporting convergence. Check any
+  plan with `python -m hangar.omd.diagnostics solver <plan.yaml>`.
 
 
 ## P6: Full OCP Mission Convergence with Direct pyCycle

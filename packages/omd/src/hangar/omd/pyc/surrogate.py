@@ -198,16 +198,32 @@ def _run_turbojet_deck(
             thrust_all[i] = float(prob.get_val("OD_0.perf.Fn", units="lbf"))
             fuel_all[i] = float(prob.get_val("OD_0.burner.Wfuel", units="lbm/s"))
             T4_all[i] = float(prob.get_val("OD_0.burner.Fl_O:tot:T", units="degR"))
-            # Sanity check: thrust and fuel must be positive
-            if thrust_all[i] <= 0 or fuel_all[i] <= 0:
-                converged_all[i] = False
             prob.cleanup()
         except Exception as e:
             logger.debug("OD point %d failed: %s", i, e)
             converged_all[i] = False
 
+    # The turbojet OD balance drives FAR to hit Fn_target, so "did it hold the
+    # command" is a thrust check here (the HBTF is commanded a T4 instead).
+    # `thrust > 0` alone admits diverged solves that settled elsewhere, and
+    # Kriging normalizes by training stddev, so one runaway point flattens the
+    # whole fit.
+    from hangar.omd.diagnostics.deck_quality import command_held
+
+    commanded_Fn = np.array([pt["Fn_target"] for pt in od_points], dtype=float)
+    design_Fn = design_conditions["Fn_target"]
+    converged_all &= (
+        np.isfinite(thrust_all) & np.isfinite(fuel_all)
+        & (thrust_all > 0) & (fuel_all > 0)
+        & command_held(thrust_all, commanded_Fn)
+        & (thrust_all < 7.5 * design_Fn)
+    )
+
     n_ok = converged_all.sum()
-    logger.info("Turbojet deck: %d/%d points converged", n_ok, n)
+    logger.info(
+        "Turbojet deck: %d/%d points physically admissible (%d rejected)",
+        n_ok, n, n - n_ok,
+    )
     return thrust_all, fuel_all, T4_all, converged_all
 
 

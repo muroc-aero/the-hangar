@@ -79,6 +79,20 @@ def commanded_t4(throttle: np.ndarray, design_T4: float,
     return idle_T4 + np.asarray(throttle, dtype=float) * (design_T4 - idle_T4)
 
 
+def command_held(actual, commanded, rtol: float = T4_RTOL) -> np.ndarray:
+    """Did the off-design balance actually reach the value it was given?
+
+    A pyCycle OD point is a balance: the HBTF is commanded a T4, the turbojet
+    a net thrust. Settling on a root that ignores the command is the signature
+    of a diverged solve that never reported failure.
+    """
+    a = np.asarray(actual, dtype=float)
+    c = np.asarray(commanded, dtype=float)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        err = np.abs(a - c) / np.maximum(np.abs(c), 1e-12)
+    return np.isfinite(a) & np.isfinite(c) & (err < rtol)
+
+
 def physically_converged(
     deck: dict, design_Fn: float, design_T4: float,
     idle_T4: float = 1800.0,
