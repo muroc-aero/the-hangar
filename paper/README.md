@@ -5,6 +5,10 @@ sandboxed local-model eval table, and the paper-reproduction figures -- and
 makes each piece re-runnable from scratch. All commands run from the repo
 root.
 
+This file is the map of what exists and where it comes from. The step-by-step
+runbook for regenerating the two tables is `paper/tables/README.md` -- start
+there if you just want current numbers.
+
 ## What gets produced
 
 ```
@@ -13,6 +17,9 @@ paper/
     lane_parity.jsonl        # raw lane comparisons (run_lanes.py)
     lane_parity_meta.json    # timestamp, git sha, pytest exit code
     lane_c_agent.json        # optional: live-agent Lane C runs (eval_lane_c.py)
+  (../hangar-evals/results/)
+    regraded/                # per-cell summaries + the ambiguity counts
+    campaigns/<arm>_<stamp>/ # per-run table.md, manifest.json, campaign.log
   tables/
     lane_parity.{csv,md,tex}      # Lane A vs B vs C per example/metric
     sandboxed_evals.{csv,md,tex}  # hangar-evals model x harness summary
@@ -76,14 +83,26 @@ for itself (see `packages/omd/examples/agent_eval/README.md`).
 ### 3. Sandboxed Lane C (hangar-evals)
 
 The sandboxed eval table is built from `*_summary.json` files in the
-sibling `hangar-evals` repo (`--evals-dir` to override). To produce new
-rows, run evals over there, e.g.:
+sibling `hangar-evals` repo. One command runs an arm end to end and
+re-renders these tables when it finishes:
 
 ```bash
-cd ../hangar-evals   # see its README; currently covers the paraboloid case
+cd ../hangar-evals
+op run --env-file=op.env -- scripts/evals run anchor   # 11 cases x 3 seeds, ~5 h
+scripts/evals run gemma                                # on-device, ~14 h, free
+scripts/evals run anchor --dry-run                     # plan only, no spend
 ```
 
-`make_tables.py` keeps the latest summary per (case, harness, model).
+Re-running continues rather than restarts: graded cases are skipped and
+cases carrying error rows resume on just those seeds. `scripts/evals table`
+re-renders without running anything.
+
+Pass `--evals-dir ../hangar-evals/results/regraded` to `make_tables.py`
+(the runner does): the regraded summaries add `n_ambiguous` and
+`n_report_disagrees`, the two counts that say whether a `Passed` cell can
+be read at face value. `make_tables.py` keeps the latest summary per
+(case, harness, model), so arms accumulate across runs and retired model
+generations stay in for comparison.
 
 ### 4. Brelje 2018a Figs 5 & 6
 
@@ -126,8 +145,22 @@ verified; opt in with `--only adler`, `--only abu`, or `--all`.
 
 ### Everything at once
 
+The tables, including the sandboxed arms, are one command from the sibling
+checkout -- it runs the lane suites, the agent column, and every arm, then
+re-renders `paper/tables/`:
+
 ```bash
-uv run python paper/run_lanes.py && \
-uv run python paper/make_tables.py && \
+cd ../hangar-evals && op run --env-file=op.env -- scripts/evals run paper
+```
+
+Figures are separate (they have no eval arm):
+
+```bash
 uv run python paper/make_figures.py --regenerate
+```
+
+Tables only, from results that already exist -- no runs, no spend:
+
+```bash
+cd ../hangar-evals && scripts/evals table
 ```

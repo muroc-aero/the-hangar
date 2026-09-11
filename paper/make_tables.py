@@ -5,8 +5,9 @@ Inputs (all optional except the first):
   paper/results/lane_parity.jsonl   -- written by paper/run_lanes.py
   paper/results/lane_c_agent.json   -- written by
       packages/omd/examples/agent_eval/eval_lane_c.py --save-json
-  ../hangar-evals/results/*_summary.json -- sandboxed local-model evals
-      (override the directory with --evals-dir)
+  ../hangar-evals/results/regraded/*_summary.json -- sandboxed evals, with
+      the ambiguity counts (falls back to results/ if not regraded yet;
+      override with --evals-dir)
 
 Outputs:
   paper/tables/lane_parity.{csv,md,tex}
@@ -30,7 +31,13 @@ PAPER_DIR = Path(__file__).resolve().parent
 REPO_ROOT = PAPER_DIR.parent
 RESULTS_DIR = PAPER_DIR / "results"
 TABLES_DIR = PAPER_DIR / "tables"
-DEFAULT_EVALS_DIR = REPO_ROOT.parent / "hangar-evals" / "results"
+_EVALS_ROOT = REPO_ROOT.parent / "hangar-evals" / "results"
+# Prefer the REGRADED summaries: they carry n_ambiguous / n_report_disagrees,
+# the two counts that say whether a Passed cell can be read at face value.
+# Defaulting to the raw directory meant a bare `make_tables.py` silently
+# overwrote a table that had those columns with one that did not.
+DEFAULT_EVALS_DIR = (_EVALS_ROOT / "regraded" if (_EVALS_ROOT / "regraded").is_dir()
+                     else _EVALS_ROOT)
 
 # Presentation order, short description, and the metrics worth printing
 # for each parity case (case slugs match the `case=` tags in
