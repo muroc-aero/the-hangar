@@ -22,9 +22,7 @@ cruise / descent).
 
 - The hybrid architecture changes the model topology; make sure the
   propulsion choice is applied before the mission is analysed.
-- Confirm the solve converged, and judge the trade the hybrid makes: fuel
-  saved in cruise versus the battery and motor weight carried. Record that
-  interpretation.
+- Confirm the solve converged, and record that interpretation.
 
 ## Report
 

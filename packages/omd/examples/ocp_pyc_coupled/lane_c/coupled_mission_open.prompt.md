@@ -20,9 +20,7 @@ thrust and fuel flow, not to design a sensible aeroplane.
 
 - The engine replacement must displace the default turboprop, not sit next
   to it. Expect a one-time engine-deck training step when the run starts.
-- Judge whether the propulsion swap wired up correctly -- fuel burn should
-  respond to the turbojet's thrust and fuel-flow character regardless of
-  physical plausibility. Record that interpretation.
+- Confirm the solve converged, and record that interpretation.
 
 ## Report
 

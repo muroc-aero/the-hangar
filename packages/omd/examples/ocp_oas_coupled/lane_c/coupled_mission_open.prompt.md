@@ -20,10 +20,7 @@ not solved live inside the mission iteration.
 
 - The drag replacement is the point of the task: the mission's default drag
   model must be swapped for the VLM-surrogate one, not run alongside it.
-- Confirm the solve converged, and judge whether the fuel burn is in the
-  right neighbourhood of a parabolic-polar Caravan result (the two drag
-  models make different assumptions, so exact agreement is not expected).
-  Record that interpretation.
+- Confirm the solve converged, and record that interpretation.
 
 ## Report
 

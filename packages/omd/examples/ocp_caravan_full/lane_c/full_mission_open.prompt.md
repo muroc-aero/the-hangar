@@ -17,9 +17,7 @@ phases, using its standard single-turboprop propulsion.
 - The takeoff phases must be part of the analysed mission, not bolted on --
   pick the mission formulation that includes balanced-field takeoff.
 - Use the stock Caravan definition that ships with the tooling.
-- Confirm the solve converged, and judge whether the fuel burn sits slightly
-  above what the same profile would burn without the takeoff roll; record
-  that interpretation.
+- Confirm the solve converged, and record that interpretation.
 
 ## Report
 
