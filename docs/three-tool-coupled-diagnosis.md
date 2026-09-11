@@ -139,12 +139,24 @@ All four defects are fixed. Lane A now converges in **6 Newton iterations**
 (worst residual 2.3e-10) where NLBGS previously "converged" in 3 on a model
 it never solved.
 
-| Lane | fuel_burn_kg | OEW_kg | MTOW_kg | Solver |
-|------|--------------|--------|---------|--------|
-| A (direct OpenMDAO) | 10645.149781505615 | 41871.0 | 79002.0 | Newton, 6 iters |
-| B (omd plan pipeline) | 10645.149781505615 | 41871.0 | 79002.0 | Newton, 6 iters |
+| Lane | What it is | fuel_burn_kg | OEW_kg | MTOW_kg | Diff vs A |
+|------|-----------|--------------|--------|---------|-----------|
+| A | direct OpenMDAO, no omd | 10645.149781505615 | 41871.0 | 79002.0 | -- |
+| B | omd plan pipeline (`run_plan`) | 10645.149781505615 | 41871.0 | 79002.0 | +0.0000% |
+| C | MCP tool surface (scripted) | 10645.149781505615 | 41871.0 | 79002.0 | +0.0000% |
 
-Lanes A and B agree to the last digit, against a parity tolerance of 1e-3.
+All three agree to the last digit, against a parity tolerance of 1e-3. Both
+parity tests pass:
+
+```
+packages/omd/examples/tests/test_parity.py::TestOCPThreeToolParity          PASSED
+packages/omd/examples/tests/test_parity_lane_c.py::TestOCPThreeToolLaneC    PASSED
+2 passed in 3588.34s (0:59:48)
+```
+
+That hour is one deck generation, not three: the run reported
+`HBTF deck: 144/180 points physically admissible (36 rejected)` once and the
+cache served it to both tests and to all three flight phases of each.
 
 Physical plausibility of the converged state, which the old answer had none of:
 
