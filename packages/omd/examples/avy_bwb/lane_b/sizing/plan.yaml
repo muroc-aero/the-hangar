@@ -1,0 +1,24 @@
+metadata:
+  id: ex-avy-bwb
+  name: Aviary BWB sizing (upstream benchmark, fixed profile)
+  version: 1
+  description: >
+    The upstream blended-wing-body benchmark (bwb_simple_FLOPS deck,
+    M0.85 / 7750 nmi transpacific) with the fixed-profile mission
+    adaptation (hangar.avy.config.missions_bwb_fixed -- the raw benchmark
+    mission needs SNOPT/IPOPT), via the avy/Sizing subprocess factory in
+    the isolated .venv-avy. Self-driving component: mode=analysis runs the
+    embedded SLSQP sizing; check the 'converged' output. The mission's own
+    post_mission range constraint (7750 nmi) applies -- no target_range_nm
+    override here.
+
+operating_points: {}
+
+components:
+- id: aviary
+  type: avy/Sizing
+  config:
+    deck: models/aircraft/blended_wing_body/bwb_simple_FLOPS.csv
+    phase_info_module: hangar.avy.config.missions_bwb_fixed
+    optimizer: SLSQP
+    max_iter: 60

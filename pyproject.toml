@@ -15,6 +15,7 @@ dependencies = [
     "hangar-pyc",
     "hangar-omd",
     "hangar-evt",
+    "hangar-avy",
     "hangar-viewer",
 ]
 
@@ -28,6 +29,7 @@ hangar-ocp = { workspace = true }
 hangar-pyc = { workspace = true }
 hangar-omd = { workspace = true }
 hangar-evt = { workspace = true }
+hangar-avy = { workspace = true }
 hangar-viewer = { workspace = true }
 # hangar-range-safety has no source entry here on purpose: when its
 # directory is present it is resolved as a workspace member via the glob
@@ -50,6 +52,7 @@ testpaths = [
     "packages/omd/tests",
     "packages/pyc/tests",
     "packages/evt/tests",
+    "packages/avy/tests",
     "packages/results-reader/tests",
     "packages/viewer/tests",
     "paper/tests",

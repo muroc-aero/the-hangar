@@ -1,0 +1,71 @@
+metadata:
+  id: ex-oas-avy-wing-mass
+  name: OAS structural wing mass -> Aviary sizing (loose coupling)
+  version: 1
+  description: >
+    Cross-venv multitool composition: an OAS aerostructural wing (this
+    venv, numpy<2) computes a structural wing mass that omd feeds into an
+    Aviary sizing (avy/Sizing subprocess into .venv-avy, numpy 2) as a
+    deck override on aircraft:wing:mass, via the factory's
+    override_inputs mechanism. The connection converts kg -> lbm
+    (OpenMDAO units on both sides). One-way coupling, mode=analysis:
+    the wingbox solves first (Newton aerostructural), then the sizing
+    subprocess runs with the overridden wing mass. The wing is a
+    single-aisle-SCALED rect tube surface -- this case certifies the
+    composition plumbing; the physically-grounded wing-mass study is
+    avy_oas_wing (upstream's own wingbox integration).
+
+operating_points:
+  velocity: 231.5
+  alpha: 3.0
+  Mach_number: 0.785
+  re: 1.0e+6
+  rho: 0.38
+
+composition_policy: explicit
+
+components:
+- id: wingbox
+  type: oas/AerostructPoint
+  config:
+    surfaces:
+    - name: wing
+      wing_type: rect
+      num_x: 2
+      num_y: 7
+      span: 35.0
+      root_chord: 4.2
+      symmetry: true
+      fem_model_type: tube
+      E: 7.0e+10
+      G: 3.0e+10
+      yield_stress: 5.0e+8
+      mrho: 2780.0
+      thickness_cp: [0.015, 0.02, 0.015]
+      with_viscous: true
+- id: sizing
+  type: avy/Sizing
+  config:
+    deck: models/aircraft/advanced_single_aisle/advanced_single_aisle_FLOPS.csv
+    phase_info_module: aviary.models.missions.energy_state_default
+    override_inputs:
+      wing_mass_override_lbm:
+        var: aircraft:wing:mass
+        units: lbm
+        initial: 15000.0
+    optimizer: SLSQP
+    max_iter: 50
+
+solvers:
+- target: wingbox.AS_point_0.coupled
+  nonlinear:
+    type: NewtonSolver
+    options:
+      maxiter: 20
+      atol: 1.0e-6
+  linear:
+    type: DirectSolver
+
+connections:
+- src: wingbox.wing.structural_mass
+  tgt: sizing.wing_mass_override_lbm

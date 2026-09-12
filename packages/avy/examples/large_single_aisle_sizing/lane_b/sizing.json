@@ -1,0 +1,23 @@
+[
+  {
+    "tool": "load_aircraft_template",
+    "args": {
+      "template": "large_single_aisle_FLOPS"
+    }
+  },
+  {
+    "tool": "configure_mission",
+    "args": {
+      "mission_method": "energy_state",
+      "target_range_nm": 2500.0
+    }
+  },
+  {
+    "tool": "run_sizing",
+    "args": {
+      "optimizer": "SLSQP",
+      "max_iter": 50,
+      "run_name": "lane B large single-aisle sizing"
+    }
+  }
+]

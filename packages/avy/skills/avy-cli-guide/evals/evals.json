@@ -1,0 +1,79 @@
+{
+  "skill_name": "avy-cli-guide",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I want to size the advanced single-aisle transport for a 1906 nmi design mission and read back the gross mass and fuel using the Aviary command line tools. Show me a complete working Python script that uses interactive mode to spawn avy-cli, load the template, configure the mission, run the sizing, and extract gross mass and total fuel from the result.",
+      "expected_output": "A working Python script spawning .venv-avy/bin/avy-cli interactive with the JSON-lines protocol, calling load_aircraft_template, configure_mission, run_sizing, checking validation.passed, and extracting gross_mass_lbm and total_fuel_mass_lbm from results.performance.",
+      "assertions": [
+        {
+          "id": "uses_isolated_venv",
+          "description": "Invokes avy-cli from the isolated .venv-avy (not the main venv)",
+          "type": "output_contains",
+          "value": ".venv-avy"
+        },
+        {
+          "id": "uses_interactive_mode",
+          "description": "Script spawns avy-cli interactive as a subprocess",
+          "type": "output_contains",
+          "value": "interactive"
+        },
+        {
+          "id": "correct_json_protocol",
+          "description": "Sends JSON with 'tool' and 'args' keys on stdin",
+          "type": "output_contains",
+          "value": "\"tool\""
+        },
+        {
+          "id": "loads_template_first",
+          "description": "load_aircraft_template is called before run_sizing",
+          "type": "output_contains",
+          "value": "load_aircraft_template"
+        },
+        {
+          "id": "runs_sizing",
+          "description": "run_sizing tool is used (not run_mission_analysis)",
+          "type": "output_contains",
+          "value": "run_sizing"
+        },
+        {
+          "id": "checks_convergence",
+          "description": "Checks validation.passed / optimizer success before trusting numbers",
+          "type": "output_contains_any",
+          "values": ["validation", "optimizer.success", "success"]
+        },
+        {
+          "id": "extracts_gross_mass",
+          "description": "Extracts gross_mass_lbm from results.performance",
+          "type": "output_contains",
+          "value": "gross_mass_lbm"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Using avy-cli one-shot commands, override the wing aspect ratio to 13 on the advanced single-aisle deck and re-run the sizing. Give me the exact shell commands.",
+      "expected_output": "Shell commands using .venv-avy/bin/avy-cli one-shot subcommands: load-aircraft-template, define-aircraft with a JSON overrides string using the exact metadata name aircraft:wing:aspect_ratio, then run-sizing. Global flags like --pretty placed before the subcommand.",
+      "assertions": [
+        {
+          "id": "correct_variable_name",
+          "description": "Uses the exact metadata name aircraft:wing:aspect_ratio",
+          "type": "output_contains",
+          "value": "aircraft:wing:aspect_ratio"
+        },
+        {
+          "id": "json_overrides",
+          "description": "Passes overrides as a JSON string to define-aircraft",
+          "type": "output_contains",
+          "value": "define-aircraft"
+        },
+        {
+          "id": "runs_sizing_after",
+          "description": "Runs the sizing after the override",
+          "type": "output_contains",
+          "value": "run-sizing"
+        }
+      ]
+    }
+  ]
+}

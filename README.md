@@ -73,6 +73,7 @@ This copies the CLI-guide skills from each package into `.claude/skills/` where 
 | `hangar-pyc` | `hangar.pyc` | pyCycle gas turbine cycle analysis server | `pyc-cli`, `pyc-server` |
 | `hangar-omd` | `hangar.omd` | General-purpose OpenMDAO plan runner -- YAML plans, factory registry, multi-tool composition, provenance graph. Includes a native, gradient-capable eVTOL formulation (`evt/Sizing`, `evt/Mission`) plus the `evt/SizingFD` black-box fallback. | `omd-cli`, `omd-server` |
 | `hangar-evt` | `hangar.evt` | eVTOL aircraft sizing and mission-energy analysis (wraps evtolpy). Ships named vehicle templates (`test_all`, `archer_midnight`). | `evt-cli`, `evt-server` |
+| `hangar-avy` | `hangar.avy` | NASA Aviary coupled aircraft-sizing + mission optimization server (FLOPS/GASP methods on OpenMDAO/dymos). Runs from an isolated venv (`scripts/setup-avy-venv.sh`) -- see `packages/avy/CLAUDE.md`. | `avy-cli`, `avy-server` |
 | `hangar-results-reader` | `hangar.results_reader` | Read-only access to omd run results for downstream consumers (e.g. dashboards) | -- |
 | `hangar-viewer` | `hangar.viewer` | Unified provenance viewer for Hangar tool servers | `hangar-viewer` |
 

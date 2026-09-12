@@ -3,9 +3,13 @@
 # Layout:
 #   fast-tests    every PR/push: pinned upstreams + all package tests
 #                 excluding slow/golden (-m "not slow")
+#   avy-venv      every PR/push: the isolated Aviary venv (numpy 2) --
+#                 fast avy tests run for REAL here (they skip in the main
+#                 venv), including the OAS-in-Aviary drift contract tests
 #   docker-build  every PR/push: builds one image to keep Dockerfiles honest
 #   nightly       schedule/manual: full suite including slow and golden
-#                 tiers, plus the per-example parity suites
+#                 tiers, plus the per-example parity suites (main venv;
+#                 avy example suites additionally run in .venv-avy)
 #
 # Deliberately excluded:
 #   - packages/range-safety: private submodule, tested in its own repo.
@@ -60,6 +64,35 @@ jobs:
       - name: Run fast tests
         run: uv run pytest -m "not slow" -q
 
+  avy-venv:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Cache upstream clones
+        uses: actions/cache@v4
+        with:
+          path: upstream
+          key: upstream-${{ hashFiles('scripts/upstream-pins.env', 'scripts/pycycle-numpy2.patch') }}
+
+      - name: Clone pinned upstreams
+        run: bash scripts/setup-upstream.sh --required
+
+      - name: Build the isolated Aviary venv
+        run: bash scripts/setup-avy-venv.sh
+
+      - name: Fast avy tests in .venv-avy
+        # Runs the aviary-importing tests the main-venv job skips,
+        # including the OAS-in-Aviary example-namespace contract tests
+        # (WP5 of docs/aviary-oas-integration-plan.md).
+        run: .venv-avy/bin/python -m pytest packages/avy/tests -m "not slow" -q
+
   docker-build:
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
@@ -102,5 +135,20 @@ jobs:
             [ -d "$d" ] || continue
             echo "::group::$d"
             uv run pytest "$d" -q
+            echo "::endgroup::"
+          done
+
+      - name: Build the isolated Aviary venv
+        run: bash scripts/setup-avy-venv.sh
+
+      - name: Aviary suites in .venv-avy (full, incl. goldens)
+        # The avy tests and example parity suites skip in the main venv
+        # (aviary needs numpy 2); run them for real in .venv-avy. This is
+        # where the Aviary/OAS-in-Aviary goldens actually execute in CI.
+        run: |
+          for d in packages/avy/tests packages/avy/examples/*/tests; do
+            [ -d "$d" ] || continue
+            echo "::group::$d"
+            .venv-avy/bin/python -m pytest "$d" -q --rootdir=.
             echo "::endgroup::"
           done

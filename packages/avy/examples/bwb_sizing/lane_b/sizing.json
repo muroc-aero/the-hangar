@@ -1,0 +1,23 @@
+[
+  {
+    "tool": "load_aircraft_template",
+    "args": {
+      "template": "bwb_FLOPS"
+    }
+  },
+  {
+    "tool": "configure_mission",
+    "args": {
+      "mission_method": "energy_state",
+      "mission_template": "bwb_fixed"
+    }
+  },
+  {
+    "tool": "run_sizing",
+    "args": {
+      "optimizer": "SLSQP",
+      "max_iter": 60,
+      "run_name": "lane B BWB fixed-profile sizing"
+    }
+  }
+]

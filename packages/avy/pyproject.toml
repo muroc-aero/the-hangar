@@ -1,0 +1,43 @@
+[project]
+name = "hangar-avy"
+version = "0.1.0"
+description = "NASA Aviary MCP server for agentic aircraft sizing and mission optimization"
+requires-python = ">=3.11"
+# NOTE: aviary is deliberately NOT a declared dependency. Aviary >=1.0.1
+# requires openmdao>=3.43, which requires numpy>=2, while the openconcept
+# pin caps numpy<2 -- the two cannot share the workspace venv/lock. The
+# Aviary runtime lives in an isolated venv (scripts/setup-avy-venv.sh) and
+# in this package's own Docker image; hangar.avy imports aviary lazily and
+# raises a clear install-instruction error when it is missing.
+dependencies = [
+    "hangar-sdk[all]",
+    "numpy>=1.21",
+    "matplotlib",
+]
+
+[project.scripts]
+avy-server = "hangar.avy.server:main"
+avy-cli    = "hangar.avy.cli:main"
+
+[project.entry-points."hangar.study_runners"]
+avy = "hangar.avy.study_runner"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hangar"]
+
+[tool.uv.sources]
+hangar-sdk = { workspace = true }
+# aviary itself is installed from ../../upstream/Aviary into the isolated
+# .venv-avy by scripts/setup-avy-venv.sh (see dependency note above).
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "golden_physics: physics-invariant golden tests",
+    "parity: parity tests vs direct Aviary API",
+]

@@ -127,6 +127,7 @@ pycycle_patch
 evtolpy_unpatch
 sync_repo evtolpy        https://github.com/starbelt/evtolpy      "$EVTOL_REF"
 evtolpy_patch
+sync_repo Aviary         https://github.com/OpenMDAO/Aviary       "$AVY_REF"
 
 # Reference-only clones for reading upstream source
 if [ "$REQUIRED_ONLY" = false ]; then

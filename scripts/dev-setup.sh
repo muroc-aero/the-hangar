@@ -34,7 +34,7 @@ done
 # upstream/ (gitignored), so uv sync fails hard on a fresh clone until the
 # upstream repos exist. Clone the required ones at their pinned refs first.
 NEED_UPSTREAM=false
-for d in upstream/OpenAeroStruct upstream/openconcept upstream/pyCycle upstream/evtolpy; do
+for d in upstream/OpenAeroStruct upstream/openconcept upstream/pyCycle upstream/evtolpy upstream/Aviary; do
     if [ ! -f "$d/setup.py" ] && [ ! -f "$d/pyproject.toml" ]; then
         NEED_UPSTREAM=true
     fi

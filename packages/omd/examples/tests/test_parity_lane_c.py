@@ -636,3 +636,58 @@ class TestOCPThreeToolLaneC:
         assert summary["fuel_burn_kg"] == pytest.approx(
             lane_a["fuel_burn_kg"], rel=1e-3,
         )
+
+
+# ── Aviary (subprocess factory into .venv-avy) ───────────────────────────
+
+AVY_PYTHON = Path(__file__).resolve().parents[4] / ".venv-avy" / "bin" / "python"
+
+
+@pytest.mark.skipif(
+    not AVY_PYTHON.exists(),
+    reason="needs the isolated Aviary venv (bash scripts/setup-avy-venv.sh)",
+)
+class TestAvySingleAisleLaneC:
+
+    @pytest.mark.slow
+    async def test_sizing_parity(self):
+        sys.path.insert(0, str(EXAMPLES_DIR / "avy_single_aisle"))
+        from avy_single_aisle.lane_a.sizing import run as lane_a_run
+        from avy_single_aisle.shared import (
+            DECK,
+            MAX_ITER,
+            METRICS,
+            OPTIMIZER,
+            PHASE_INFO_MODULE,
+            TARGET_RANGE_NM,
+            TOL_PARITY,
+        )
+
+        lane_a = lane_a_run()
+
+        await plan_init(
+            "lane-c-avy-sizing", plan_id="lane-c-avy-sizing",
+            name="Aviary single-aisle sizing (Lane C tool surface)",
+        )
+        await plan_add_component(
+            "lane-c-avy-sizing", comp_id="aviary",
+            comp_type="avy/Sizing",
+            config={
+                "deck": DECK,
+                "phase_info_module": PHASE_INFO_MODULE,
+                "target_range_nm": TARGET_RANGE_NM,
+                "optimizer": OPTIMIZER,
+                "max_iter": MAX_ITER,
+            },
+        )
+        plan_yaml = await _assemble_and_validate("lane-c-avy-sizing")
+
+        env = await run_plan(plan_yaml, mode="analysis")
+        summary = _summary(env)
+
+        _print_comparison("Aviary Single-Aisle Sizing (Lane C)", lane_a, summary,
+                          keys=METRICS, case="avy_single_aisle", lane_label="C")
+
+        assert summary["converged"] == 1.0
+        for k in METRICS:
+            assert summary[k] == pytest.approx(lane_a[k], **TOL_PARITY)

@@ -12,7 +12,8 @@ All packages use the `hangar.*` Python namespace (PEP 420 implicit namespace pac
 - `hangar.oas` -- OpenAeroStruct aerostructural analysis server
 - `hangar.omd` -- general-purpose OpenMDAO plan runner with factory-based components
 - `hangar.range_safety` -- range safety validators and assertions
-- PyPI names use hyphens: `hangar-sdk`, `hangar-oas`, `hangar-omd`, `hangar-range-safety`
+- `hangar.avy` -- NASA Aviary aircraft sizing / mission optimization server
+- PyPI names use hyphens: `hangar-sdk`, `hangar-oas`, `hangar-omd`, `hangar-range-safety`, `hangar-avy`
 - **Critical:** never place an `__init__.py` in `src/hangar/` -- only at the leaf
   level (e.g. `src/hangar/oas/__init__.py`). This is what makes the namespace work.
 
@@ -49,7 +50,7 @@ See `packages/omd/CLAUDE.md` for detailed omd architecture.
 - `run.py` -- plan execution pipeline (load, materialize, execute, record, N2)
 - `materializer.py` -- converts plan YAML to OpenMDAO Problem with DVs/constraints/objective
 - `registry.py` -- factory + plot provider registry
-- `factories/` -- component builders (oas.py, oas_aero.py, paraboloid.py)
+- `factories/` -- component builders (oas.py, oas_aero.py, paraboloid.py, avy.py subprocess black box into .venv-avy)
 - `plotting/` -- factory-aware plot generation matching oas-cli style
 - `db.py` -- SQLite analysis DB (provenance, run cases, metadata)
 - `recorder.py` -- OpenMDAO CaseReader data import
@@ -57,6 +58,10 @@ See `packages/omd/CLAUDE.md` for detailed omd architecture.
 ### packages/range-safety/ -- range safety validators
 ### packages/ocp/ -- OpenConcept mission analysis server
 ### packages/pyc/ -- pyCycle gas turbine analysis server
+### packages/avy/ -- NASA Aviary sizing/mission server
+See `packages/avy/CLAUDE.md`. Runs from the isolated `.venv-avy`
+(`scripts/setup-avy-venv.sh`) because Aviary needs numpy>=2 while the
+openconcept pin caps numpy<2.
 
 - `skills/` -- cross-tool process skills (design study, trade study, convergence, multi-tool)
 - `upstream/` -- local clones of upstream tool repos (read-only reference, git-ignored)

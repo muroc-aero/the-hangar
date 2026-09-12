@@ -126,17 +126,27 @@ def _decompose_plan(
             )
             sub_entity_ids.append(eid)
 
-    # Solvers
+    # Solvers -- the schema allows a single dict or a list of targeted
+    # entries (see materializer._configure_solvers); record each.
     solvers = plan.get("solvers")
     if solvers:
-        solver_meta = {}
-        nl = solvers.get("nonlinear", {})
-        if nl:
-            solver_meta["nonlinear_type"] = nl.get("type")
-            solver_meta["nonlinear_options"] = nl.get("options", {})
-        ln = solvers.get("linear", {})
-        if ln:
-            solver_meta["linear_type"] = ln.get("type")
+        entries = solvers if isinstance(solvers, list) else [solvers]
+        solver_meta: dict = {} if len(entries) == 1 else {"entries": []}
+        for entry in entries:
+            meta = {}
+            if entry.get("target"):
+                meta["target"] = entry["target"]
+            nl = entry.get("nonlinear", {})
+            if nl:
+                meta["nonlinear_type"] = nl.get("type")
+                meta["nonlinear_options"] = nl.get("options", {})
+            ln = entry.get("linear", {})
+            if ln:
+                meta["linear_type"] = ln.get("type")
+            if len(entries) == 1:
+                solver_meta = meta
+            else:
+                solver_meta["entries"].append(meta)
         eid = f"{plan_entity_id}/solvers"
         record_entity(
             entity_id=eid,
@@ -1370,6 +1380,17 @@ def _extract_composite_summary(prob, metadata: dict, mode: str) -> dict:
             cd = comp_summary.get("CD", 1)
             if cd > 0:
                 comp_summary["L_over_D"] = cl / cd
+            # Aerostruct: the structural mass (what a wing-mass coupling
+            # hands downstream -- see oas_avy_wing_mass)
+            sm_path = comp_meta.get("var_paths", {}).get("structural_mass")
+            if sm_path:
+                try:
+                    val = prob.get_val(f"{comp_id}.{sm_path}", units="kg")
+                    comp_summary["structural_mass_kg"] = float(
+                        np.atleast_1d(val).flat[0]
+                    )
+                except Exception:
+                    pass
 
         else:
             # Generic: try output_names

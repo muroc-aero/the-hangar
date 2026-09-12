@@ -1,0 +1,30 @@
+[
+  {
+    "tool": "load_aircraft_template",
+    "args": {
+      "template": "advanced_single_aisle"
+    }
+  },
+  {
+    "tool": "add_external_subsystem",
+    "args": {
+      "subsystem": "oas_wing_mass"
+    }
+  },
+  {
+    "tool": "configure_mission",
+    "args": {
+      "mission_method": "energy_state",
+      "mission_template": "oas_wing_example"
+    }
+  },
+  {
+    "tool": "run_sizing",
+    "args": {
+      "optimizer": "SLSQP",
+      "max_iter": 60,
+      "subsystem_mode": "coupled",
+      "run_name": "lane B OAS wing-mass coupled sizing"
+    }
+  }
+]

@@ -188,7 +188,10 @@ def init_db(db_path: Path | str | None = None) -> None:
                 db_path = old_default
             else:
                 db_path = new_default
-    new_path = Path(db_path)
+    # Absolute from here on: connections are opened lazily per thread, and a
+    # server that chdirs for a run (hangar.avy's runner) would otherwise open
+    # a relative default like ./hangar_data/... inside the run's scratch dir.
+    new_path = Path(db_path).expanduser().resolve()
 
     # Close the existing per-thread connection before switching paths so that
     # SQLite releases any file locks.  _get_conn() will create a fresh one.

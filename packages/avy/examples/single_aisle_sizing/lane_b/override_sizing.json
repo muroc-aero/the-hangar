@@ -1,0 +1,24 @@
+[
+  {
+    "tool": "load_aircraft_template",
+    "args": {
+      "template": "advanced_single_aisle"
+    }
+  },
+  {
+    "tool": "define_aircraft",
+    "args": {
+      "overrides": {
+        "aircraft:wing:aspect_ratio": 13.0
+      }
+    }
+  },
+  {
+    "tool": "run_sizing",
+    "args": {
+      "optimizer": "SLSQP",
+      "max_iter": 50,
+      "run_name": "lane B AR-override sizing"
+    }
+  }
+]

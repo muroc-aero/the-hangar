@@ -3,7 +3,8 @@
 ## What this is
 omd materializes YAML analysis plans into OpenMDAO problems, runs them, and
 records results with PROV-Agent provenance tracking. It uses a factory registry
-to support different component types (OAS aero, OAS aerostruct, pyCycle, paraboloid)
+to support different component types (OAS aero, OAS aerostruct, pyCycle, paraboloid,
+and Aviary sizing via the avy/Sizing subprocess factory into .venv-avy)
 and a plot provider registry so each factory brings its own visualization.
 
 ## Architecture
@@ -164,6 +165,7 @@ surface over MCP through the shared SDK envelope/provenance/auth stack:
 | `evt/Sizing` | `build_evt_sizing` | `EVT_PLOTS` | eVTOL MTOW sizing loop (native OpenMDAO, analytic gradients) |
 | `evt/Mission` | `build_evt_mission` | `EVT_PLOTS` | eVTOL as-configured mission energy (native, no sizing) |
 | `evt/SizingFD` | `build_evt_sizing_fd` | `EVT_PLOTS` | eVTOL sizing via the gradient-free evtolpy black box (FD fallback) |
+| `avy/Sizing` | `build_avy_sizing` | (generic only) | Aviary coupled sizing via subprocess into .venv-avy (self-driving; every run is an optimization) |
 | `paraboloid/Paraboloid` | `build_paraboloid` | (generic only) | Test component |
 
 ## Plot types
@@ -281,6 +283,26 @@ named subsystem -- internal connections use relative paths and still work.
 | `evt_mode` | str | run.py | evt factory mode: "sizing" (MTOW loop) or "mission" (as-configured) |
 | `multipoint` | bool | run.py | Triggers per-point result extraction |
 | `archetype_meta` | dict | (available) | pyCycle archetype metadata for rich result extraction |
+
+## Aviary in omd (avy/Sizing)
+
+Subprocess black box: `compute()` writes a JSON spec and runs
+`factories/avy_worker.py` with `.venv-avy`'s interpreter (aviary needs
+numpy>=2; the main venv is capped at numpy<2 by openconcept). The worker
+imports NOTHING from hangar.omd, but hangar.avy IS available there.
+
+Config beyond deck/mission/optimizer:
+- `external_subsystems: [{name: oas_wing_mass, config: {...}}]` -- the
+  hangar.avy subsystem registry materializes them inside the worker;
+  `oas_wing_mass` runs upstream's OAS wingbox wing-mass sub-optimization
+  (~40 s) inside the Aviary problem. Names/configs validate in the worker.
+- `override_inputs: {name: {var, units, initial}}` -- each entry becomes
+  an OpenMDAO *input* written into the deck overrides per compute, so
+  another component's output can drive an Aviary deck variable through a
+  plan connection (units convert on the connection; `initial` is
+  mandatory so an unconnected input cannot silently override with 0).
+  This is the loose-coupling seam: see
+  `examples/oas_avy_wing_mass/` (OAS structural mass -> aircraft:wing:mass).
 
 ## pyCycle in omd
 

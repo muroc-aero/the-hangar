@@ -2,28 +2,66 @@
   "mcpServers": {
     "OpenAeroStruct": {
       "command": "uv",
-      "args": ["run", "--directory", ".", "python", "-m", "hangar.oas.server"],
+      "args": [
+        "run",
+        "--directory",
+        ".",
+        "python",
+        "-m",
+        "hangar.oas.server"
+      ],
       "env": {
         "HANGAR_DATA_DIR": "./hangar_data"
       }
     },
     "OpenConcept": {
       "command": "uv",
-      "args": ["run", "--directory", ".", "python", "-m", "hangar.ocp.server"],
+      "args": [
+        "run",
+        "--directory",
+        ".",
+        "python",
+        "-m",
+        "hangar.ocp.server"
+      ],
       "env": {
         "HANGAR_DATA_DIR": "./hangar_data"
       }
     },
     "pyCycle": {
       "command": "uv",
-      "args": ["run", "--directory", ".", "python", "-m", "hangar.pyc.server"],
+      "args": [
+        "run",
+        "--directory",
+        ".",
+        "python",
+        "-m",
+        "hangar.pyc.server"
+      ],
       "env": {
         "HANGAR_DATA_DIR": "./hangar_data"
       }
     },
     "omd": {
       "command": "uv",
-      "args": ["run", "--directory", ".", "python", "-m", "hangar.omd.server"],
+      "args": [
+        "run",
+        "--directory",
+        ".",
+        "python",
+        "-m",
+        "hangar.omd.server"
+      ],
+      "env": {
+        "HANGAR_DATA_DIR": "./hangar_data"
+      }
+    },
+    "Aviary": {
+      "command": ".venv-avy/bin/python",
+      "args": [
+        "-m",
+        "hangar.avy.server"
+      ],
       "env": {
         "HANGAR_DATA_DIR": "./hangar_data"
       }

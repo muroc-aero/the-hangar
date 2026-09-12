@@ -1,0 +1,24 @@
+metadata:
+  id: ex-avy-single-aisle
+  name: Aviary advanced single-aisle sizing (energy_state, 1906 nmi)
+  version: 1
+  description: >
+    Coupled aircraft-sizing + mission optimization of the advanced
+    single-aisle transport (FLOPS mass + aero) on the default 3-phase
+    energy_state mission, via the avy/Sizing subprocess factory. Runs
+    Aviary in the isolated .venv-avy (scripts/setup-avy-venv.sh); the
+    component is self-driving (every Aviary run is an optimization), so
+    mode=analysis runs the embedded SLSQP sizing. Check the 'converged'
+    output -- Aviary optimizer non-convergence does not raise.
+
+operating_points: {}
+
+components:
+- id: aviary
+  type: avy/Sizing
+  config:
+    deck: models/aircraft/advanced_single_aisle/advanced_single_aisle_FLOPS.csv
+    phase_info_module: aviary.models.missions.energy_state_default
+    target_range_nm: 1906.0
+    optimizer: SLSQP
+    max_iter: 50

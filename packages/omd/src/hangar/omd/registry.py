@@ -310,6 +310,13 @@ def _register_builtins() -> None:
     except ImportError:
         logger.info("evt/evtolpy not available, evt factories not registered")
 
+    # avy factory: a subprocess black box into the isolated Aviary venv
+    # (.venv-avy) -- aviary needs numpy>=2 and cannot be imported here, so
+    # registration has no aviary dependency at all; the component errors at
+    # compute time with setup instructions if the venv is missing.
+    from hangar.omd.factories.avy import build_avy_sizing
+    register_factory("avy/Sizing", build_avy_sizing)
+
     # Study-plot providers render 2-axis trade grids from a study's cases.csv.
     # They carry no upstream-solver dependency (they read the case table, not a
     # live problem), so they register independently of the factory guards above

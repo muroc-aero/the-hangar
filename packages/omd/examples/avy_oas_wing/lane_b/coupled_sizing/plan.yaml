@@ -1,0 +1,28 @@
+metadata:
+  id: ex-avy-oas-wing
+  name: Aviary single-aisle sizing with OAS wingbox wing mass
+  version: 1
+  description: >
+    The advanced single aisle sized on upstream's OAS-example mission
+    (3 fixed-profile phases, 1800 nmi) with the empirical FLOPS wing
+    weight replaced by an OpenAeroStruct wingbox sub-optimization --
+    Aviary's own external-subsystem integration, threaded through the
+    avy/Sizing subprocess factory (the sub-opt runs inside the worker in
+    .venv-avy, where openaerostruct is installed). Self-driving
+    component: mode=analysis runs the embedded SLSQP sizing (~90 s
+    including the nested sub-opt). Check the 'converged' output, and
+    read 'wing_mass_lbm' for the OAS value that overrode FLOPS.
+
+operating_points: {}
+
+components:
+- id: aviary
+  type: avy/Sizing
+  config:
+    deck: models/aircraft/advanced_single_aisle/advanced_single_aisle_FLOPS.csv
+    phase_info_module: hangar.avy.config.missions_oas_wing
+    external_subsystems:
+    - name: oas_wing_mass
+    optimizer: SLSQP
+    max_iter: 60
+    run_timeout_s: 1800
