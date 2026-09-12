@@ -5,9 +5,12 @@ aircraft sizing together under a driver -- there is no cheap evaluate-only
 path. That is why the primary tool is named run_sizing and not
 run_mission_analysis: the mission IS the sizing optimization.
 
-Off-design and payload-range need a live sized problem; no Problem is
-cached in the session (same policy as hangar-pyc), so those tools re-run
-the sizing internally -- expect ~2x / ~3x the run_sizing wall-clock.
+Off-design and payload-range need a live sized problem. The last converged
+sizing per aircraft is kept in the session (``AvySession.sized``, keyed by
+a content fingerprint of deck + overrides + mission + subsystems + driver
+settings) and reused when it matches; otherwise those tools re-run the
+sizing internally (~2x / ~3x the run_sizing wall-clock). The envelope's
+``results.design_point.sizing_run_id`` names the run the design came from.
 """
 
 from __future__ import annotations
@@ -19,7 +22,7 @@ import time
 from typing import Annotated
 
 from hangar.sdk.helpers import _suppress_output
-from hangar.avy.state import sessions as _sessions
+from hangar.avy.state import sessions as _sessions, sizing_fingerprint
 
 from hangar.avy.config.defaults import DEFAULT_MAX_ITER, DEFAULT_OPTIMIZER
 from hangar.avy.missions import MISSION_METHODS, build_phase_info, summarize_phase_info
@@ -126,6 +129,15 @@ async def run_sizing(
         "for the feed-forward oas_wing_mass and cheaper across repeat "
         "runs). Ignored when no subsystem is attached.",
     ] = "coupled",
+    subsystem_feedback: Annotated[
+        str,
+        "Precompute-mode only: 'none' (default; one sub-opt pass at the "
+        "deck's wing fuel capacity, upstream semantics) or 'mission_fuel' "
+        "(feed the SIZED mission fuel back into the wing load-relief input "
+        "and iterate to a fixed point -- a deliberate departure from "
+        "upstream, for studies that want the wing sized by actual fuel "
+        "load). Ignored when no subsystem is attached.",
+    ] = "none",
     run_name: Annotated[str | None, "Optional label for this run"] = None,
     session_id: Annotated[str, "Session ID"] = "default",
 ) -> dict:
@@ -141,6 +153,9 @@ async def run_sizing(
     trusting results: optimizer non-convergence does not raise, it returns
     the last iterate with a failed flag.
 
+    A converged sizing is kept live in the session so run_off_design /
+    run_payload_range can fly from it without re-sizing.
+
     Returns a versioned response envelope with performance (gross mass, fuel,
     range, mission time), design summary, and a downsampled mission timeseries.
     """
@@ -150,6 +165,15 @@ async def run_sizing(
     if subsystem_mode not in ("coupled", "precompute"):
         raise ValueError(
             f"Unknown subsystem_mode {subsystem_mode!r}; use 'coupled' or 'precompute'."
+        )
+    if subsystem_feedback not in ("none", "mission_fuel"):
+        raise ValueError(
+            f"Unknown subsystem_feedback {subsystem_feedback!r}; use 'none' or 'mission_fuel'."
+        )
+    if subsystem_feedback != "none" and subsystem_mode != "precompute":
+        raise ValueError(
+            "subsystem_feedback applies to subsystem_mode='precompute' only "
+            f"(got subsystem_mode={subsystem_mode!r})."
         )
 
     aircraft_cfg, phase_info, phase_names, target_range_nm, phases_summary = _prepare_run(
@@ -169,6 +193,8 @@ async def run_sizing(
                 optimizer=optimizer,
                 max_iter=max_iter,
                 scratch_dir=scratch_dir,
+                feedback=subsystem_feedback,
+                sub_opt_cache=session.sub_opt_cache,
             )
         else:
             builders = build_external_subsystems(subsystem_specs)
@@ -184,12 +210,20 @@ async def run_sizing(
         results = extract_sizing_results(prob, phase_names)
         if meta is not None:
             results["subsystems"] = meta
-        return results
+        return results, prob
 
-    results = await asyncio.to_thread(_suppress_output, _run)
+    results, prob = await asyncio.to_thread(_suppress_output, _run)
     _cleanup_scratch(scratch_dir, results)
 
-    aircraft_cfg["sized_run_id"] = run_id
+    # Keep a converged sizing live for off-design reuse; a failed one must
+    # not serve later runs (and must evict any earlier converged sizing,
+    # which the new configuration may have invalidated).
+    if results["optimizer"].get("success"):
+        session.cache_sized(
+            aircraft_name, run_id, sizing_fingerprint(aircraft_cfg, optimizer, max_iter), prob
+        )
+    else:
+        session.drop_sized(aircraft_name)
 
     findings = validate_sizing_results(
         results, optimizer, max_iter, target_range_nmi=target_range_nm
@@ -209,6 +243,9 @@ async def run_sizing(
         "overrides": aircraft_cfg["overrides"],
         "external_subsystems": subsystem_specs,
         "subsystem_mode": subsystem_mode if subsystem_specs else None,
+        "subsystem_feedback": (
+            subsystem_feedback if subsystem_specs and subsystem_mode == "precompute" else None
+        ),
         "optimizer": optimizer,
         "max_iter": max_iter,
         "target_range_nm": target_range_nm,
@@ -239,7 +276,8 @@ async def run_off_design(
     ] = "max_range",
     mission_range_nm: Annotated[
         float | None,
-        "Fixed mission range (nmi) for 'min_fuel' missions. Unused for 'max_range'.",
+        "Fixed mission range (nmi) for 'min_fuel' missions. Rejected for "
+        "'max_range' (its range is the result, not an input).",
     ] = None,
     mission_gross_mass_lbm: Annotated[
         float | None,
@@ -253,7 +291,10 @@ async def run_off_design(
         int | None, "Passenger count override for this mission."
     ] = None,
     optimizer: Annotated[
-        str, "Optimizer for both the sizing and off-design runs."
+        str,
+        "Optimizer for the off-design run (and for the sizing, when one "
+        "has to be re-run; a cached sizing is reused only if it was made "
+        "with the same optimizer and max_iter).",
     ] = DEFAULT_OPTIMIZER,
     max_iter: Annotated[int, "Maximum optimizer iterations (sizing run)"] = DEFAULT_MAX_ITER,
     run_name: Annotated[str | None, "Optional label for this run"] = None,
@@ -266,8 +307,11 @@ async def run_off_design(
     mission ('max_range': how far at a given load; 'min_fuel': how little
     fuel over a fixed range).
 
-    No sized problem is cached in the session, so this re-runs the sizing
-    internally first -- expect roughly 2x the run_sizing wall-clock.
+    Flies from the session's last converged sizing of this aircraft when
+    its deck/overrides/mission/subsystems/driver settings still match
+    (~1x run_sizing wall-clock); otherwise the sizing is re-run internally
+    first (~2x). results.design_point.sizing_run_id names the run the
+    design came from and sizing_reused says which case applied.
 
     Returns an envelope whose results describe the OFF-DESIGN mission, with
     the sizing headline metrics attached under results.design_point.
@@ -282,6 +326,14 @@ async def run_off_design(
         )
     if mission_type == "min_fuel" and mission_range_nm is None:
         raise ValueError("mission_type='min_fuel' requires mission_range_nm.")
+    if mission_type == "max_range" and mission_range_nm is not None:
+        # Upstream ignores mission_range for max-range missions; accepting
+        # it would let a caller believe the range was constrained.
+        raise ValueError(
+            "mission_range_nm applies to mission_type='min_fuel' only; for "
+            "'max_range' the range is the result (set mission_gross_mass_lbm, "
+            "cargo_mass_lbm, or num_pax to change the load instead)."
+        )
     if mission_range_nm is not None and mission_range_nm <= 0:
         raise ValueError(f"mission_range_nm must be positive (got {mission_range_nm})")
 
@@ -291,6 +343,8 @@ async def run_off_design(
     subsystem_specs = list(aircraft_cfg.get("external_subsystems") or [])
     run_id = _make_run_id()
     scratch_dir = _run_scratch_dir(session, session_id, run_id)
+    fingerprint = sizing_fingerprint(aircraft_cfg, optimizer, max_iter)
+    cached = session.get_sized(aircraft_name, fingerprint)
 
     od_kwargs = {}
     if mission_range_nm is not None:
@@ -303,7 +357,11 @@ async def run_off_design(
         od_kwargs["num_pax"] = num_pax
 
     def _run():
-        aircraft_data = load_deck(aircraft_cfg["deck"], aircraft_cfg["overrides"])
+        if cached is not None:
+            aircraft_data, subsystems = None, ()
+        else:
+            aircraft_data = load_deck(aircraft_cfg["deck"], aircraft_cfg["overrides"])
+            subsystems = build_external_subsystems(subsystem_specs)
         sizing_prob, od_prob = run_off_design_problem(
             aircraft_data,
             phase_info,
@@ -311,17 +369,29 @@ async def run_off_design(
             optimizer=optimizer,
             max_iter=max_iter,
             scratch_dir=scratch_dir,
-            subsystems=build_external_subsystems(subsystem_specs),
+            subsystems=subsystems,
+            sizing_prob=cached.prob if cached is not None else None,
             **od_kwargs,
         )
         results = extract_sizing_results(od_prob, phase_names)
         design = extract_sizing_results(sizing_prob, [])
         results["design_point"] = design["performance"]
         results["design_point"]["optimizer_success"] = design["optimizer"]["success"]
-        return results
+        results["design_point"]["sizing_reused"] = cached is not None
+        results["design_point"]["sizing_run_id"] = (
+            cached.run_id if cached is not None else run_id
+        )
+        return results, sizing_prob
 
-    results = await asyncio.to_thread(_suppress_output, _run)
+    results, sizing_prob = await asyncio.to_thread(_suppress_output, _run)
     _cleanup_scratch(scratch_dir, results)
+
+    if cached is None:
+        # A fresh internal sizing is as reusable as run_sizing's.
+        if results["design_point"].get("optimizer_success"):
+            session.cache_sized(aircraft_name, run_id, fingerprint, sizing_prob)
+        else:
+            session.drop_sized(aircraft_name)
 
     # The off-design range is a result ('max_range') or a target ('min_fuel').
     findings = validate_sizing_results(
@@ -373,7 +443,10 @@ async def run_off_design(
 async def run_payload_range(
     aircraft_name: Annotated[str, "Name of aircraft loaded by load_aircraft_template"] = "aircraft",
     optimizer: Annotated[
-        str, "Optimizer for the sizing and off-design runs."
+        str,
+        "Optimizer for the off-design runs (and for the sizing, when one "
+        "has to be re-run; a cached sizing is reused only if it was made "
+        "with the same optimizer and max_iter).",
     ] = DEFAULT_OPTIMIZER,
     max_iter: Annotated[int, "Maximum optimizer iterations (sizing run)"] = DEFAULT_MAX_ITER,
     run_name: Annotated[str | None, "Optional label for this run"] = None,
@@ -387,8 +460,11 @@ async def run_payload_range(
     payload, and ferry range. Energy_state missions only (upstream
     limitation; reserve fuel not yet accounted for).
 
-    No sized problem is cached in the session, so expect roughly 3x the
-    run_sizing wall-clock.
+    Flies from the session's last converged sizing of this aircraft when
+    its configuration still matches (~2x run_sizing wall-clock); otherwise
+    the sizing is re-run first (~3x). Upstream's payload-range routine
+    widens the sizing problem's cruise bounds in place, so the cached
+    sizing is consumed by this call (the next off-design run re-sizes).
 
     Returns an envelope with results.payload_range.points plus the sizing
     performance. If the sizing does not converge the off-design missions
@@ -405,16 +481,24 @@ async def run_payload_range(
     subsystem_specs = list(aircraft_cfg.get("external_subsystems") or [])
     run_id = _make_run_id()
     scratch_dir = _run_scratch_dir(session, session_id, run_id)
+    cached = session.get_sized(
+        aircraft_name, sizing_fingerprint(aircraft_cfg, optimizer, max_iter)
+    )
 
     def _run():
-        aircraft_data = load_deck(aircraft_cfg["deck"], aircraft_cfg["overrides"])
+        if cached is not None:
+            aircraft_data, subsystems = None, ()
+        else:
+            aircraft_data = load_deck(aircraft_cfg["deck"], aircraft_cfg["overrides"])
+            subsystems = build_external_subsystems(subsystem_specs)
         sizing_prob, pr_probs = run_payload_range_problem(
             aircraft_data,
             phase_info,
             optimizer=optimizer,
             max_iter=max_iter,
             scratch_dir=scratch_dir,
-            subsystems=build_external_subsystems(subsystem_specs),
+            subsystems=subsystems,
+            sizing_prob=cached.prob if cached is not None else None,
         )
         results = extract_sizing_results(sizing_prob, phase_names)
         results["payload_range"] = {
@@ -423,10 +507,17 @@ async def run_payload_range(
                 bool(p.result.success) for p in pr_probs
             ],
         }
+        results["design_point"] = {
+            "sizing_reused": cached is not None,
+            "sizing_run_id": cached.run_id if cached is not None else run_id,
+        }
         return results
 
     results = await asyncio.to_thread(_suppress_output, _run)
     _cleanup_scratch(scratch_dir, results)
+    # The sizing problem's phase_info was widened in place (see runner);
+    # whether it was cached or fresh, it must not serve later runs.
+    session.drop_sized(aircraft_name)
 
     findings = validate_sizing_results(
         results, optimizer, max_iter, target_range_nmi=target_range_nm

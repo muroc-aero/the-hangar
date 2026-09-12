@@ -29,8 +29,8 @@ against Aviary's metadata (typos error with close matches). Common ones:
 
 | Tool | Subcommand | Key parameters |
 |------|------------|----------------|
-| `run_sizing` | `run-sizing` | `--aircraft-name`, `--optimizer` (SLSQP), `--max-iter` (50), `--subsystem-mode` (`coupled`/`precompute`; only matters with a subsystem attached), `--run-name` |
-| `run_off_design` | `run-off-design` | + `--mission-type` (`max_range`/`min_fuel`), `--mission-range-nm` (REQUIRED for min_fuel), `--mission-gross-mass-lbm`, `--cargo-mass-lbm`, `--num-pax` |
+| `run_sizing` | `run-sizing` | `--aircraft-name`, `--optimizer` (SLSQP), `--max-iter` (50), `--subsystem-mode` (`coupled`/`precompute`; only matters with a subsystem attached), `--subsystem-feedback` (`none`/`mission_fuel`; precompute only), `--run-name` |
+| `run_off_design` | `run-off-design` | + `--mission-type` (`max_range`/`min_fuel`), `--mission-range-nm` (REQUIRED for min_fuel, REJECTED for max_range -- there the range is the result), `--mission-gross-mass-lbm`, `--cargo-mass-lbm`, `--num-pax` |
 | `run_payload_range` | `run-payload-range` | `--aircraft-name`, `--optimizer`, `--max-iter`, `--run-name` |
 
 All three return the versioned envelope. ALWAYS check
@@ -42,7 +42,11 @@ sub-optimization whose wing mass replaces the FLOPS estimate on
 `Aircraft.Wing.MASS`). It then joins every analysis run for that
 aircraft. `run_sizing --subsystem-mode precompute` runs the sub-opt once
 up front and applies the result as a deck override (equivalent for this
-feed-forward subsystem, cheaper across repeat runs). Config highlights:
+feed-forward subsystem; the sub-opt result is memoized per session, so a
+repeat sizing at unchanged subsystem inputs skips it --
+`results.subsystems.sub_opt_cached`). `--subsystem-feedback mission_fuel`
+(precompute only) iterates the sub-opt on the sized mission fuel instead
+of the deck's wing fuel capacity. Config highlights:
 `cruise_mach`, `fuel_lbm` (null = deck-driven), `num_box_cp`/`sub_opt_*`
 (smoke knobs), `planform` (null = upstream single-aisle mesh, `"deck"` =
 derive a simple trapezoid from the deck's span/area/taper/sweep, or an
@@ -57,7 +61,8 @@ Key result paths:
 - `results.design.{design_gross_mass_lbm, wing_area_ft2, wing_span_ft}`
 - `results.optimizer.success`
 - `results.timeseries.{time_s, altitude_ft, mach, mass_lbm, distance_nmi, throttle, phase}`
-- run_off_design only: `results.design_point` (the sizing headline metrics)
+- run_off_design only: `results.design_point` (the sizing headline metrics,
+  plus `sizing_reused` / `sizing_run_id` -- which sizing the design came from)
 - run_payload_range only: `results.payload_range.points`
 
 ## Visualization
