@@ -751,6 +751,43 @@ def test_init_db_legacy_fallback(tmp_path, monkeypatch):
     assert legacy_db.exists()
 
 
+def test_init_db_relative_path_survives_chdir(tmp_path, monkeypatch):
+    """A relative db path is pinned to the init-time cwd, not each thread's cwd.
+
+    Connections open lazily per thread; a server that chdirs for a run
+    (hangar.avy) must not have a worker thread open the DB relative to the
+    run's scratch dir.
+    """
+    import threading
+    import sqlite3
+
+    from hangar.sdk.provenance import db as prov_db
+
+    monkeypatch.chdir(tmp_path)
+    init_db("relative/prov.db")
+    assert prov_db._db_path.is_absolute()
+    assert prov_db._db_path == (tmp_path / "relative" / "prov.db").resolve()
+
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    monkeypatch.chdir(scratch)
+    seen: dict = {}
+
+    def worker():
+        try:
+            conn = prov_db._get_conn()
+            seen["path"] = conn.execute("PRAGMA database_list").fetchone()[2]
+        except sqlite3.OperationalError as exc:  # pragma: no cover - the bug
+            seen["error"] = exc
+
+    t = threading.Thread(target=worker)
+    t.start()
+    t.join()
+    assert "error" not in seen, seen
+    assert Path(seen["path"]).resolve() == prov_db._db_path
+    assert not (scratch / "relative").exists()
+
+
 # ---------------------------------------------------------------------------
 # Periodic middleware flush tests
 # ---------------------------------------------------------------------------
