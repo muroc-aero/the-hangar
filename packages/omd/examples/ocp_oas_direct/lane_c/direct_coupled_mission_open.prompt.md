@@ -18,8 +18,8 @@ tight coupling, not a pre-trained surrogate.
 
 ## What matters
 
-- The distinction between a live (direct-coupled) wing solve and a surrogate
-  one is the point of the task -- make sure you pick the live variant.
+- The wing solve must run live inside the mission's solver iteration. A
+  pre-trained surrogate does not satisfy the task.
 - A full aerodynamic solve inside every mission iteration is harder on the
   nonlinear solver; be prepared to give it more headroom than the defaults,
   and expect minutes rather than seconds of runtime.

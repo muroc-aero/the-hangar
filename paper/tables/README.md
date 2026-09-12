@@ -78,10 +78,8 @@ Before using the rendered tables:
   is to repair the cause and run the case again, never to footnote it. A table
   with a nonzero `Lost` is not finished.
 - **`Review` is 0, or you have looked at each one.** These are seeds whose
-  agent-reported verdict contradicts the effect grade. No rule can settle that —
-  the same signature covers an agent that misreported its numbers and a grading
-  policy that scored the wrong one of the agent's own runs — so a person opens
-  the artifacts:
+  agent-reported verdict contradicts the effect grade. No rule can settle that,
+  so a person opens the artifacts:
 
 ```bash
 cd ../hangar-evals && scripts/evals review
@@ -90,9 +88,36 @@ cd ../hangar-evals && scripts/evals review
   It prints each flagged seed, which metrics diverged, and the paths to that
   seed's provenance DB and agent transcript.
 
+  One cause of this flag has been removed rather than reviewed. Every `Review`
+  on the 2026-09-11 anchor arm turned out to be the grader's fault: the agent
+  reported the right answer, then kept working, and the policy graded whichever
+  run happened to be last. Since 2026-09-12 the graded run is the one the agent
+  names in its report, so a `Review` now means what it says — the agent's claim
+  and its own runs disagree.
+
 `Passed` and `Failed` are results about the agent and need no caveat: a graded
 FAIL means the agent did the work and got it wrong, and re-running it would just
 be sampling until the answer flatters.
+
+## The two tables are one arm read two ways
+
+`lane_parity.md`'s **Lane C (agent)** column and every row of
+`sandboxed_evals.md` come from the same runs. They answer different questions
+and neither substitutes for the other:
+
+- **Parity: does the lane reproduce Lane A?** One number per metric, the worst
+  seed of the arm, so the column bounds agreement instead of flattering it. A
+  cell reading `2.7e-02` where its neighbours read `0` is a real disagreement
+  and is where you go look.
+- **Sandboxed: how reliably?** Pass rate across seeds, plus turns, wall clock,
+  seeds lost, seeds needing review.
+
+So a case can be exact in parity and 2/3 in sandboxed -- that is two of three
+seeds nailing it and one going wrong, which is exactly the pairing the two
+tables exist to show.
+
+Both read effect-graded values: what the agent's graded run actually produced,
+from its omd provenance DB, not the numbers it reported for itself.
 
 ## Harness health
 

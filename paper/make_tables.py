@@ -3,11 +3,10 @@
 
 Inputs (all optional except the first):
   paper/results/lane_parity.jsonl   -- written by paper/run_lanes.py
-  paper/results/lane_c_agent.json   -- written by
-      packages/omd/examples/agent_eval/eval_lane_c.py --save-json
-  ../hangar-evals/results/regraded/*_summary.json -- sandboxed evals, with
-      the ambiguity counts (falls back to results/ if not regraded yet;
-      override with --evals-dir)
+  ../hangar-evals/results/*.jsonl -- per-seed records; the Lane C (agent)
+      column is read from these, so one arm fills both tables
+  ../hangar-evals/results/regraded/*_summary.json -- sandboxed evals
+      (falls back to results/ if not regraded yet; override with --evals-dir)
 
 Outputs:
   paper/tables/lane_parity.{csv,md,tex}
@@ -136,6 +135,7 @@ for _m in ("Fn", "TSFC", "OPR"):
     AGENT_METRIC_MAP[("pyc_turbojet", _m)] = ("pyc_turbojet", _m)
 for _m in ("sized_mtow_kg", "total_mission_energy_kw_hr", "peak_power_kw"):
     AGENT_METRIC_MAP[("evt_open_sizing", _m)] = ("evt_native_sizing", _m)
+    AGENT_METRIC_MAP[("evt_native_sizing", _m)] = ("evt_native_sizing", _m)
 
 
 def _fmt(v: float | None) -> str:
@@ -168,16 +168,79 @@ def load_parity(jsonl_path: Path) -> dict[str, dict]:
     return cases
 
 
-def load_agent(json_path: Path) -> dict[tuple[str, str], dict]:
-    """(case slug, metric) -> {"agent": float, "lane_a": float}."""
-    out: dict[tuple[str, str], dict] = {}
-    for rec in json.loads(json_path.read_text()):
-        for m in rec.get("metrics", []):
-            mapped = AGENT_METRIC_MAP.get((rec["case"], m["key"]))
-            if mapped is None or m.get("agent") is None:
+def _arm_records(records_dir: Path, harness: str,
+                 model: str) -> dict[str, list[dict]]:
+    """case -> that case's records from the newest file that HAS this arm.
+
+    Newest-file-per-case alone is not enough: results/ holds every arm side by
+    side, so the newest file for a case can easily be a different model's. Walk
+    newest-first and take the first file that actually contains the arm asked
+    for, which is the same file the arm's own tooling would resume from.
+    """
+    by_case: dict[str, list[dict]] = {}
+    paths = sorted(records_dir.glob("*.jsonl"),
+                   key=lambda p: p.stat().st_mtime, reverse=True)
+    for path in paths:
+        case = path.stem.split("_2026", 1)[0]
+        if case in by_case:
+            continue
+        latest: dict[tuple, dict] = {}
+        for line in path.read_text().splitlines():
+            if not line.strip():
                 continue
-            out[mapped] = {"agent": m["agent"], "lane_a": m["lane_a"]}
-    return out
+            r = json.loads(line)
+            latest[(r["case"], r["harness"], r["model"], r["seed"])] = r
+        mine = [r for r in latest.values()
+                if r.get("harness") == harness and r.get("model") == model]
+        if mine:
+            by_case[case] = mine
+    return by_case
+
+
+def load_agent_from_records(records_dir: Path, harness: str,
+                            model: str) -> dict[tuple[str, str], dict]:
+    """(case slug, metric) -> agent value from the sandboxed arm's records.
+
+    This is the ONLY source for the agent column: one column, one provenance.
+
+    These are EFFECT values -- what the agent's graded run actually produced,
+    read from its omd provenance DB -- not the numbers it reported. That is
+    the right quantity for a parity claim: the question is whether the lane
+    reproduces Lane A, not whether the agent transcribed it correctly.
+
+    Where an arm ran several seeds, the WORST seed per metric is reported, so
+    this column bounds agreement rather than flattering it. Per-seed pass
+    rates are the other table's job -- see ``sandboxed_evals``.
+    """
+    best: dict[tuple[str, str], dict] = {}
+    for records in _arm_records(records_dir, harness, model).values():
+        for r in records:
+            for sc in (r.get("scores") or []):
+                mapped = AGENT_METRIC_MAP.get((r["case"], sc["key"]))
+                if mapped is None or not isinstance(sc.get("agent"), (int, float)):
+                    continue
+                entry = best.setdefault(
+                    mapped, {"agent": None, "lane_a": sc["lane_a"],
+                             "source": "arm", "n_seeds": 0, "rel": -1.0})
+                entry["n_seeds"] += 1
+                rel = abs(sc.get("rel_err") or 0.0)
+                if rel > entry["rel"]:
+                    entry.update(agent=sc["agent"], lane_a=sc["lane_a"], rel=rel)
+    return best
+
+
+def _with_agent_provenance(note: str, agent: dict, model: str) -> str:
+    """Say which arm the agent column is, so the column has one provenance."""
+    if not agent:
+        return note
+    seeds = max((v.get("n_seeds", 1) for v in agent.values()), default=1)
+    parts = [note] if note else []
+    parts.append(
+        f"Lane C (agent): effect-graded values from the sandboxed {model} arm "
+        f"over {seeds} seeds, worst seed per metric, so the column bounds "
+        f"agreement; per-seed pass rates are in sandboxed_evals. A case the "
+        f"arm has not run shows -- rather than a value from another run.")
+    return " ".join(parts)
 
 
 def build_rows(cases: dict, agent: dict) -> tuple[list[str], list[list[str]]]:
@@ -319,6 +382,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--evals-dir", type=Path, default=DEFAULT_EVALS_DIR,
                         help="hangar-evals results dir with *_summary.json")
+    parser.add_argument("--agent-model", default="claude-opus-5",
+                        help="model whose arm feeds the Lane C agent column")
+    parser.add_argument("--agent-harness", default="claude",
+                        help="harness whose arm feeds the Lane C agent column")
     args = parser.parse_args()
 
     jsonl = RESULTS_DIR / "lane_parity.jsonl"
@@ -336,8 +403,15 @@ def main() -> int:
                 f"{meta.get('timestamp_utc')} (git {meta.get('git_sha')}, "
                 f"pytest exit {meta.get('pytest_exit_code')})")
 
-    agent_path = RESULTS_DIR / "lane_c_agent.json"
-    agent = load_agent(agent_path) if agent_path.exists() else {}
+    # The agent lane is the sandboxed arm, and only the arm. A case the arm has
+    # not run shows "--" rather than a number from some other run: one column,
+    # one provenance. (Today that is ocp_three_tool alone.)
+    records_dir = args.evals_dir if args.evals_dir.name != "regraded" \
+        else args.evals_dir.parent
+    agent = (load_agent_from_records(records_dir, args.agent_harness,
+                                     args.agent_model)
+             if records_dir.is_dir() else {})
+    note = _with_agent_provenance(note, agent, args.agent_model)
 
     cases = load_parity(jsonl)
     header, rows = build_rows(cases, agent)
@@ -347,9 +421,8 @@ def main() -> int:
     print(f"Lane parity table: {len(rows)} metric rows across "
           f"{len(cases)} cases -> {TABLES_DIR}/lane_parity.{{csv,md,tex}}")
     if not agent:
-        print("  (no lane_c_agent.json found -- agent columns omitted; "
-              "produce one with eval_lane_c.py --save-json "
-              f"{RESULTS_DIR / 'lane_c_agent.json'})")
+        print(f"  (no {args.agent_model} records under {records_dir} -- agent "
+              "columns omitted; run an arm with hangar-evals first)")
 
     if args.evals_dir.is_dir():
         eheader, erows = build_evals_rows(args.evals_dir)
