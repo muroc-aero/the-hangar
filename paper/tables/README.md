@@ -78,10 +78,8 @@ Before using the rendered tables:
   is to repair the cause and run the case again, never to footnote it. A table
   with a nonzero `Lost` is not finished.
 - **`Review` is 0, or you have looked at each one.** These are seeds whose
-  agent-reported verdict contradicts the effect grade. No rule can settle that —
-  the same signature covers an agent that misreported its numbers and a grading
-  policy that scored the wrong one of the agent's own runs — so a person opens
-  the artifacts:
+  agent-reported verdict contradicts the effect grade. No rule can settle that,
+  so a person opens the artifacts:
 
 ```bash
 cd ../hangar-evals && scripts/evals review
@@ -89,6 +87,13 @@ cd ../hangar-evals && scripts/evals review
 
   It prints each flagged seed, which metrics diverged, and the paths to that
   seed's provenance DB and agent transcript.
+
+  One cause of this flag has been removed rather than reviewed. Every `Review`
+  on the 2026-09-11 anchor arm turned out to be the grader's fault: the agent
+  reported the right answer, then kept working, and the policy graded whichever
+  run happened to be last. Since 2026-09-12 the graded run is the one the agent
+  names in its report, so a `Review` now means what it says — the agent's claim
+  and its own runs disagree.
 
 `Passed` and `Failed` are results about the agent and need no caveat: a graded
 FAIL means the agent did the work and got it wrong, and re-running it would just
