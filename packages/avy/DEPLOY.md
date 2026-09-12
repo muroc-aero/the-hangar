@@ -20,6 +20,11 @@ docker compose -f docker/docker-compose.yml up --build avy
 The viewer service mounts `./hangar_data/avy` read-only and
 `HANGAR_VIEWER_DBS` includes `avy=/data/avy/provenance.db`.
 
+The `omd` image carries its own copy of this runtime at `/opt/venv-avy`
+(`AVY_PYTHON` is set in `packages/omd/Dockerfile`) so the `avy/Sizing`
+plan factory can run Aviary as a subprocess there too; no extra service
+is needed for it.
+
 ## Environment variables
 
 | Variable | Value (deployed) | Notes |
@@ -34,22 +39,12 @@ Auth (OIDC via `hangar.sdk.auth`) uses the same `.env` variables as the
 other services (issuer, audience, JWKS URL) -- see `lakesideai-infra`'s
 `.env` template.
 
-## Reverse proxy (Caddyfile -- lives in lakesideai-infra)
+## Reverse proxy and OIDC client
 
-```
-# --- AVY ---
-handle /.well-known/oauth-protected-resource/avy {
-    reverse_proxy avy:8000
-}
-handle_path /avy/* {
-    reverse_proxy avy:8000
-}
-```
-
-## Keycloak
-
-Register an `avy` OIDC client mirroring the existing tool clients
-(client ID `avy`, resource URL `https://mcp.lakesideai.dev/avy`, same
+Both live in the private `lakesideai-infra` repo, not here (see the
+Deployment section of the root `CLAUDE.md`): add the per-tool Caddyfile
+block from `skills/new-tool/SKILL.md` step 7 with `<pkg>` = `avy`, and
+register an `avy` OIDC client mirroring the existing tool clients (same
 scopes as oas/ocp/pyc). The `.well-known/oauth-protected-resource`
 endpoint is served by the app itself.
 
@@ -60,3 +55,8 @@ Every analysis call is a dymos+SLSQP optimization: ~20 s (sizing) to ~60 s
 settings recommended. Runs are serialized inside the process (a run lock
 guards the cwd), so one container handles one analysis at a time; scale
 replicas rather than threads if concurrent runs are needed.
+
+The server keeps the last converged sizing per aircraft live in memory
+(an AviaryProblem, tens of MB) so off-design and payload-range calls can
+fly from it without re-sizing; `reset` releases it. Budget container
+memory for one such problem per concurrently active aircraft.

@@ -289,7 +289,13 @@ named subsystem -- internal connections use relative paths and still work.
 Subprocess black box: `compute()` writes a JSON spec and runs
 `factories/avy_worker.py` with `.venv-avy`'s interpreter (aviary needs
 numpy>=2; the main venv is capped at numpy<2 by openconcept). The worker
-imports NOTHING from hangar.omd, but hangar.avy IS available there.
+imports NOTHING from hangar.omd; it is a thin shim over hangar.avy (which
+IS installed in .venv-avy): `load_deck` + `validate_deck_overrides`,
+`build_external_subsystems`, `run_sizing_problem` -- so override
+validation and the run lifecycle are the avy server's own code. The
+interpreter resolves from `$AVY_PYTHON`, else `.venv-avy/bin/python`
+relative to the cwd; the omd Docker image ships the same runtime at
+`/opt/venv-avy` and sets `AVY_PYTHON` to it.
 
 Config beyond deck/mission/optimizer:
 - `external_subsystems: [{name: oas_wing_mass, config: {...}}]` -- the

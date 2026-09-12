@@ -12,16 +12,17 @@ upstream problem has two process-global hazards for a long-lived server:
 ``os.chdir`` is process-global, so runs are serialized behind a lock. All
 aviary imports are lazy (see the dependency note in pyproject.toml).
 
-Off-design and payload-range analyses need a live sized AviaryProblem, and
-no live Problem is cached in the session (same policy as hangar-pyc, whose
-off-design rebuilds and re-solves the design point every call) -- so those
-entry points re-run the sizing inside the same scratch/lock block and then
-fly the off-design mission(s) from it.
+Off-design and payload-range analyses need a live sized AviaryProblem.
+The tools keep the last converged sizing per aircraft in the session
+(``hangar.avy.state.AvySession.sized``) and pass it in as ``sizing_prob``;
+when none matches, those entry points re-run the sizing inside the same
+scratch/lock block and then fly the off-design mission(s) from it.
 """
 
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import threading
 from pathlib import Path
@@ -146,6 +147,7 @@ def run_precompute_sizing_problem(
     feedback: str = "none",
     fixed_point_max_iter: int = 4,
     fixed_point_tol: float = 1e-3,
+    sub_opt_cache: dict | None = None,
 ):
     """Sequential (fixed-point) external-subsystem sizing -- W3.2.
 
@@ -164,9 +166,17 @@ def run_precompute_sizing_problem(
     capacity-driven coupling, for studies that want the wing sized by
     actual fuel load.
 
+    ``sub_opt_cache`` is an optional memo (content key -> wing mass, lbm;
+    see ``sub_opt_cache_key``) shared across calls: with it, a repeat
+    sizing at unchanged subsystem inputs skips the ~40 s sub-opt entirely
+    -- this is what makes precompute mode cheaper across repeat runs
+    (deck-override-only or mission-only edits). Without it every call
+    re-solves the sub-opt.
+
     Returns ``(prob, meta)`` where ``meta`` records mode, per-pass history
-    (wing mass, fuel, sub-opt seconds, sizing success), and convergence of
-    the fixed point. Only ``oas_wing_mass`` specs are supported.
+    (wing mass, fuel, sub-opt seconds, cache hit, sizing success), and
+    convergence of the fixed point. Only ``oas_wing_mass`` specs are
+    supported.
     """
     import copy as _copy
     import time as _time
@@ -209,11 +219,19 @@ def run_precompute_sizing_problem(
         from openmdao.core.problem import _clear_problem_names
 
         for i in range(n_passes):
-            t0 = _time.time()
-            wing_mass_lbm = run_wing_mass_sub_opt(
-                {**config, "fuel_lbm": fuel_lbm}, aviary_values=aircraft_values
-            )
-            sub_opt_s = _time.time() - t0
+            key = sub_opt_cache_key(config, fuel_lbm, aircraft_values)
+            cached = sub_opt_cache is not None and key in sub_opt_cache
+            if cached:
+                wing_mass_lbm = sub_opt_cache[key]
+                sub_opt_s = 0.0
+            else:
+                t0 = _time.time()
+                wing_mass_lbm = run_wing_mass_sub_opt(
+                    {**config, "fuel_lbm": fuel_lbm}, aviary_values=aircraft_values
+                )
+                sub_opt_s = _time.time() - t0
+                if sub_opt_cache is not None:
+                    sub_opt_cache[key] = wing_mass_lbm
 
             data = _copy.deepcopy(aircraft_values)
             data.set_val(Aircraft.Wing.MASS, wing_mass_lbm, "lbm")
@@ -229,6 +247,7 @@ def run_precompute_sizing_problem(
                     "wing_mass_lbm": wing_mass_lbm,
                     "sized_total_fuel_lbm": new_fuel_lbm,
                     "sub_opt_seconds": round(sub_opt_s, 1),
+                    "sub_opt_cached": cached,
                     "sizing_success": bool(prob.result.success),
                 }
             )
@@ -245,8 +264,31 @@ def run_precompute_sizing_problem(
         "passes": passes,
         "fixed_point_converged": converged_fp,
         "wing_mass_lbm": passes[-1]["wing_mass_lbm"],
+        "sub_opt_cached": all(p["sub_opt_cached"] for p in passes),
     }
     return prob, meta
+
+
+def sub_opt_cache_key(config: dict, fuel_lbm: float, aircraft_values) -> str:
+    """Content key for one oas_wing_mass sub-optimization.
+
+    The sub-opt's inputs are the resolved config (with the concrete fuel
+    load) and, only when ``planform == "deck"``, the deck's trapezoid
+    planform -- so the key is built from exactly those, not from the deck
+    path or the override dict (an override that does not touch the wing
+    planform must still hit).
+    """
+    from hangar.avy.subsystems.oas_wing_mass import resolve_config
+
+    resolved = resolve_config({**config, "fuel_lbm": fuel_lbm})
+    deck_planform = None
+    if resolved["planform"] == "deck":
+        from hangar.avy.subsystems.wing_mesh import planform_from_deck
+
+        deck_planform = planform_from_deck(aircraft_values, kink_eta=resolved["kink_eta"])
+    return json.dumps(
+        {"config": resolved, "deck_planform": deck_planform}, sort_keys=True, default=str
+    )
 
 
 def run_off_design_problem(
@@ -257,22 +299,30 @@ def run_off_design_problem(
     max_iter: int = 50,
     scratch_dir: str | Path | None = None,
     subsystems=(),
+    sizing_prob=None,
     **off_design_kwargs,
 ):
-    """Size the aircraft, then fly an off-design mission from the sized design.
+    """Fly an off-design mission from a sized design.
 
-    ``mission_type`` is a key of ``OFF_DESIGN_TYPES``. ``off_design_kwargs``
-    are forwarded to ``AviaryProblem.run_off_design_mission`` (e.g.
-    ``mission_range``, ``mission_gross_mass``, ``cargo_mass``, ``num_pax``).
+    ``sizing_prob`` is a live, converged sizing problem to fly from (the
+    session's cached sizing); when None the aircraft is sized first in the
+    same scratch/lock block. Upstream's ``run_off_design_mission`` builds a
+    fresh problem from a deep copy of the sized inputs and never mutates
+    the sizing problem, so one cached sizing serves any number of
+    off-design calls. ``mission_type`` is a key of ``OFF_DESIGN_TYPES``.
+    ``off_design_kwargs`` are forwarded to
+    ``AviaryProblem.run_off_design_mission`` (e.g. ``mission_range``,
+    ``mission_gross_mass``, ``cargo_mass``, ``num_pax``).
     Returns ``(sizing_prob, off_design_prob)``. Blocking.
     """
     require_aviary()
     problem_type = OFF_DESIGN_TYPES[mission_type]
 
     with _scratch_run(scratch_dir):
-        sizing_prob = _solve_sizing(
-            aircraft_data, phase_info, optimizer, max_iter, subsystems
-        )
+        if sizing_prob is None:
+            sizing_prob = _solve_sizing(
+                aircraft_data, phase_info, optimizer, max_iter, subsystems
+            )
         od_prob = sizing_prob.run_off_design_mission(
             problem_type=problem_type,
             optimizer=optimizer,
@@ -289,21 +339,30 @@ def run_payload_range_problem(
     max_iter: int = 50,
     scratch_dir: str | Path | None = None,
     subsystems=(),
+    sizing_prob=None,
 ):
-    """Size the aircraft, then run the payload-range off-design missions.
+    """Run the payload-range off-design missions from a sized design.
+
+    ``sizing_prob`` is a live, converged sizing to fly from; when None the
+    aircraft is sized first. NOTE: upstream's ``run_payload_range`` widens
+    the cruise duration bounds of the sizing problem's phase_info IN PLACE
+    (a shallow copy), so the sizing problem is not pristine afterwards --
+    the caller must not keep serving it to later off-design runs.
 
     Returns ``(sizing_prob, (max_fuel_payload_prob, ferry_prob))``; the
     inner tuple is empty when the sizing did not converge (a diagram from
     an unconverged design is meaningless -- and upstream's own skip is
     verbosity-gated away at QUIET, plus it returns None rather than () when
     an off-design mission fails, so both cases are normalized here).
-    Blocking; roughly 3x a plain sizing run.
+    Blocking; roughly 2x a plain sizing run from a cached sizing, 3x
+    without one.
     """
     require_aviary()
     with _scratch_run(scratch_dir):
-        sizing_prob = _solve_sizing(
-            aircraft_data, phase_info, optimizer, max_iter, subsystems
-        )
+        if sizing_prob is None:
+            sizing_prob = _solve_sizing(
+                aircraft_data, phase_info, optimizer, max_iter, subsystems
+            )
         if sizing_prob.result.success:
             pr_probs = sizing_prob.run_payload_range(verbosity=0) or ()
         else:

@@ -109,3 +109,52 @@ async def test_run_payload_range(single_aisle):
 
     out = await visualize(env["run_id"], "payload_range", output="file")
     assert out[0].get("file_path")
+
+
+@pytest.mark.slow
+async def test_off_design_reuses_cached_sizing(single_aisle):
+    """A converged run_sizing serves later off-design calls without re-sizing.
+
+    Checks the reuse bookkeeping end to end: sizing_run_id names the
+    run_sizing, payload-range consumes the cached problem (upstream widens
+    its cruise bounds in place), and a deck override invalidates it.
+    """
+    pytest.importorskip("aviary")
+    from hangar.avy.state import sessions
+    from hangar.avy.tools.aircraft import define_aircraft
+
+    sized = await run_sizing(aircraft_name=single_aisle)
+    assert sized["validation"]["passed"], sized["validation"]
+    session = sessions.get("default")
+    assert session.aircraft[single_aisle]["sized_run_id"] == sized["run_id"]
+
+    od = await run_off_design(aircraft_name=single_aisle, mission_type="max_range")
+    assert od["validation"]["passed"], od["validation"]
+    design = od["results"]["design_point"]
+    assert design["sizing_reused"] is True
+    assert design["sizing_run_id"] == sized["run_id"]
+    assert design["gross_mass_lbm"] == pytest.approx(
+        sized["results"]["performance"]["gross_mass_lbm"]
+    )
+    # the cached sizing survives an off-design run
+    assert session.aircraft[single_aisle]["sized_run_id"] == sized["run_id"]
+
+    pr = await run_payload_range(aircraft_name=single_aisle)
+    assert pr["validation"]["passed"], pr["validation"]
+    assert pr["results"]["design_point"]["sizing_reused"] is True
+    assert all(pr["results"]["payload_range"]["off_design_success"])
+    # ... but payload-range consumes it
+    assert session.aircraft[single_aisle]["sized_run_id"] is None
+
+    # an internal sizing from off-design is cached too, and an override
+    # invalidates it
+    od2 = await run_off_design(aircraft_name=single_aisle, mission_type="max_range")
+    assert od2["results"]["design_point"]["sizing_reused"] is False
+    assert od2["results"]["design_point"]["sizing_run_id"] == od2["run_id"]
+    assert session.aircraft[single_aisle]["sized_run_id"] == od2["run_id"]
+
+    await define_aircraft(
+        aircraft_name=single_aisle, overrides={"aircraft:wing:aspect_ratio": 12.0}
+    )
+    od3 = await run_off_design(aircraft_name=single_aisle, mission_type="max_range")
+    assert od3["results"]["design_point"]["sizing_reused"] is False

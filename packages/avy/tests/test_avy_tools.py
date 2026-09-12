@@ -308,3 +308,88 @@ async def test_repeat_runs_use_unmutated_mission(single_aisle):
     phase_info["cruise"]["user_options"]["num_segments"] = 99
     phase_info["post_mission"]["target_range"] = (9999.0, "nmi")
     assert repr(stored) == before
+
+
+# ---------------------------------------------------------------------------
+# Review follow-ups: off-design contract, precompute feedback, sizing cache
+# ---------------------------------------------------------------------------
+
+
+async def test_run_off_design_rejects_range_for_max_range(single_aisle):
+    # Upstream ignores mission_range for max-range missions; silently
+    # forwarding it would let a caller believe the range was constrained.
+    with pytest.raises(ValueError, match="min_fuel"):
+        await run_off_design(
+            aircraft_name=single_aisle, mission_type="max_range", mission_range_nm=1500.0
+        )
+
+
+async def test_run_sizing_rejects_unknown_feedback(single_aisle):
+    with pytest.raises(ValueError, match="subsystem_feedback"):
+        await run_sizing(
+            aircraft_name=single_aisle, subsystem_mode="precompute", subsystem_feedback="fuel"
+        )
+
+
+async def test_run_sizing_rejects_feedback_outside_precompute(single_aisle):
+    with pytest.raises(ValueError, match="precompute"):
+        await run_sizing(
+            aircraft_name=single_aisle, subsystem_mode="coupled", subsystem_feedback="mission_fuel"
+        )
+
+
+def test_sizing_fingerprint_tracks_everything_that_changes_the_design():
+    from hangar.avy.state import sizing_fingerprint
+
+    cfg = {
+        "deck": "models/x.csv",
+        "overrides": {"aircraft:wing:aspect_ratio": 11.0},
+        "mission": {"phase_info": {"cruise": {"user_options": {"mach": (0.78, "unitless")}}}},
+        "external_subsystems": [],
+    }
+    base = sizing_fingerprint(cfg, "SLSQP", 50)
+    assert base == sizing_fingerprint(dict(cfg), "SLSQP", 50)
+
+    variants = [
+        {**cfg, "overrides": {"aircraft:wing:aspect_ratio": 12.0}},
+        {**cfg, "deck": "models/y.csv"},
+        {**cfg, "mission": None},
+        {**cfg, "external_subsystems": [{"name": "oas_wing_mass", "config": {}}]},
+    ]
+    fps = {sizing_fingerprint(v, "SLSQP", 50) for v in variants}
+    fps |= {sizing_fingerprint(cfg, "IPOPT", 50), sizing_fingerprint(cfg, "SLSQP", 80)}
+    assert base not in fps
+    assert len(fps) == 6
+
+
+async def test_sized_cache_lifecycle(single_aisle):
+    from hangar.avy.state import sessions
+
+    session = sessions.get("default")
+    session.cache_sized(single_aisle, "run-1", "fp-a", prob=object())
+    assert session.aircraft[single_aisle]["sized_run_id"] == "run-1"
+    assert session.get_sized(single_aisle, "fp-a").run_id == "run-1"
+    # a changed configuration never reuses a stale sizing
+    assert session.get_sized(single_aisle, "fp-b") is None
+
+    # reloading the template is a new design
+    await load_aircraft_template(template="advanced_single_aisle", name=single_aisle)
+    assert session.get_sized(single_aisle, "fp-a") is None
+    assert session.aircraft[single_aisle]["sized_run_id"] is None
+
+    session.cache_sized(single_aisle, "run-2", "fp-a", prob=object())
+    session.sub_opt_cache["k"] = 1.0
+    await reset()
+    assert not sessions.get("default").sized
+    assert not sessions.get("default").sub_opt_cache
+
+
+def test_sub_opt_cache_key_is_content_based():
+    from hangar.avy.runner import sub_opt_cache_key
+
+    # no deck read when planform is upstream's hard-coded mesh
+    k1 = sub_opt_cache_key({"cruise_mach": 0.78, "num_box_cp": 15}, 40000.0, None)
+    k2 = sub_opt_cache_key({"num_box_cp": 15, "cruise_mach": 0.78}, 40000.0, None)
+    assert k1 == k2
+    assert k1 != sub_opt_cache_key({"cruise_mach": 0.78, "num_box_cp": 15}, 41000.0, None)
+    assert k1 != sub_opt_cache_key({"cruise_mach": 0.79, "num_box_cp": 15}, 40000.0, None)

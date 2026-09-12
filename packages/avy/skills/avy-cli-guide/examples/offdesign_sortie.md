@@ -1,8 +1,10 @@
 # Example: Off-Design Missions from a Sized Aircraft
 
-Fly the sized single-aisle on missions it was NOT designed for. Note both
-off-design tools re-run the sizing internally (~2x wall-clock; no live
-problem is cached).
+Fly the sized single-aisle on missions it was NOT designed for. Both
+off-design tools fly from the last converged `run_sizing` of the aircraft
+when the configuration still matches; without one (as below, where no
+run_sizing precedes them) they re-run the sizing internally first (~2x
+wall-clock).
 
 ```json
 [

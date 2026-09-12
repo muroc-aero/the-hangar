@@ -24,8 +24,21 @@ root (`bash scripts/setup-avy-venv.sh`: hangar-sdk + hangar-avy + editable
   evaluate-only path. Hence the tool is `run_sizing`, not
   `run_mission_analysis`. ~20 s for the default 3-phase mission.
 - `run_off_design` (max_range/min_fuel) and `run_payload_range` need a live
-  sized problem; none is cached (pyc precedent), so they re-run the sizing
-  internally -- ~2x / ~3x run_sizing wall-clock.
+  sized problem. The last converged sizing per aircraft is kept live in
+  the session (`AvySession.sized`, keyed by `sizing_fingerprint` = deck +
+  overrides + mission + subsystems + optimizer/max_iter) and reused when
+  it matches (`results.design_point.{sizing_reused, sizing_run_id}`);
+  otherwise the sizing is re-run internally (~2x / ~3x wall-clock).
+  Upstream's `run_payload_range` widens the sizing problem's cruise
+  bounds in place, so that call consumes the cached sizing. `reset` and
+  `load_aircraft_template` drop it.
+- `run_sizing(subsystem_mode="precompute")` memoizes the oas_wing_mass
+  sub-opt in `AvySession.sub_opt_cache` (key = resolved config + fuel
+  load + deck planform when `planform: "deck"`), so repeat sizings at
+  unchanged subsystem inputs skip the ~40 s sub-opt
+  (`results.subsystems.sub_opt_cached`). `subsystem_feedback=
+  "mission_fuel"` (precompute only) iterates the sub-opt on the sized
+  mission fuel instead of the deck capacity.
 - Optimizer non-convergence does NOT raise; it returns the last iterate
   with `prob.result.success == False`. The `optimizer.success` validation
   finding is the load-bearing check.
