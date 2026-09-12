@@ -9,6 +9,41 @@ This file is the map of what exists and where it comes from. The step-by-step
 runbook for regenerating the two tables is `paper/tables/README.md` -- start
 there if you just want current numbers.
 
+## Where this stands (2026-09-12)
+
+What is current, what is stale, and what is unfinished. Update this section
+when you change the answer -- it is the first thing to read when picking the
+work back up.
+
+**Current.** The Lane C (agent) column and every row of `sandboxed_evals`
+come from the `claude-opus-5` anchor arm run 2026-09-10/11 and re-scored
+offline on 09-12 under the named-run grading policy. 32 of 33 seeds pass.
+The one failure -- `oas_aero_rect` seed 0, CD off by 2.7 % -- is genuine, and
+the agent's own report agreed it had failed. `Lost` and `Review` are 0.
+
+**Stale.** Lanes A, B and C (scripted) are from 2026-07-17 at git `ac32a6f`
+(`paper/results/lane_parity_meta.json`), 26 comparisons, pytest exit 0. They
+are a `paper/run_lanes.py` away from current, but that refresh waits on a
+decision about PR #88 (`fix/ocp-three-tool-convergence`), which changes the
+B738 row. Deciding #88 first avoids rendering the table twice.
+
+**Unfinished:**
+
+1. **`ocp_three_tool` is not in the anchor manifest.** `configs/lane_c_anchor/`
+   holds 11 cases and that is not one of them, so its agent cells read `--`.
+   Adding it to the arm is the fix -- not back-filling from the retired
+   `eval_lane_c.py` harness, which would give that one column a second
+   provenance. Budget a Lane A reference run first.
+2. **The local arms predate the current policy.** The newest gemma records are
+   2026-08-11 and the newest qwen ones 2026-06/07, so both were graded under
+   last-run-of-mode and ran on the pre-calibration budgets. They are in the
+   table for reference but are **not comparable with the anchor** until
+   re-run (gemma ~14 h, qwen ~9 h, both on-device and free).
+3. **The prompt and budget changes have never been exercised by a fresh run.**
+   the-hangar #107/#108 and hangar-evals #24 landed after the arm was measured,
+   and the 09-12 work re-*scored* the stored arm rather than re-running it.
+   The next anchor arm is the first real test of them.
+
 ## What gets produced
 
 ```
