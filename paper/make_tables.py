@@ -299,27 +299,237 @@ def write_md(path: Path, header: list[str], rows: list[list[str]],
     path.write_text("\n".join(lines) + "\n")
 
 
-def write_tex(path: Path, header: list[str], rows: list[list[str]],
-              note: str = "") -> None:
-    def esc(s: str) -> str:
-        return (s.replace("\\", r"\textbackslash{}").replace("_", r"\_")
-                 .replace("%", r"\%").replace("&", r"\&").replace("#", r"\#"))
+# --- LaTeX -----------------------------------------------------------------
+#
+# The .tex files are pasted into the paper unedited, so each one carries its
+# own float, caption and label. The preamble has to provide:
+#
+#     \usepackage{booktabs,tabularx,multirow}
+#     \newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+#
+# Y is a left-aligned X column: the text columns share whatever width the
+# numbers leave and wrap inside it, rather than pushing the table off the
+# page. Both tables are two-column floats (table*) at \footnotesize with
+# tight column separation -- that is what makes ten-odd columns fit
+# \textwidth on one page.
 
-    colspec = "ll" + "r" * (len(header) - 2)
+TEX_REQUIRES = (r"needs \usepackage{booktabs,tabularx,multirow} and "
+                r"\newcolumntype{Y}{>{\raggedright\arraybackslash}X}")
+
+# Slug -> the name the paper uses. The CSV and Markdown keep the slugs --
+# they are how you find the run again -- and the .tex gets prose.
+TEX_TITLE = {
+    "paraboloid": "Paraboloid",
+    "paraboloid_analysis": "Paraboloid analysis",
+    "paraboloid_optimization": "Paraboloid optimization",
+    "oas_aero_rect": "Rectangular wing VLM analysis",
+    "oas_aerostruct_rect": "Rectangular wing aerostructural",
+    "ocp_caravan_basic": "Caravan three-phase mission",
+    "ocp_caravan_full": "Caravan mission with balanced field length",
+    "ocp_hybrid_twin": "King Air series-hybrid mission",
+    "oas_ocp_combined": "Wing and mission, uncoupled",
+    "ocp_oas_coupled": "Mission with VLM drag surrogate",
+    "ocp_oas_direct": "Mission with directly coupled VLM",
+    "ocp_pyc_coupled": "Mission with turbojet surrogate",
+    "pyc_turbojet": "Turbojet design point",
+    "evt_native_sizing": "Archer Midnight eVTOL sizing",
+    "evt_open_sizing": "Archer Midnight eVTOL sizing",
+    "ocp_three_tool": "737-800 three-tool coupled mission",
+}
+
+_SLUG_BY_TITLE = {info["title"]: slug for slug, info in CASE_INFO.items()}
+
+# Thin space BEFORE the "+" and an ordinary one after: the plus stays welded
+# to the tool it follows, and the line may still break after it. A narrow
+# Tools column then wraps as "OCP+ / OAS+ / pyCycle" instead of overflowing.
+TEX_TOOLS = {
+    "OAS + OCP": r"OAS\,+\ OCP",
+    "OCP + OAS": r"OCP\,+\ OAS",
+    "OCP + pyCycle": r"OCP\,+\ pyCycle",
+    "OCP + OAS + pyCycle": r"OCP\,+\ OAS\,+\ pyCycle",
+    "evt (native)": "evtolpy",
+}
+
+# Metric keys are variable names; the paper wants units.
+TEX_METRIC = {
+    "fuel_burn_kg": "fuel (kg)",
+    "OEW_kg": "OEW (kg)",
+    "MTOW_kg": "MTOW (kg)",
+    "sized_mtow_kg": "MTOW (kg)",
+    "total_mission_energy_kw_hr": "energy (kWh)",
+    "peak_power_kw": "peak power (kW)",
+    "wing_CL": "wing CL",
+    "wing_CD": "wing CD",
+    "Fn": "Fn (lbf)",
+}
+
+# Column headings have to survive a 3pt-separated numeric column, so the
+# qualifiers they carry in the CSV move into the caption instead.
+TEX_HEADER = {
+    "Lane C (scripted)": "Lane C",
+    "Lane C (agent)": "Agent",
+    "rel diff B": r"$\Delta$B",
+    "rel diff C": r"$\Delta$C",
+    "rel diff agent": r"$\Delta$agent",
+    "Passed": "Pass",
+    "Failed": "Fail",
+    "Valid-call rate (med)": "Valid calls",
+    "Turns (med)": "Turns",
+    "Wall clock s (med)": "Wall (s)",
+}
+
+LANE_PARITY_CAPTION = (
+    "Three-lane parity: identical results through direct scripts (Lane A), "
+    "omd plans (Lane B), and the MCP tool surface (Lane C). The $\\Delta$ "
+    "columns are relative differences from Lane A. The abbreviations for the "
+    "tools are OpenConcept (OCP) and OpenAeroStruct (OAS).")
+
+LANE_PARITY_AGENT_CAPTION = (
+    "Agent is that same MCP surface driven by a blind agent given the "
+    "engineering goal alone. Its values are effect-graded -- read from the "
+    "run's provenance record rather than from the agent's own report -- and "
+    "the worst seed is shown per metric, so the column bounds agreement "
+    "rather than averaging it. Per-seed reliability is in "
+    "Table~\\ref{tab:sandboxed-evals}.")
+
+EVALS_CAPTION = (
+    "Sandboxed agent evals over the MCP tool surface: how reliably each "
+    "model and harness reaches the Lane A reference. Pass and Fail count "
+    "graded seeds. Lost counts seeds the harness never measured (crash, "
+    "credential, network), which are not failures. Review counts seeds whose "
+    "self-reported verdict contradicts the effect grade. The last three "
+    "columns are medians over the graded seeds.")
+
+
+def _tex_escape(s: str) -> str:
+    return (s.replace("\\", r"\textbackslash{}").replace("_", r"\_")
+             .replace("%", r"\%").replace("&", r"\&").replace("#", r"\#"))
+
+
+def _tex_cell(value: str, display: dict[str, str]) -> str:
+    """Literal LaTeX from the display table, else the escaped raw value."""
+    if value in display:
+        return display[value]
+    return _tex_escape(value)
+
+
+def _tex_groups(rows: list[list[str]]) -> list[list[list[str]]]:
+    """One group of rows per example.
+
+    A row opens a group when its first column is non-empty and names something
+    other than the open group. Lane parity blanks the repeated example name
+    and the evals table repeats it; both group the same way.
+    """
+    groups: list[list[list[str]]] = []
+    for row in rows:
+        if not groups or (row[0] and row[0] != groups[-1][0][0]):
+            groups.append([])
+        groups[-1].append(row)
+    return groups
+
+
+def _tex_span(title: str, n_rows: int) -> str:
+    """The example name, spanning its group.
+
+    A one-row group is left as plain text: \\multirow would let a name that
+    wraps to two lines run past the single row it was given, whereas tabularx
+    simply makes the row taller.
+    """
+    if n_rows == 1:
+        return rf"\textbf{{{title}}}"
+    return rf"\multirow{{{n_rows}}}{{\linewidth}}{{\textbf{{{title}}}}}"
+
+
+def _tex_float(colspec: str, header: list[str], body: list[str], *,
+               caption: str, label: str, note: str = "") -> str:
     lines = []
     if note:
         lines.append(f"% {note}")
-    lines.append(r"\begin{tabular}{" + colspec + "}")
-    lines.append(r"\toprule")
-    lines.append(" & ".join(esc(h) for h in header) + r" \\")
-    lines.append(r"\midrule")
-    for r in rows:
-        if r[0] and lines[-1] != r"\midrule":
-            lines.append(r"\addlinespace")
-        lines.append(" & ".join(esc(c) for c in r) + r" \\")
-    lines.append(r"\bottomrule")
-    lines.append(r"\end{tabular}")
-    path.write_text("\n".join(lines) + "\n")
+    lines.append(f"% {TEX_REQUIRES}")
+    lines += [
+        r"\begin{table*}[htbp]",
+        r"\footnotesize",
+        r"\setlength{\tabcolsep}{3pt}",
+        rf"\caption{{{caption}}}",
+        rf"\label{{{label}}}",
+        r"\begin{tabularx}{\textwidth}{" + colspec + "}",
+        r"\toprule",
+        " & ".join(rf"\textbf{{{h}}}" for h in header) + r" \\",
+        r"\midrule",
+    ]
+    lines += body
+    lines += [r"\bottomrule", r"\end{tabularx}", r"\end{table*}"]
+    return "\n".join(lines) + "\n"
+
+
+def without_agent_columns(header: list[str],
+                          rows: list[list[str]]) -> tuple[list, list]:
+    """The eight-column lane parity table: Lanes A, B and scripted C only.
+
+    Dropping the agent pair empties any row whose only comparison was the
+    agent's -- the paraboloid design variables, which Lanes B and C never
+    report -- so those rows go too, and the example name moves down to
+    whichever row now leads the group.
+    """
+    kept: list[list[str]] = []
+    carried: tuple[str, str] | None = None
+    for row in rows:
+        row = list(row)[:8]
+        if row[0]:
+            carried = (row[0], row[1])
+        if all(c == "--" for c in row[4:]):
+            continue
+        if carried:
+            row[0], row[1] = carried
+            carried = None
+        kept.append(row)
+    return header[:8], kept
+
+
+def write_lane_parity_tex(path: Path, header: list[str],
+                          rows: list[list[str]], note: str = "") -> None:
+    colspec = "Y Y l" + " r" * (len(header) - 3)
+    body: list[str] = []
+    for i, group in enumerate(_tex_groups(rows)):
+        if i:
+            body.append(r"\midrule")
+        for j, row in enumerate(group):
+            cells = [_tex_escape(c) for c in row]
+            if j == 0:
+                title = TEX_TITLE.get(_SLUG_BY_TITLE.get(row[0], ""),
+                                      _tex_escape(row[0]))
+                cells[0] = _tex_span(title, len(group))
+                cells[1] = _tex_cell(row[1], TEX_TOOLS)
+            else:
+                cells[0] = cells[1] = ""
+            cells[2] = _tex_cell(row[2], TEX_METRIC)
+            body.append(" & ".join(cells) + r" \\")
+    caption = LANE_PARITY_CAPTION
+    if "Lane C (agent)" in header:
+        caption += " " + LANE_PARITY_AGENT_CAPTION
+    path.write_text(_tex_float(
+        colspec, [_tex_cell(h, TEX_HEADER) for h in header], body,
+        caption=caption, label="tab:lane-parity", note=note))
+
+
+def write_evals_tex(path: Path, header: list[str], rows: list[list[str]],
+                    note: str = "") -> None:
+    colspec = "Y l l" + " r" * (len(header) - 3)
+    body: list[str] = []
+    for i, group in enumerate(_tex_groups(rows)):
+        if i:
+            body.append(r"\midrule")
+        for j, row in enumerate(group):
+            cells = [_tex_escape(c) for c in row]
+            if j == 0:
+                cells[0] = _tex_span(
+                    TEX_TITLE.get(row[0], _tex_escape(row[0])), len(group))
+            else:
+                cells[0] = ""
+            body.append(" & ".join(cells) + r" \\")
+    path.write_text(_tex_float(
+        colspec, [_tex_cell(h, TEX_HEADER) for h in header], body,
+        caption=EVALS_CAPTION, label="tab:sandboxed-evals", note=note))
 
 
 def _portable(path: Path) -> str:
@@ -336,6 +546,19 @@ def _portable(path: Path) -> str:
         return os.path.relpath(path.resolve(), REPO_ROOT)
     except ValueError:      # different drive on Windows
         return str(path)
+
+
+# The evals table lists the same examples as the parity table, so it uses the
+# same order -- the two tables are two readings of one arm, and they read
+# row-group against row-group. Eval case slugs are not always the parity slug.
+_EVALS_CASE_ALIAS = {"paraboloid": "paraboloid_analysis",
+                     "evt_open_sizing": "evt_native_sizing"}
+_CASE_ORDER = {slug: i for i, slug in enumerate(CASE_INFO)}
+
+
+def _case_rank(case: str) -> tuple[int, str]:
+    slug = _EVALS_CASE_ALIAS.get(case, case)
+    return (_CASE_ORDER.get(slug, len(_CASE_ORDER)), case)
 
 
 def _median_of(block: dict | None, default: str = "--") -> str:
@@ -358,7 +581,9 @@ def build_evals_rows(evals_dir: Path) -> tuple[list[str], list[list[str]]]:
             key = (rec.get("case"), rec.get("harness"), rec.get("model"))
             latest[key] = (path.name, rec)  # sorted glob -> last wins
     rows = []
-    for (case, harness, model), (_, rec) in sorted(latest.items()):
+    for (case, harness, model), (_, rec) in sorted(
+            latest.items(),
+            key=lambda kv: (_case_rank(kv[0][0]), kv[0][1], kv[0][2])):
         n = rec.get("n_seeds", 0)
         passed = rec.get("n_passed", 0)
         lost = rec.get("n_harness_errors")
@@ -386,6 +611,10 @@ def main() -> int:
                         help="model whose arm feeds the Lane C agent column")
     parser.add_argument("--agent-harness", default="claude",
                         help="harness whose arm feeds the Lane C agent column")
+    parser.add_argument("--tex-omit-agent", action="store_true",
+                        help="drop the two agent columns from lane_parity.tex "
+                             "(the CSV and Markdown keep them) -- for a "
+                             "narrower float than \\textwidth")
     args = parser.parse_args()
 
     jsonl = RESULTS_DIR / "lane_parity.jsonl"
@@ -417,7 +646,9 @@ def main() -> int:
     header, rows = build_rows(cases, agent)
     write_csv(TABLES_DIR / "lane_parity.csv", header, rows)
     write_md(TABLES_DIR / "lane_parity.md", header, rows, note)
-    write_tex(TABLES_DIR / "lane_parity.tex", header, rows, note)
+    theader, trows = ((without_agent_columns(header, rows))
+                      if args.tex_omit_agent else (header, rows))
+    write_lane_parity_tex(TABLES_DIR / "lane_parity.tex", theader, trows, note)
     print(f"Lane parity table: {len(rows)} metric rows across "
           f"{len(cases)} cases -> {TABLES_DIR}/lane_parity.{{csv,md,tex}}")
     if not agent:
@@ -438,8 +669,8 @@ def main() -> int:
                 "(`evals review`).")
             write_md(TABLES_DIR / "sandboxed_evals.md", eheader, erows,
                      evals_note)
-            write_tex(TABLES_DIR / "sandboxed_evals.tex", eheader, erows,
-                      evals_note)
+            write_evals_tex(TABLES_DIR / "sandboxed_evals.tex", eheader,
+                            erows, evals_note)
             print(f"Sandboxed evals table: {len(erows)} rows -> "
                   f"{TABLES_DIR}/sandboxed_evals.{{csv,md,tex}}")
         else:

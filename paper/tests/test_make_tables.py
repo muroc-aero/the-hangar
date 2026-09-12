@@ -137,3 +137,108 @@ def test_the_note_keeps_the_lane_parity_provenance_it_was_given():
 
 def test_no_agent_data_leaves_the_note_alone():
     assert _with_agent_provenance("original", {}, "claude-opus-5") == "original"
+
+
+# --- LaTeX rendering -------------------------------------------------------
+#
+# The .tex files are pasted into the paper unedited, so a mistake here is a
+# mistake in the paper. What matters is that the float is self-contained, that
+# a group's example name spans exactly its own rows, and that dropping the
+# agent pair leaves a table that still says what it is.
+
+from make_tables import (  # noqa: E402
+    build_evals_rows,
+    without_agent_columns,
+    write_lane_parity_tex,
+)
+
+PARITY_HEADER = ["Example", "Tools", "Metric", "Lane A", "Lane B", "rel diff B",
+                 "Lane C (scripted)", "rel diff C", "Lane C (agent)",
+                 "rel diff agent"]
+
+PARITY_ROWS = [
+    ["Paraboloid analysis", "OpenMDAO", "f_xy", "39", "39", "0", "39", "0",
+     "39", "0"],
+    ["Paraboloid optimization", "OpenMDAO/SLSQP", "x", "6.66667", "--", "--",
+     "--", "--", "6.66667", "3.7e-08"],
+    ["", "", "f_xy", "-27.3333", "-27.3333", "0", "-27.3333", "0", "-27.3333",
+     "4.4e-15"],
+    ["Caravan 3-phase mission", "OCP", "fuel_burn_kg", "171.309", "171.309",
+     "0", "171.309", "0", "171.309", "7.9e-07"],
+    ["", "", "MTOW_kg", "3970", "3970", "0", "3970", "0", "3970", "0"],
+]
+
+
+def _parity_tex(tmp_path, header=None, rows=None, note="") -> str:
+    out = tmp_path / "lane_parity.tex"
+    write_lane_parity_tex(out, header or PARITY_HEADER, rows or PARITY_ROWS,
+                          note)
+    return out.read_text()
+
+
+def test_the_tex_is_a_float_that_can_be_pasted_in_as_is(tmp_path):
+    tex = _parity_tex(tmp_path, note="generated from somewhere")
+    assert r"\begin{table*}[htbp]" in tex
+    assert r"\label{tab:lane-parity}" in tex
+    assert r"\caption{Three-lane parity" in tex
+    assert r"\begin{tabularx}{\textwidth}{Y Y l r r r r r r r}" in tex
+    # the provenance note survives, as a comment above the float
+    assert tex.splitlines()[0] == "% generated from somewhere"
+
+
+def test_an_example_name_spans_exactly_its_own_rows(tmp_path):
+    tex = _parity_tex(tmp_path)
+    # two metrics -> a 2-row span; one metric -> no \multirow at all, so a
+    # name that wraps makes the row taller instead of running into the next
+    # group.
+    assert r"\multirow{2}{\linewidth}{\textbf{Paraboloid optimization}}" in tex
+    assert r"\multirow{2}{\linewidth}{\textbf{Caravan three-phase mission}}" in tex
+    assert r"\multirow" not in tex.split("Paraboloid analysis")[0].splitlines()[-1]
+
+
+def test_metric_keys_are_rendered_with_their_units(tmp_path):
+    tex = _parity_tex(tmp_path)
+    assert "& fuel (kg) &" in tex
+    assert "& MTOW (kg) &" in tex
+    assert "fuel\\_burn\\_kg" not in tex
+    # an unmapped key still has to be escaped rather than pasted raw
+    assert "f\\_xy" in tex
+
+
+def test_the_caption_claims_the_agent_column_only_when_it_is_there(tmp_path):
+    with_agent = _parity_tex(tmp_path)
+    assert "effect-graded" in with_agent
+    header, rows = without_agent_columns(PARITY_HEADER, PARITY_ROWS)
+    assert "effect-graded" not in _parity_tex(tmp_path, header, rows)
+
+
+def test_dropping_the_agent_pair_drops_the_rows_only_it_compared(tmp_path):
+    header, rows = without_agent_columns(PARITY_HEADER, PARITY_ROWS)
+    assert header == PARITY_HEADER[:8]
+    assert [r[2] for r in rows] == ["f_xy", "f_xy", "fuel_burn_kg", "MTOW_kg"]
+
+
+def test_a_dropped_lead_row_hands_its_example_name_to_the_next(tmp_path):
+    # "x" led the Paraboloid optimization group and only the agent had a value
+    # for it; the name has to move down to f_xy rather than vanish with it.
+    _, rows = without_agent_columns(PARITY_HEADER, PARITY_ROWS)
+    opt = [r for r in rows if r[3] == "-27.3333"][0]
+    assert opt[0] == "Paraboloid optimization"
+    assert opt[1] == "OpenMDAO/SLSQP"
+
+
+def test_the_evals_table_follows_the_parity_table_order(tmp_path):
+    def summary(case, model):
+        return {"case": case, "harness": "claude", "model": model,
+                "n_seeds": 1, "n_passed": 1, "n_harness_errors": 0,
+                "n_needs_review": 0}
+
+    (tmp_path / "a_summary.json").write_text(json.dumps([
+        summary("pyc_turbojet", "m"), summary("paraboloid", "m"),
+        summary("oas_aero_rect", "m"), summary("evt_native_sizing", "m"),
+    ]))
+    _, rows = build_evals_rows(tmp_path)
+    # presentation order from CASE_INFO, not alphabetical by slug -- the two
+    # tables are two readings of one arm and have to line up.
+    assert [r[0] for r in rows] == ["paraboloid", "oas_aero_rect",
+                                    "pyc_turbojet", "evt_native_sizing"]

@@ -99,6 +99,40 @@ cd ../hangar-evals && scripts/evals review
 FAIL means the agent did the work and got it wrong, and re-running it would just
 be sampling until the answer flatters.
 
+## Pasting into the paper
+
+The `.tex` files are complete floats -- `table*`, caption, label -- so they go
+in with `\input` or a straight copy, no wrapping. The preamble has to carry:
+
+```latex
+\usepackage{booktabs,tabularx,multirow}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+```
+
+`Y` is a left-aligned `X` column. The numeric columns take the width they
+need and the two text columns share what is left, wrapping inside it, so the
+table is `\textwidth` by construction rather than by luck. The labels are
+`tab:lane-parity` and `tab:sandboxed-evals`; the parity caption cross-refs the
+evals table, so both belong in the document together.
+
+The slugs in the CSV and Markdown are how you find a run again; the `.tex`
+swaps them for the paper's prose (`fuel_burn_kg` becomes `fuel (kg)`,
+`ocp_three_tool` becomes `737-800 three-tool coupled mission`). Edit those
+names in `TEX_TITLE` / `TEX_TOOLS` / `TEX_METRIC` in `paper/make_tables.py`,
+not in the generated file, or the next render drops them.
+
+Ten columns across `\textwidth` is tight. If it overflows, in order of least
+damage: drop `\tabcolsep` to 2pt, shorten a name in `TEX_TITLE`, or leave the
+agent lane out of this table entirely --
+
+```bash
+uv run python paper/make_tables.py --tex-omit-agent
+```
+
+-- which renders Lanes A, B and scripted C only, and drops the paraboloid
+design variables with it since the agent was the only lane reporting them.
+The CSV and Markdown keep every column either way.
+
 ## The two tables are one arm read two ways
 
 `lane_parity.md`'s **Lane C (agent)** column and every row of

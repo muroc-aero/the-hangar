@@ -24,6 +24,9 @@ paper/
   tables/
     lane_parity.{csv,md,tex}      # Lane A vs B vs C per example/metric
     sandboxed_evals.{csv,md,tex}  # hangar-evals model x harness summary
+                                  #   .csv/.md keep the slugs; .tex is a
+                                  #   paste-ready table* float using the
+                                  #   paper's names (see tables/README.md)
   figures/
     brelje_2018a/            # paper-vs-reproduced Figs 5 & 6
     adler_2022a/             # only via --only adler / --all (unverified)

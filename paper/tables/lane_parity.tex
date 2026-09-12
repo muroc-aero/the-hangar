@@ -1,56 +1,63 @@
 % generated from paper/results/lane_parity.jsonl at 2026-07-17T00:23:31+00:00 (git ac32a6f, pytest exit 0) Lane C (agent): effect-graded values from the sandboxed claude-opus-5 arm over 3 seeds, worst seed per metric, so the column bounds agreement; per-seed pass rates are in sandboxed_evals. A case the arm has not run shows -- rather than a value from another run.
-\begin{tabular}{llrrrrrrrr}
+% needs \usepackage{booktabs,tabularx,multirow} and \newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\begin{table*}[htbp]
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\caption{Three-lane parity: identical results through direct scripts (Lane A), omd plans (Lane B), and the MCP tool surface (Lane C). The $\Delta$ columns are relative differences from Lane A. The abbreviations for the tools are OpenConcept (OCP) and OpenAeroStruct (OAS). Agent is that same MCP surface driven by a blind agent given the engineering goal alone. Its values are effect-graded -- read from the run's provenance record rather than from the agent's own report -- and the worst seed is shown per metric, so the column bounds agreement rather than averaging it. Per-seed reliability is in Table~\ref{tab:sandboxed-evals}.}
+\label{tab:lane-parity}
+\begin{tabularx}{\textwidth}{Y Y l r r r r r r r}
 \toprule
-Example & Tools & Metric & Lane A & Lane B & rel diff B & Lane C (scripted) & rel diff C & Lane C (agent) & rel diff agent \\
+\textbf{Example} & \textbf{Tools} & \textbf{Metric} & \textbf{Lane A} & \textbf{Lane B} & \textbf{$\Delta$B} & \textbf{Lane C} & \textbf{$\Delta$C} & \textbf{Agent} & \textbf{$\Delta$agent} \\
 \midrule
-Paraboloid analysis & OpenMDAO & f\_xy & 39 & 39 & 0 & 39 & 0 & 39 & 0 \\
-\addlinespace
-Paraboloid optimization & OpenMDAO/SLSQP & x & 6.66667 & -- & -- & -- & -- & 6.66667 & 3.7e-08 \\
+\textbf{Paraboloid analysis} & OpenMDAO & f\_xy & 39 & 39 & 0 & 39 & 0 & 39 & 0 \\
+\midrule
+\multirow{3}{\linewidth}{\textbf{Paraboloid optimization}} & OpenMDAO/SLSQP & x & 6.66667 & -- & -- & -- & -- & 6.66667 & 3.7e-08 \\
  &  & y & -7.33333 & -- & -- & -- & -- & -7.33333 & 5.3e-08 \\
  &  & f\_xy & -27.3333 & -27.3333 & 0 & -27.3333 & 0 & -27.3333 & 4.4e-15 \\
-\addlinespace
-Rect wing VLM analysis & OAS & CL & 0.452177 & 0.452177 & 0 & 0.452177 & 0 & 0.452177 & 0 \\
+\midrule
+\multirow{2}{\linewidth}{\textbf{Rectangular wing VLM analysis}} & OAS & CL & 0.452177 & 0.452177 & 0 & 0.452177 & 0 & 0.452177 & 0 \\
  &  & CD & 0.0350873 & 0.0350873 & 0 & 0.0350873 & 0 & 0.0341362 & 2.7e-02 \\
-\addlinespace
-Rect wing aerostructural & OAS (tube FEM) & CL & 0.480648 & 0.480648 & 0 & 0.480648 & 0 & 0.480648 & 0 \\
+\midrule
+\multirow{2}{\linewidth}{\textbf{Rectangular wing aerostructural}} & OAS (tube FEM) & CL & 0.480648 & 0.480648 & 0 & 0.480648 & 0 & 0.480648 & 0 \\
  &  & CD & 0.0359044 & 0.0359044 & 0 & 0.0359044 & 0 & 0.0359044 & 0 \\
-\addlinespace
-Caravan 3-phase mission & OCP & fuel\_burn\_kg & 171.309 & 171.309 & 0 & 171.309 & 0 & 171.309 & 7.9e-07 \\
- &  & OEW\_kg & 2267.46 & 2267.46 & 0 & 2267.46 & 0 & 2267.46 & 0 \\
- &  & MTOW\_kg & 3970 & 3970 & 0 & 3970 & 0 & 3970 & 0 \\
-\addlinespace
-Caravan full mission (BFL) & OCP & fuel\_burn\_kg & 172.321 & 172.321 & 0 & 172.321 & 0 & 172.321 & 0 \\
- &  & OEW\_kg & 2267.46 & 2267.46 & 0 & 2267.46 & 0 & 2267.46 & 0 \\
- &  & MTOW\_kg & 3970 & 3970 & 0 & 3970 & 0 & 3970 & 0 \\
-\addlinespace
-King Air series-hybrid mission & OCP & fuel\_burn\_kg & 391.894 & 391.894 & 0 & 391.894 & 0 & 391.894 & 0 \\
- &  & OEW\_kg & 2969.39 & 2969.39 & 0 & 2969.39 & 0 & 2969.39 & 0 \\
- &  & MTOW\_kg & 4581 & 4581 & 0 & 4581 & 0 & 4581 & 0 \\
-\addlinespace
-Wing + mission, uncoupled composite & OAS + OCP & wing\_CL & 0.269813 & 0.269813 & 0 & 0.269813 & 0 & 0.269813 & 0 \\
- &  & wing\_CD & 0.027667 & 0.027667 & 0 & 0.027667 & 0 & 0.027667 & 1.3e-16 \\
- &  & fuel\_burn\_kg & 171.309 & 171.309 & 0 & 171.309 & 0 & 171.309 & 7.9e-07 \\
- &  & OEW\_kg & 2267.46 & 2267.46 & 0 & 2267.46 & 0 & 2267.46 & 0 \\
- &  & MTOW\_kg & 3970 & 3970 & 0 & 3970 & 0 & 3970 & 0 \\
-\addlinespace
-Mission w/ VLM drag slot & OCP + OAS & fuel\_burn\_kg & 136.923 & 136.923 & 0 & 136.923 & 0 & 136.923 & 0 \\
- &  & OEW\_kg & 2267.46 & 2267.46 & 0 & 2267.46 & 0 & 2267.46 & 0 \\
- &  & MTOW\_kg & 3970 & 3970 & 0 & 3970 & 0 & 3970 & 0 \\
-\addlinespace
-Mission w/ direct-coupled VLM drag & OCP + OAS & fuel\_burn\_kg & 135.177 & 135.177 & 0 & 135.177 & 0 & 135.177 & 1.2e-06 \\
- &  & OEW\_kg & 2267.46 & 2267.46 & 0 & 2267.46 & 0 & 2267.46 & 0 \\
- &  & MTOW\_kg & 3970 & 3970 & 0 & 3970 & 0 & 3970 & 0 \\
-\addlinespace
-Turbojet design point & pyCycle & Fn & 11800 & 11800 & 0 & 11800 & 0 & 11800 & 0 \\
+\midrule
+\multirow{3}{\linewidth}{\textbf{Caravan three-phase mission}} & OCP & fuel (kg) & 171.309 & 171.309 & 0 & 171.309 & 0 & 171.309 & 7.9e-07 \\
+ &  & OEW (kg) & 2267.46 & 2267.46 & 0 & 2267.46 & 0 & 2267.46 & 0 \\
+ &  & MTOW (kg) & 3970 & 3970 & 0 & 3970 & 0 & 3970 & 0 \\
+\midrule
+\multirow{3}{\linewidth}{\textbf{Caravan mission with balanced field length}} & OCP & fuel (kg) & 172.321 & 172.321 & 0 & 172.321 & 0 & 172.321 & 0 \\
+ &  & OEW (kg) & 2267.46 & 2267.46 & 0 & 2267.46 & 0 & 2267.46 & 0 \\
+ &  & MTOW (kg) & 3970 & 3970 & 0 & 3970 & 0 & 3970 & 0 \\
+\midrule
+\multirow{3}{\linewidth}{\textbf{King Air series-hybrid mission}} & OCP & fuel (kg) & 391.894 & 391.894 & 0 & 391.894 & 0 & 391.894 & 0 \\
+ &  & OEW (kg) & 2969.39 & 2969.39 & 0 & 2969.39 & 0 & 2969.39 & 0 \\
+ &  & MTOW (kg) & 4581 & 4581 & 0 & 4581 & 0 & 4581 & 0 \\
+\midrule
+\multirow{5}{\linewidth}{\textbf{Wing and mission, uncoupled}} & OAS\,+\ OCP & wing CL & 0.269813 & 0.269813 & 0 & 0.269813 & 0 & 0.269813 & 0 \\
+ &  & wing CD & 0.027667 & 0.027667 & 0 & 0.027667 & 0 & 0.027667 & 1.3e-16 \\
+ &  & fuel (kg) & 171.309 & 171.309 & 0 & 171.309 & 0 & 171.309 & 7.9e-07 \\
+ &  & OEW (kg) & 2267.46 & 2267.46 & 0 & 2267.46 & 0 & 2267.46 & 0 \\
+ &  & MTOW (kg) & 3970 & 3970 & 0 & 3970 & 0 & 3970 & 0 \\
+\midrule
+\multirow{3}{\linewidth}{\textbf{Mission with VLM drag surrogate}} & OCP\,+\ OAS & fuel (kg) & 136.923 & 136.923 & 0 & 136.923 & 0 & 136.923 & 0 \\
+ &  & OEW (kg) & 2267.46 & 2267.46 & 0 & 2267.46 & 0 & 2267.46 & 0 \\
+ &  & MTOW (kg) & 3970 & 3970 & 0 & 3970 & 0 & 3970 & 0 \\
+\midrule
+\multirow{3}{\linewidth}{\textbf{Mission with directly coupled VLM}} & OCP\,+\ OAS & fuel (kg) & 135.177 & 135.177 & 0 & 135.177 & 0 & 135.177 & 1.2e-06 \\
+ &  & OEW (kg) & 2267.46 & 2267.46 & 0 & 2267.46 & 0 & 2267.46 & 0 \\
+ &  & MTOW (kg) & 3970 & 3970 & 0 & 3970 & 0 & 3970 & 0 \\
+\midrule
+\multirow{3}{\linewidth}{\textbf{Turbojet design point}} & pyCycle & Fn (lbf) & 11800 & 11800 & 0 & 11800 & 0 & 11800 & 0 \\
  &  & TSFC & 0.782231 & 0.782231 & 0 & 0.782231 & 0 & 0.782231 & 0 \\
  &  & OPR & 13.5 & 13.5 & 0 & 13.5 & 0 & 13.5 & 0 \\
-\addlinespace
-Archer Midnight eVTOL sizing & evt (native) & sized\_mtow\_kg & 2019.47 & 2019.47 & 0 & 2019.47 & 0 & 2019.47 & 0 \\
- &  & total\_mission\_energy\_kw\_hr & 65.9496 & 65.9496 & 0 & 65.9496 & 0 & 65.9496 & 0 \\
- &  & peak\_power\_kw & 846.521 & 846.521 & 0 & 846.521 & 0 & 846.521 & 0 \\
-\addlinespace
-B738 three-tool mission & OCP + OAS + pyCycle & fuel\_burn\_kg & 2449.7 & 2449.7 & 3.9e-15 & 2449.7 & 1.2e-14 & -- & -- \\
- &  & OEW\_kg & 41871 & 41871 & 0 & 41871 & 0 & -- & -- \\
- &  & MTOW\_kg & 79002 & 79002 & 0 & 79002 & 0 & -- & -- \\
+\midrule
+\multirow{3}{\linewidth}{\textbf{Archer Midnight eVTOL sizing}} & evtolpy & MTOW (kg) & 2019.47 & 2019.47 & 0 & 2019.47 & 0 & 2019.47 & 0 \\
+ &  & energy (kWh) & 65.9496 & 65.9496 & 0 & 65.9496 & 0 & 65.9496 & 0 \\
+ &  & peak power (kW) & 846.521 & 846.521 & 0 & 846.521 & 0 & 846.521 & 0 \\
+\midrule
+\multirow{3}{\linewidth}{\textbf{737-800 three-tool coupled mission}} & OCP\,+\ OAS\,+\ pyCycle & fuel (kg) & 2449.7 & 2449.7 & 3.9e-15 & 2449.7 & 1.2e-14 & -- & -- \\
+ &  & OEW (kg) & 41871 & 41871 & 0 & 41871 & 0 & -- & -- \\
+ &  & MTOW (kg) & 79002 & 79002 & 0 & 79002 & 0 & -- & -- \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
+\end{table*}
