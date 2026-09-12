@@ -52,6 +52,7 @@ testpaths = [
     "packages/evt/tests",
     "packages/results-reader/tests",
     "packages/viewer/tests",
+    "paper/tests",
 ]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",

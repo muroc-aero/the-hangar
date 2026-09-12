@@ -16,7 +16,8 @@ paper/
   results/
     lane_parity.jsonl        # raw lane comparisons (run_lanes.py)
     lane_parity_meta.json    # timestamp, git sha, pytest exit code
-    lane_c_agent.json        # optional: live-agent Lane C runs (eval_lane_c.py)
+    lane_c_agent.json        # legacy single-seed agent runs (eval_lane_c.py);
+                             #   no longer read by make_tables.py
   (../hangar-evals/results/)
     regraded/                # per-cell summaries + outcome counts
     campaigns/<arm>_<stamp>/ # per-run table.md, manifest.json, campaign.log
@@ -36,8 +37,19 @@ paper/
 | A | direct OpenMDAO/OAS/OCP/pyCycle/evt scripts | `packages/omd/examples/*/lane_a/` |
 | B | omd plan YAML through the omd pipeline | `packages/omd/examples/*/lane_b/` |
 | C (scripted) | the omd MCP tool surface, driven in process | `packages/omd/examples/tests/test_parity_lane_c.py` |
-| C (agent) | a blind Claude agent, omd MCP tools only | `packages/omd/examples/agent_eval/eval_lane_c.py` |
+| C (agent) | a blind Claude agent, omd MCP tools only | the sandboxed arm's records (below) |
 | C (sandboxed) | local models x OpenCode/OpenHands harnesses | sibling `hangar-evals` repo |
+
+The last two rows are two readings of the **same runs**, not two sets of runs:
+
+- `lane_parity.md`'s **Lane C (agent)** column answers *does the agent's lane
+  reproduce Lane A* -- one number per metric, the worst seed of the arm, so it
+  bounds agreement rather than flattering it.
+- `sandboxed_evals.md` answers *how reliably* -- pass rate across seeds, turns,
+  wall clock, seeds lost, seeds needing review.
+
+The values are effect-graded: what the agent's graded run actually produced,
+read from its omd provenance DB, not the numbers it reported for itself.
 
 ## Recipes
 
@@ -66,14 +78,20 @@ The scripted Lane C suite covers every table case (`ocp_pyc_coupled`
 excepted, as above), so the "Lane C (scripted)" column is fully
 populated by a full `run_lanes.py` sweep.
 
-### 2. Live-agent Lane C column (optional, needs API credentials)
+### 2. Live-agent Lane C column
+
+Nothing to run: it comes from the sandboxed arm (recipe 3), so one agent run
+fills both tables.
 
 ```bash
-uv run --with claude-agent-sdk \
-    packages/omd/examples/agent_eval/eval_lane_c.py all \
-    --save-json paper/results/lane_c_agent.json
-uv run python paper/make_tables.py          # agent columns appear automatically
+uv run python paper/make_tables.py --agent-model claude-opus-5   # the default
 ```
+
+The arm is the column's only source. A case the arm has not run shows `--`
+rather than a value from some other run -- today that is `ocp_three_tool`
+alone, which needs adding to the anchor manifest. The legacy
+`eval_lane_c.py` harness still runs a single blind case if you want one, but
+`make_tables.py` no longer reads its output.
 
 Each agent case runs from the example's `lane_c/*_open.prompt.md`:
 engineering goal and physical inputs only, no component types, config

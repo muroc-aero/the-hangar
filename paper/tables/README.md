@@ -99,6 +99,26 @@ cd ../hangar-evals && scripts/evals review
 FAIL means the agent did the work and got it wrong, and re-running it would just
 be sampling until the answer flatters.
 
+## The two tables are one arm read two ways
+
+`lane_parity.md`'s **Lane C (agent)** column and every row of
+`sandboxed_evals.md` come from the same runs. They answer different questions
+and neither substitutes for the other:
+
+- **Parity: does the lane reproduce Lane A?** One number per metric, the worst
+  seed of the arm, so the column bounds agreement instead of flattering it. A
+  cell reading `2.7e-02` where its neighbours read `0` is a real disagreement
+  and is where you go look.
+- **Sandboxed: how reliably?** Pass rate across seeds, plus turns, wall clock,
+  seeds lost, seeds needing review.
+
+So a case can be exact in parity and 2/3 in sandboxed -- that is two of three
+seeds nailing it and one going wrong, which is exactly the pairing the two
+tables exist to show.
+
+Both read effect-graded values: what the agent's graded run actually produced,
+from its omd provenance DB, not the numbers it reported for itself.
+
 ## Harness health
 
 `scripts/evals run` ends with a `harness health` section when the measurement
