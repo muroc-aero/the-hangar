@@ -1,8 +1,8 @@
 """Unit tests for the external subsystem registry + OAS wing-mass builder.
 
 Config validation, resampling, and the driver-knob seam are aviary-free
-and run in any venv; builder construction tests importorskip aviary and
-run for real via .venv-avy.
+and run anywhere; builder construction tests importorskip aviary and
+run for real in the workspace venv.
 """
 
 from __future__ import annotations

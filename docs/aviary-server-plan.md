@@ -5,6 +5,14 @@ Add `packages/avy/` wrapping [Aviary](https://github.com/OpenMDAO/Aviary)
 incorporating the legacy FLOPS and GASP methods), patterned on the existing
 `packages/ocp/`, `packages/pyc/`, and `packages/evt/` servers.
 
+> **Status (2026-09-19):** the venv split described below has been removed.
+> Aviary now lives in the single workspace venv (numpy 2 / OpenMDAO 3.45;
+> OpenConcept runs there via `scripts/openconcept-numpy2.patch`), so
+> `.venv-avy`, `scripts/setup-avy-venv.sh`, `scripts/avy-server.sh` and
+> `AVY_PYTHON` no longer exist, and the omd `avy/Sizing` factory is native
+> (Aviary's group inside the omd problem) rather than a subprocess worker.
+> References to them below are historical.
+
 Status: **Phases 0-3 implemented, plus the Phase-2 off-design tools, the
 avy-cli-guide skill, DEPLOY.md, and two parity example suites** (five
 Lane-A/B cases total; `packages/avy/`, PR #99). Remaining: the omd factory

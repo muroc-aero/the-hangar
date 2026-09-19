@@ -6,7 +6,7 @@ requires-python = ">=3.11"
 dependencies = [
     "hangar-sdk[all]",
     "evtolpy",
-    "numpy>=1.21",
+    "numpy>=2,<2.4",
     "matplotlib",
 ]
 

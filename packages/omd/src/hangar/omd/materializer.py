@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import tempfile
+import warnings
 from pathlib import Path
 
 import openmdao.api as om
@@ -130,15 +131,37 @@ def materialize(
     if not setup_done:
         _configure_solvers(prob, plan, metadata)
 
-    # Configure optimization
-    if has_optimization:
+    # Configure optimization. A self-optimizing factory (Aviary: DVs,
+    # constraints and objective declared inside its group) needs the driver
+    # even when the plan declares none of its own.
+    if has_optimization or metadata.get("self_optimizing"):
         _configure_driver(prob, plan, metadata)
+
+    # Factory-published OpenMDAO model options (path globs relative to the
+    # model root; composites already re-keyed them under the comp id).
+    for pattern, opts in (metadata.get("model_options") or {}).items():
+        prob.model_options[pattern] = opts
+
+    # Keep per-run OpenMDAO outputs (coloring files, any reports) next to
+    # the recording instead of littering the cwd.
+    if recorder_path is not None and not setup_done:
+        work_dir = Path(recorder_path).resolve().parent.parent / "work"
+        work_dir.mkdir(parents=True, exist_ok=True)
+        prob.options["work_dir"] = str(work_dir)
 
     # Setup the problem (skip if factory already called setup). Components that
     # declare complex-step partials (e.g. the native evt model) need complex
     # vectors allocated; the factory signals this via ``force_alloc_complex``.
     if not setup_done:
-        prob.setup(force_alloc_complex=bool(metadata.get("force_alloc_complex")))
+        with warnings.catch_warnings():
+            for warning_cls in metadata.get("setup_warning_filters") or []:
+                warnings.simplefilter("ignore", warning_cls)
+            prob.setup(force_alloc_complex=bool(metadata.get("force_alloc_complex")))
+
+    # Post-setup hooks (e.g. dymos initial guesses) -- before the plan's
+    # initial values so a plan can still override what a hook seeds.
+    for hook in metadata.get("post_setup") or []:
+        hook(prob)
 
     # Validate connection units for composite problems
     if metadata.get("_composite"):
@@ -285,6 +308,13 @@ def _materialize_composite(
     component_ids: list[str] = []
     all_initial_values: dict[str, object] = {}
     all_initial_values_with_units: dict[str, dict] = {}
+    all_model_options: dict[str, dict] = {}
+    all_post_setup: list = []
+    all_setup_warning_filters: list = []
+    any_self_optimizing = False
+    any_requires_driver = False
+    any_driver_coloring = False
+    driver_defaults: dict | None = None
 
     # Shared DVs (plan-level) injected as `skip_fields` per consumer so
     # each factory omits the named inputs from its internal IVC. The
@@ -349,6 +379,22 @@ def _materialize_composite(
         if slots_cfg:
             component_metadata[comp_id]["active_slots"] = slots_cfg
 
+        # Generic composition hooks, re-keyed under the component id
+        for pattern, opts in (inner_meta.get("model_options") or {}).items():
+            all_model_options[f"{comp_id}.{pattern}"] = opts
+        all_post_setup.extend(inner_meta.get("post_setup") or [])
+        for warning_cls in inner_meta.get("setup_warning_filters") or []:
+            if warning_cls not in all_setup_warning_filters:
+                all_setup_warning_filters.append(warning_cls)
+        if inner_meta.get("self_optimizing"):
+            any_self_optimizing = True
+        if inner_meta.get("requires_driver"):
+            any_requires_driver = True
+        if inner_meta.get("driver_coloring"):
+            any_driver_coloring = True
+        if inner_meta.get("driver_defaults") and driver_defaults is None:
+            driver_defaults = inner_meta["driver_defaults"]
+
     # Root shared IVC: one independent variable per shared_vars entry,
     # fanned out to each declared consumer subsystem. DV registration
     # for these names resolves to `shared_ivc.{name}` (see
@@ -407,7 +453,15 @@ def _materialize_composite(
         "initial_values_with_units": all_initial_values_with_units,
         "shared_var_paths": shared_var_paths,
         "var_paths": merged_var_paths,
+        "model_options": all_model_options,
+        "post_setup": all_post_setup,
+        "setup_warning_filters": all_setup_warning_filters,
+        "self_optimizing": any_self_optimizing,
+        "requires_driver": any_requires_driver,
+        "driver_coloring": any_driver_coloring,
     }
+    if driver_defaults is not None:
+        metadata["driver_defaults"] = driver_defaults
 
     return prob, metadata
 
@@ -699,8 +753,12 @@ def _configure_driver(
     Must be called before setup().
     """
     optimizer_config = plan.get("optimizer", {})
-    opt_type = optimizer_config.get("type", "SLSQP")
-    opt_options = optimizer_config.get("options", {})
+    # Factory-declared driver defaults (a self-optimizing model's own
+    # settings, e.g. Aviary's SLSQP tol/maxiter); the plan's keys win.
+    defaults = metadata.get("driver_defaults") or {}
+    opt_type = optimizer_config.get("type", defaults.get("type", "SLSQP"))
+    opt_options = dict(defaults.get("options", {}))
+    opt_options.update(optimizer_config.get("options", {}))
 
     driver = om.ScipyOptimizeDriver()
     try:
@@ -730,6 +788,8 @@ def _configure_driver(
             pass  # Handled by run.py, not the driver
         else:
             driver.options[key] = val
+    if metadata.get("driver_coloring"):
+        driver.declare_coloring(show_summary=False)
     prob.driver = driver
 
     # Design variables

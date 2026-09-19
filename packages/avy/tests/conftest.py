@@ -2,8 +2,8 @@
 
 Isolates artifacts and provenance per-test, resets session state between
 tests. Tests that need the aviary package guard with
-``pytest.importorskip("aviary")`` -- aviary lives in the isolated .venv-avy
-(see scripts/setup-avy-venv.sh), not the main workspace venv.
+``pytest.importorskip("aviary")`` -- aviary is an ordinary workspace dependency
+(installed by scripts/dev-setup.sh), so they only skip in an install without it.
 """
 
 import uuid

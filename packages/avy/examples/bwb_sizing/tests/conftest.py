@@ -5,7 +5,7 @@ import uuid
 import pytest
 import pytest_asyncio
 
-pytest.importorskip("aviary", reason="parity suite runs in .venv-avy")
+pytest.importorskip("aviary", reason="parity suite needs the aviary package")
 
 from hangar.avy.cli import build_avy_registry
 from hangar.sdk.cli.runner import set_registry_builder

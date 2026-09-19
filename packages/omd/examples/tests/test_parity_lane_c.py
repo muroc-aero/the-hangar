@@ -19,6 +19,7 @@ Run with -s to see comparison tables:
 
 from __future__ import annotations
 
+import importlib.util
 import sys
 from pathlib import Path
 
@@ -638,14 +639,12 @@ class TestOCPThreeToolLaneC:
         )
 
 
-# ── Aviary (subprocess factory into .venv-avy) ───────────────────────────
-
-AVY_PYTHON = Path(__file__).resolve().parents[4] / ".venv-avy" / "bin" / "python"
+# ── Aviary (native avy/Sizing factory) ────────────────────────────────────
 
 
 @pytest.mark.skipif(
-    not AVY_PYTHON.exists(),
-    reason="needs the isolated Aviary venv (bash scripts/setup-avy-venv.sh)",
+    importlib.util.find_spec("aviary") is None,
+    reason="needs aviary (bash scripts/dev-setup.sh)",
 )
 class TestAvySingleAisleLaneC:
 
@@ -682,12 +681,12 @@ class TestAvySingleAisleLaneC:
         )
         plan_yaml = await _assemble_and_validate("lane-c-avy-sizing")
 
-        env = await run_plan(plan_yaml, mode="analysis")
+        env = await run_plan(plan_yaml, mode="optimize")
         summary = _summary(env)
 
         _print_comparison("Aviary Single-Aisle Sizing (Lane C)", lane_a, summary,
                           keys=METRICS, case="avy_single_aisle", lane_label="C")
 
-        assert summary["converged"] == 1.0
+        assert summary["converged"] is True
         for k in METRICS:
             assert summary[k] == pytest.approx(lane_a[k], **TOL_PARITY)

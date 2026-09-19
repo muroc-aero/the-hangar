@@ -3,8 +3,8 @@
 Same structure as single_aisle_sizing -- a second airframe/deck through the
 identical wrapper paths, with its own golden anchors.
 
-Needs the aviary package -- run inside .venv-avy:
-    .venv-avy/bin/python -m pytest packages/avy/examples/large_single_aisle_sizing/tests/ -v --rootdir=.
+Needs the aviary package (installed by `bash scripts/dev-setup.sh`):
+    uv run pytest packages/avy/examples/large_single_aisle_sizing/tests/ -v --rootdir=.
 """
 
 import json

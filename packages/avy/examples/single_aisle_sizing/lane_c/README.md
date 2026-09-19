@@ -14,8 +14,9 @@ Scoring: the reported metrics are compared against Lane A
 (`lane_a/sizing.py`) with the tolerances in `../shared.py` (`TOL_PARITY` /
 `TOL_RANGE`), exactly like the scripted Lane B tests.
 
-Unlike the omd examples, these target the **Aviary server's own MCP tools**
-(`mcp__Aviary__*`) rather than omd plan tools -- the omd `avy` factory is
-blocked on the numpy-2 venv split (see `docs/aviary-server-plan.md`). An
-agent-eval harness akin to `packages/omd/examples/agent_eval/eval_lane_c.py`
-pointed at `avy-server` (stdio, from `.venv-avy`) can consume these as-is.
+These prompts target the **Aviary server's own MCP tools**
+(`mcp__Aviary__*`); the `packages/omd/examples/avy_*` suites target the omd
+plan tools instead, where the omd `avy/Sizing` factory is native (Aviary's
+group inside the omd problem). An agent-eval harness akin to
+`packages/omd/examples/agent_eval/eval_lane_c.py` pointed at `avy-server`
+(stdio, `uv run avy-server`) can consume these as-is.

@@ -10,7 +10,7 @@ docs/aviary-oas-integration-plan.md WP1).
 Each converged run costs ~50 s (one nested wingbox sub-opt + the sizing),
 so lane results are cached module-wide. Needs aviary + openaerostruct:
 
-    .venv-avy/bin/python -m pytest packages/avy/examples/single_aisle_oas_wing/tests/ -v --rootdir=.
+    uv run pytest packages/avy/examples/single_aisle_oas_wing/tests/ -v --rootdir=.
 """
 
 import json

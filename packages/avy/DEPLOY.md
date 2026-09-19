@@ -1,10 +1,9 @@
 # Deploying hangar-avy
 
 The avy service follows the standard hangar deployment pattern (see
-`skills/new-tool/SKILL.md` step 7), with one distinction worth knowing: the
-Docker image is the **isolated Aviary environment** -- it installs only
-aviary (at `AVY_REF`) + hangar-sdk + hangar-avy, so the workspace numpy-2
-conflict that forces `.venv-avy` in dev does not exist in containers.
+`skills/new-tool/SKILL.md` step 7). The Docker image pip-installs aviary
+(at `AVY_REF`) + hangar-sdk + hangar-avy, mirroring the single workspace
+venv used in dev.
 
 ## Docker
 
@@ -20,10 +19,9 @@ docker compose -f docker/docker-compose.yml up --build avy
 The viewer service mounts `./hangar_data/avy` read-only and
 `HANGAR_VIEWER_DBS` includes `avy=/data/avy/provenance.db`.
 
-The `omd` image carries its own copy of this runtime at `/opt/venv-avy`
-(`AVY_PYTHON` is set in `packages/omd/Dockerfile`) so the `avy/Sizing`
-plan factory can run Aviary as a subprocess there too; no extra service
-is needed for it.
+The `omd` image also pip-installs aviary, so the native `avy/Sizing`
+plan factory (Aviary's group inside the omd problem) runs there too; no
+extra service is needed for it.
 
 ## Environment variables
 

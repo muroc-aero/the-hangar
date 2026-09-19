@@ -1,5 +1,13 @@
 # Plan: OAS inside Aviary — coupled aerostructural wing mass in hangar-avy and omd
 
+> **Status (2026-09-19):** the venv split described below has been removed.
+> Aviary now lives in the single workspace venv (numpy 2 / OpenMDAO 3.45;
+> OpenConcept runs there via `scripts/openconcept-numpy2.patch`), so
+> `.venv-avy`, `scripts/setup-avy-venv.sh`, `scripts/avy-server.sh` and
+> `AVY_PYTHON` no longer exist, and the omd `avy/Sizing` factory is native
+> (Aviary's group inside the omd problem) rather than a subprocess worker.
+> References to them below are historical.
+
 Status: **implemented** (2026-07-10; all work packages landed -- see the
 result annotations in WP1 and the "Implementation results" section at the
 end. Remaining stretch items: WP4.3 upstream PR, blind-agent Lane C runs.)

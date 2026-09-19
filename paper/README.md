@@ -39,7 +39,14 @@ B738 row. Deciding #88 first avoids rendering the table twice.
    last-run-of-mode and ran on the pre-calibration budgets. They are in the
    table for reference but are **not comparable with the anchor** until
    re-run (gemma ~14 h, qwen ~9 h, both on-device and free).
-3. **The prompt and budget changes have never been exercised by a fresh run.**
+3. **The Aviary lanes are not in the table yet.** `packages/omd/examples/`
+   gained four Aviary cases (`avy_single_aisle`, `avy_bwb`, `avy_oas_wing`,
+   `oas_avy_wing_mass`) after the 07-17 run; their A-vs-B comparisons and
+   the scripted Lane C for `avy_single_aisle` flow through `run_lanes.py`
+   on the next run (Aviary now lives in the workspace venv -- no separate
+   venv to set up). None of them is in the anchor manifest, so the agent
+   column stays `--` until a case is added there.
+4. **The prompt and budget changes have never been exercised by a fresh run.**
    the-hangar #107/#108 and hangar-evals #24 landed after the arm was measured,
    and the 09-12 work re-*scored* the stored arm rather than re-running it.
    The next anchor arm is the first real test of them.

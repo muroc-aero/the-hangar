@@ -51,9 +51,9 @@ def require_aviary():
     except ImportError as exc:
         raise RuntimeError(
             "The 'aviary' package is not installed in this environment. "
-            "Aviary requires openmdao>=3.43 (numpy>=2) and cannot share the "
-            "main hangar venv; run `bash scripts/setup-avy-venv.sh` and use "
-            ".venv-avy (avy-server / avy-cli run from it), or use the "
+            "It is a dependency of hangar-avy in the workspace venv: run "
+            "`bash scripts/dev-setup.sh` (or `uv sync`) and use "
+            "`uv run avy-server` / `uv run avy-cli`, or use the "
             "hangar-avy Docker image."
         ) from exc
     return aviary

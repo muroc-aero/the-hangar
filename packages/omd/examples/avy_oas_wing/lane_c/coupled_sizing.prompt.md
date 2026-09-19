@@ -10,9 +10,9 @@ through the omd plan tools.
   - `deck: models/aircraft/advanced_single_aisle/advanced_single_aisle_FLOPS.csv`
   - `phase_info_module: hangar.avy.config.missions_oas_wing`
   - `external_subsystems: [{name: oas_wing_mass}]`
-  - `optimizer: SLSQP`, `max_iter: 60`, `run_timeout_s: 1800`
-- Run mode: `analysis` (the component is self-driving -- every Aviary run
-  is an optimization). Expect ~90 s.
+  - `optimizer: SLSQP`, `max_iter: 60`
+- Run mode: `optimize` (every Aviary run is an optimization; the component
+  brings its own design variables and objective). Expect ~90 s.
 
 ## Tools
 
@@ -21,8 +21,8 @@ Only the `mcp__omd__*` tools. Workflow:
 1. `start_session`
 2. `plan_init` -> `plan_add_component` (config above) -> `assemble_plan`
 3. `validate_plan`
-4. `run_plan(mode="analysis")`
-5. Verify the `converged` output is 1.0 before reporting numbers
+4. `run_plan(mode="optimize")`
+5. Verify the summary's `converged` flag is true before reporting numbers
 6. `log_decision(decision_type="result_interpretation", prior_call_id=...)`
 7. `export_session_graph`
 
@@ -37,7 +37,7 @@ Report, as a fenced JSON block:
   "wing_mass_lbm": <number>,
   "range_nmi": <number>,
   "final_time_min": <number>,
-  "converged": <number>
+  "converged": <bool>
 }
 ```
 

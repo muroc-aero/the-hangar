@@ -5,11 +5,11 @@ metadata:
   description: >
     Coupled aircraft-sizing + mission optimization of the advanced
     single-aisle transport (FLOPS mass + aero) on the default 3-phase
-    energy_state mission, via the avy/Sizing subprocess factory. Runs
-    Aviary in the isolated .venv-avy (scripts/setup-avy-venv.sh); the
-    component is self-driving (every Aviary run is an optimization), so
-    mode=analysis runs the embedded SLSQP sizing. Check the 'converged'
-    output -- Aviary optimizer non-convergence does not raise.
+    energy_state mission, via the native avy/Sizing factory (Aviary's
+    group inside the omd problem; its own DVs, constraints and objective
+    are collected by omd's driver). Every Aviary run is an optimization
+    (dymos collocation), so run with mode=optimize. Check the summary's
+    'converged' flag -- Aviary optimizer non-convergence does not raise.
 
 operating_points: {}
 
