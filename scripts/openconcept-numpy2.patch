@@ -1,0 +1,345 @@
+diff --git a/openconcept/aerodynamics/openaerostruct/aerostructural.py b/openconcept/aerodynamics/openaerostruct/aerostructural.py
+index 195be99..a0fd91e 100644
+--- a/openconcept/aerodynamics/openaerostruct/aerostructural.py
++++ b/openconcept/aerodynamics/openaerostruct/aerostructural.py
+@@ -617,7 +617,7 @@ def compute_training_data(inputs, surf_dict=None):
+     # Catch ComplexWarning from OpenAeroStruct runs since with a full
+     # grid it'll come up 100s of times
+     with warnings.catch_warnings():
+-        warnings.filterwarnings("ignore", category=np.ComplexWarning)
++        warnings.filterwarnings("ignore", category=np.exceptions.ComplexWarning)
+ 
+         # Initialize the parallel pool and compute the OpenAeroStruct data
+         with mp.Pool() as parallel_pool:
+diff --git a/openconcept/aerodynamics/openaerostruct/wave_drag.py b/openconcept/aerodynamics/openaerostruct/wave_drag.py
+index d9af58a..a6184df 100644
+--- a/openconcept/aerodynamics/openaerostruct/wave_drag.py
++++ b/openconcept/aerodynamics/openaerostruct/wave_drag.py
+@@ -131,7 +131,7 @@ class WaveDragFromSections(om.ExplicitComponent):
+         toverc_interp = np.linspace(toverc_sec[:-1], toverc_sec[1:], n)
+         chord_interp = np.linspace(chord_sec[:-1], chord_sec[1:], n)
+         y_interp = np.linspace(y_sec[:-1], y_sec[1:], n)
+-        panel_toverc = np.trapz((toverc_interp * chord_interp).T, x=y_interp.T) / panel_areas
++        panel_toverc = getattr(np, "trapezoid", getattr(np, "trapz", None))((toverc_interp * chord_interp).T, x=y_interp.T) / panel_areas
+         avg_toverc = np.sum(panel_toverc * panel_areas) / np.sum(panel_areas)
+ 
+         MDD = self.options["airfoil_tech_level"] / cos_sweep - avg_toverc / cos_sweep**2 - CL / (10 * cos_sweep**3)
+diff --git a/openconcept/thermal/hose.py b/openconcept/thermal/hose.py
+index 857d9de..f647c89 100644
+--- a/openconcept/thermal/hose.py
++++ b/openconcept/thermal/hose.py
+@@ -116,7 +116,7 @@ class SimpleHose(om.ExplicitComponent):
+         fake_inputs = dict()
+         # make a perturbable, complex copy of the inputs
+         for inp in cs_inp_list:
+-            fake_inputs[inp] = inputs[inp].astype(np.complex_, copy=True)
++            fake_inputs[inp] = inputs[inp].astype(np.complex128, copy=True)
+ 
+         for inp in cs_inp_list:
+             arr_to_restore = fake_inputs[inp].copy()
+diff --git a/openconcept/utilities/math/add_subtract_comp.py b/openconcept/utilities/math/add_subtract_comp.py
+index a699a2b..8fd0952 100644
+--- a/openconcept/utilities/math/add_subtract_comp.py
++++ b/openconcept/utilities/math/add_subtract_comp.py
+@@ -268,7 +268,7 @@ class AddSubtractComp(ExplicitComponent):
+                 shape = (vec_out_size, length)
+ 
+             if self.under_complex_step:
+-                temp = np.zeros(shape, dtype=np.complex_)
++                temp = np.zeros(shape, dtype=np.complex128)
+             else:
+                 temp = np.zeros(shape)
+ 
+diff --git a/openconcept/utilities/math/combine_split_comp.py b/openconcept/utilities/math/combine_split_comp.py
+index 75c023b..dc537cb 100644
+--- a/openconcept/utilities/math/combine_split_comp.py
++++ b/openconcept/utilities/math/combine_split_comp.py
+@@ -210,13 +210,13 @@ class VectorConcatenateComp(ExplicitComponent):
+                 input_names = [input_names]
+ 
+             if self.under_complex_step:
+-                dtype = np.complex_
++                dtype = np.complex128
+             else:
+                 dtype = np.float64
+             if length == 1:
+                 temp = np.array([], dtype=dtype)
+             else:
+-                temp = np.empty([0, length], dtype=np.dtype)
++                temp = np.empty([0, length], dtype=dtype)
+ 
+             for input_name in input_names:
+                 temp = np.concatenate((temp, inputs[input_name]))
+diff --git a/openconcept/utilities/math/multiply_divide_comp.py b/openconcept/utilities/math/multiply_divide_comp.py
+index 1e0ed16..da99681 100644
+--- a/openconcept/utilities/math/multiply_divide_comp.py
++++ b/openconcept/utilities/math/multiply_divide_comp.py
+@@ -329,7 +329,7 @@ class ElementMultiplyDivideComp(ExplicitComponent):
+                 shape = (vec_out_size, length)
+ 
+             if self.under_complex_step:
+-                temp = np.ones(shape, dtype=np.complex_)
++                temp = np.ones(shape, dtype=np.complex128)
+             else:
+                 temp = np.ones(shape)
+ 
+diff --git a/openconcept/weights/weights_turboprop.py b/openconcept/weights/weights_turboprop.py
+index e60c891..cfc5012 100644
+--- a/openconcept/weights/weights_turboprop.py
++++ b/openconcept/weights/weights_turboprop.py
+@@ -39,22 +39,22 @@ class WingWeight_SmallTurboprop(ExplicitComponent):
+     def compute(self, inputs, outputs):
+         n_ult = self.options["n_ult"]
+         # USAF method, Roskam PVC5pg68eq5.4
+-        # W_wing_USAF = 96.948*((inputs['ac|weights|MTOW']*n_ult/1e5)**0.65 * (inputs['ac|geom|wing|AR']/math.cos(inputs['ac|geom|wing|c4sweep']))**0.57 * (inputs['ac|geom|wing|S_ref']/100)**0.61 * ((1+inputs['ac|geom|wing|taper'])/2/inputs['ac|geom|wing|toverc'])**0.36 * (1+inputs['V_H']/500)**0.5)**0.993
++        # W_wing_USAF = 96.948*((inputs['ac|weights|MTOW']*n_ult/1e5)**0.65 * (inputs['ac|geom|wing|AR']/np.cos(inputs['ac|geom|wing|c4sweep']))**0.57 * (inputs['ac|geom|wing|S_ref']/100)**0.61 * ((1+inputs['ac|geom|wing|taper'])/2/inputs['ac|geom|wing|toverc'])**0.36 * (1+inputs['V_H']/500)**0.5)**0.993
+         # Torenbeek, Roskam PVC5p68eq5.5
+-        # b = math.sqrt(inputs['ac|geom|wing|S_ref']*inputs['ac|geom|wing|AR'])
++        # b = np.sqrt(inputs['ac|geom|wing|S_ref']*inputs['ac|geom|wing|AR'])
+         # root_chord = 2*inputs['ac|geom|wing|S_ref']/b/(1+inputs['ac|geom|wing|taper'])
+         # tr = root_chord * inputs['ac|geom|wing|toverc']
+         # c2sweep_wing = inputs['ac|geom|wing|c4sweep'] # a hack for now
+-        # W_wing_Torenbeek = 0.00125*inputs['ac|weights|MTOW'] * (b/math.cos(c2sweep_wing))**0.75 * (1+ (6.3*math.cos(c2sweep_wing)/b)**0.5) * n_ult**0.55 * (b*inputs['ac|geom|wing|S_ref']/tr/inputs['ac|weights|MTOW']/math.cos(c2sweep_wing))**0.30
++        # W_wing_Torenbeek = 0.00125*inputs['ac|weights|MTOW'] * (b/np.cos(c2sweep_wing))**0.75 * (1+ (6.3*np.cos(c2sweep_wing)/b)**0.5) * n_ult**0.55 * (b*inputs['ac|geom|wing|S_ref']/tr/inputs['ac|weights|MTOW']/np.cos(c2sweep_wing))**0.30
+ 
+         W_wing_Raymer = (
+             0.036
+             * inputs["ac|geom|wing|S_ref"] ** 0.758
+             * inputs["ac|weights|W_fuel_max"] ** 0.0035
+-            * (inputs["ac|geom|wing|AR"] / math.cos(inputs["ac|geom|wing|c4sweep"]) ** 2) ** 0.6
++            * (inputs["ac|geom|wing|AR"] / np.cos(inputs["ac|geom|wing|c4sweep"]) ** 2) ** 0.6
+             * inputs["ac|q_cruise"] ** 0.006
+             * inputs["ac|geom|wing|taper"] ** 0.04
+-            * (100 * inputs["ac|geom|wing|toverc"] / math.cos(inputs["ac|geom|wing|c4sweep"])) ** -0.3
++            * (100 * inputs["ac|geom|wing|toverc"] / np.cos(inputs["ac|geom|wing|c4sweep"])) ** -0.3
+             * (n_ult * inputs["ac|weights|MTOW"]) ** 0.49
+         )
+ 
+@@ -66,10 +66,10 @@ class WingWeight_SmallTurboprop(ExplicitComponent):
+             0.036
+             * inputs["ac|geom|wing|S_ref"] ** 0.758
+             * inputs["ac|weights|W_fuel_max"] ** 0.0035
+-            * (inputs["ac|geom|wing|AR"] / math.cos(inputs["ac|geom|wing|c4sweep"]) ** 2) ** 0.6
++            * (inputs["ac|geom|wing|AR"] / np.cos(inputs["ac|geom|wing|c4sweep"]) ** 2) ** 0.6
+             * inputs["ac|q_cruise"] ** 0.006
+             * inputs["ac|geom|wing|taper"] ** 0.04
+-            * (100 * inputs["ac|geom|wing|toverc"] / math.cos(inputs["ac|geom|wing|c4sweep"])) ** -0.3
++            * (100 * inputs["ac|geom|wing|toverc"] / np.cos(inputs["ac|geom|wing|c4sweep"])) ** -0.3
+             * (n_ult * inputs["ac|weights|MTOW"]) ** (0.49 - 1)
+             * n_ult
+             * 0.49
+@@ -79,10 +79,10 @@ class WingWeight_SmallTurboprop(ExplicitComponent):
+             * inputs["ac|geom|wing|S_ref"] ** 0.758
+             * 0.0035
+             * inputs["ac|weights|W_fuel_max"] ** (0.0035 - 1)
+-            * (inputs["ac|geom|wing|AR"] / math.cos(inputs["ac|geom|wing|c4sweep"]) ** 2) ** 0.6
++            * (inputs["ac|geom|wing|AR"] / np.cos(inputs["ac|geom|wing|c4sweep"]) ** 2) ** 0.6
+             * inputs["ac|q_cruise"] ** 0.006
+             * inputs["ac|geom|wing|taper"] ** 0.04
+-            * (100 * inputs["ac|geom|wing|toverc"] / math.cos(inputs["ac|geom|wing|c4sweep"])) ** -0.3
++            * (100 * inputs["ac|geom|wing|toverc"] / np.cos(inputs["ac|geom|wing|c4sweep"])) ** -0.3
+             * (n_ult * inputs["ac|weights|MTOW"]) ** 0.49
+         )
+         J["W_wing", "ac|geom|wing|S_ref"] = (
+@@ -90,10 +90,10 @@ class WingWeight_SmallTurboprop(ExplicitComponent):
+             * inputs["ac|geom|wing|S_ref"] ** (0.758 - 1)
+             * 0.758
+             * inputs["ac|weights|W_fuel_max"] ** 0.0035
+-            * (inputs["ac|geom|wing|AR"] / math.cos(inputs["ac|geom|wing|c4sweep"]) ** 2) ** 0.6
++            * (inputs["ac|geom|wing|AR"] / np.cos(inputs["ac|geom|wing|c4sweep"]) ** 2) ** 0.6
+             * inputs["ac|q_cruise"] ** 0.006
+             * inputs["ac|geom|wing|taper"] ** 0.04
+-            * (100 * inputs["ac|geom|wing|toverc"] / math.cos(inputs["ac|geom|wing|c4sweep"])) ** -0.3
++            * (100 * inputs["ac|geom|wing|toverc"] / np.cos(inputs["ac|geom|wing|c4sweep"])) ** -0.3
+             * (n_ult * inputs["ac|weights|MTOW"]) ** 0.49
+         )
+         J["W_wing", "ac|geom|wing|AR"] = (
+@@ -101,11 +101,11 @@ class WingWeight_SmallTurboprop(ExplicitComponent):
+             * inputs["ac|geom|wing|S_ref"] ** 0.758
+             * inputs["ac|weights|W_fuel_max"] ** 0.0035
+             * 0.6
+-            * (inputs["ac|geom|wing|AR"] / math.cos(inputs["ac|geom|wing|c4sweep"]) ** 2) ** (0.6 - 1)
+-            / math.cos(inputs["ac|geom|wing|c4sweep"]) ** 2
++            * (inputs["ac|geom|wing|AR"] / np.cos(inputs["ac|geom|wing|c4sweep"]) ** 2) ** (0.6 - 1)
++            / np.cos(inputs["ac|geom|wing|c4sweep"]) ** 2
+             * inputs["ac|q_cruise"] ** 0.006
+             * inputs["ac|geom|wing|taper"] ** 0.04
+-            * (100 * inputs["ac|geom|wing|toverc"] / math.cos(inputs["ac|geom|wing|c4sweep"])) ** -0.3
++            * (100 * inputs["ac|geom|wing|toverc"] / np.cos(inputs["ac|geom|wing|c4sweep"])) ** -0.3
+             * (n_ult * inputs["ac|weights|MTOW"]) ** 0.49
+         )
+         c4const = (
+@@ -116,55 +116,55 @@ class WingWeight_SmallTurboprop(ExplicitComponent):
+             * inputs["ac|geom|wing|taper"] ** 0.04
+             * (n_ult * inputs["ac|weights|MTOW"]) ** 0.49
+         )
+-        c4multa = (inputs["ac|geom|wing|AR"] / math.cos(inputs["ac|geom|wing|c4sweep"]) ** 2) ** 0.6
+-        c4multb = (100 * inputs["ac|geom|wing|toverc"] / math.cos(inputs["ac|geom|wing|c4sweep"])) ** -0.3
++        c4multa = (inputs["ac|geom|wing|AR"] / np.cos(inputs["ac|geom|wing|c4sweep"]) ** 2) ** 0.6
++        c4multb = (100 * inputs["ac|geom|wing|toverc"] / np.cos(inputs["ac|geom|wing|c4sweep"])) ** -0.3
+         dc4multa = (
+             0.6
+-            * (inputs["ac|geom|wing|AR"] / math.cos(inputs["ac|geom|wing|c4sweep"]) ** 2) ** (0.6 - 1)
+-            * (-2 * inputs["ac|geom|wing|AR"] / math.cos(inputs["ac|geom|wing|c4sweep"]) ** 3)
+-            * (-math.sin(inputs["ac|geom|wing|c4sweep"]))
++            * (inputs["ac|geom|wing|AR"] / np.cos(inputs["ac|geom|wing|c4sweep"]) ** 2) ** (0.6 - 1)
++            * (-2 * inputs["ac|geom|wing|AR"] / np.cos(inputs["ac|geom|wing|c4sweep"]) ** 3)
++            * (-np.sin(inputs["ac|geom|wing|c4sweep"]))
+         )
+         dc4multb = (
+             -0.3
+-            * (100 * inputs["ac|geom|wing|toverc"] / math.cos(inputs["ac|geom|wing|c4sweep"])) ** (-0.3 - 1)
++            * (100 * inputs["ac|geom|wing|toverc"] / np.cos(inputs["ac|geom|wing|c4sweep"])) ** (-0.3 - 1)
+             * -100
+             * inputs["ac|geom|wing|toverc"]
+-            / math.cos(inputs["ac|geom|wing|c4sweep"]) ** 2
+-            * (-math.sin(inputs["ac|geom|wing|c4sweep"]))
++            / np.cos(inputs["ac|geom|wing|c4sweep"]) ** 2
++            * (-np.sin(inputs["ac|geom|wing|c4sweep"]))
+         )
+         J["W_wing", "ac|geom|wing|c4sweep"] = c4const * (c4multa * dc4multb + c4multb * dc4multa)
+         J["W_wing", "ac|geom|wing|taper"] = (
+             0.036
+             * inputs["ac|geom|wing|S_ref"] ** 0.758
+             * inputs["ac|weights|W_fuel_max"] ** 0.0035
+-            * (inputs["ac|geom|wing|AR"] / math.cos(inputs["ac|geom|wing|c4sweep"]) ** 2) ** 0.6
++            * (inputs["ac|geom|wing|AR"] / np.cos(inputs["ac|geom|wing|c4sweep"]) ** 2) ** 0.6
+             * inputs["ac|q_cruise"] ** 0.006
+             * 0.04
+             * inputs["ac|geom|wing|taper"] ** (0.04 - 1)
+-            * (100 * inputs["ac|geom|wing|toverc"] / math.cos(inputs["ac|geom|wing|c4sweep"])) ** -0.3
++            * (100 * inputs["ac|geom|wing|toverc"] / np.cos(inputs["ac|geom|wing|c4sweep"])) ** -0.3
+             * (n_ult * inputs["ac|weights|MTOW"]) ** 0.49
+         )
+         J["W_wing", "ac|geom|wing|toverc"] = (
+             0.036
+             * inputs["ac|geom|wing|S_ref"] ** 0.758
+             * inputs["ac|weights|W_fuel_max"] ** 0.0035
+-            * (inputs["ac|geom|wing|AR"] / math.cos(inputs["ac|geom|wing|c4sweep"]) ** 2) ** 0.6
++            * (inputs["ac|geom|wing|AR"] / np.cos(inputs["ac|geom|wing|c4sweep"]) ** 2) ** 0.6
+             * inputs["ac|q_cruise"] ** 0.006
+             * inputs["ac|geom|wing|taper"] ** 0.04
+             * -0.3
+-            * (100 * inputs["ac|geom|wing|toverc"] / math.cos(inputs["ac|geom|wing|c4sweep"])) ** (-0.3 - 1)
+-            * (100 / math.cos(inputs["ac|geom|wing|c4sweep"]))
++            * (100 * inputs["ac|geom|wing|toverc"] / np.cos(inputs["ac|geom|wing|c4sweep"])) ** (-0.3 - 1)
++            * (100 / np.cos(inputs["ac|geom|wing|c4sweep"]))
+             * (n_ult * inputs["ac|weights|MTOW"]) ** 0.49
+         )
+         J["W_wing", "ac|q_cruise"] = (
+             0.036
+             * inputs["ac|geom|wing|S_ref"] ** 0.758
+             * inputs["ac|weights|W_fuel_max"] ** 0.0035
+-            * (inputs["ac|geom|wing|AR"] / math.cos(inputs["ac|geom|wing|c4sweep"]) ** 2) ** 0.6
++            * (inputs["ac|geom|wing|AR"] / np.cos(inputs["ac|geom|wing|c4sweep"]) ** 2) ** 0.6
+             * 0.006
+             * inputs["ac|q_cruise"] ** (0.006 - 1)
+             * inputs["ac|geom|wing|taper"] ** 0.04
+-            * (100 * inputs["ac|geom|wing|toverc"] / math.cos(inputs["ac|geom|wing|c4sweep"])) ** -0.3
++            * (100 * inputs["ac|geom|wing|toverc"] / np.cos(inputs["ac|geom|wing|c4sweep"])) ** -0.3
+             * (n_ult * inputs["ac|weights|MTOW"]) ** 0.49
+         )
+ 
+@@ -196,8 +196,8 @@ class EmpennageWeight_SmallTurboprop(ExplicitComponent):
+     def compute(self, inputs, outputs):
+         n_ult = self.options["n_ult"]
+         # USAF method, Roskam PVC5pg72eq5.14/15
+-        # bh = math.sqrt(inputs['ac|geom|hstab|S_ref']*inputs['AR_h'])
+-        # bv = math.sqrt(inputs['ac|geom|vstab|S_ref']*inputs['AR_v'])
++        # bh = np.sqrt(inputs['ac|geom|hstab|S_ref']*inputs['AR_h'])
++        # bv = np.sqrt(inputs['ac|geom|vstab|S_ref']*inputs['AR_v'])
+         # # Wh = 127 * ((inputs['ac|weights|MTOW']*n_ult/1e5)**0.87 * (inputs['ac|geom|hstab|S_ref']/100)**1.2 * 0.289*(inputs['ac|geom|hstab|c4_to_wing_c4']/10)**0.483 * (bh/inputs['troot_h'])**0.5)**0.458
+         # # #Wh_raymer = 0.016 * (n_ult*inputs['ac|weights|MTOW'])**0.414 * inputs['ac|q_cruise']**0.168 * inputs['ac|geom|hstab|S_ref']**0.896 * (100 * 0.18)**-0.12 * (inputs['AR_h'])**0.043 * 0.7**-0.02
+         # # Wv = 98.5 * ((inputs['ac|weights|MTOW']*n_ult/1e5)**0.87 * (inputs['ac|geom|vstab|S_ref']/100)**1.2 * 0.289 * (bv/inputs['troot_v'])**0.5)**0.458
+@@ -256,7 +256,7 @@ class FuselageWeight_SmallTurboprop(ExplicitComponent):
+         W_press = (
+             11.9
+             * (
+-                math.pi
++                np.pi
+                 * (inputs["ac|geom|fuselage|width"] + inputs["ac|geom|fuselage|height"])
+                 / 2
+                 * inputs["ac|geom|fuselage|length"]
+@@ -292,7 +292,7 @@ class FuselageWeight_SmallTurboprop(ExplicitComponent):
+             0.271
+             * 11.9
+             * (
+-                math.pi
++                np.pi
+                 * (inputs["ac|geom|fuselage|width"] + inputs["ac|geom|fuselage|height"])
+                 / 2
+                 * inputs["ac|geom|fuselage|length"]
+@@ -300,13 +300,13 @@ class FuselageWeight_SmallTurboprop(ExplicitComponent):
+                 * 8
+             )
+             ** (0.271 - 1)
+-            * (math.pi / 2 * inputs["ac|geom|fuselage|length"] * 0.8 * 8)
++            * (np.pi / 2 * inputs["ac|geom|fuselage|length"] * 0.8 * 8)
+         )
+         J["W_fuselage", "ac|geom|fuselage|height"] = (
+             0.271
+             * 11.9
+             * (
+-                math.pi
++                np.pi
+                 * (inputs["ac|geom|fuselage|width"] + inputs["ac|geom|fuselage|height"])
+                 / 2
+                 * inputs["ac|geom|fuselage|length"]
+@@ -314,7 +314,7 @@ class FuselageWeight_SmallTurboprop(ExplicitComponent):
+                 * 8
+             )
+             ** (0.271 - 1)
+-            * (math.pi / 2 * inputs["ac|geom|fuselage|length"] * 0.8 * 8)
++            * (np.pi / 2 * inputs["ac|geom|fuselage|length"] * 0.8 * 8)
+             + 0.052
+             * inputs["ac|geom|fuselage|S_wet"] ** 1.086
+             * (n_ult * inputs["ac|weights|MTOW"]) ** 0.177
+@@ -328,7 +328,7 @@ class FuselageWeight_SmallTurboprop(ExplicitComponent):
+             0.271
+             * 11.9
+             * (
+-                math.pi
++                np.pi
+                 * (inputs["ac|geom|fuselage|width"] + inputs["ac|geom|fuselage|height"])
+                 / 2
+                 * inputs["ac|geom|fuselage|length"]
+@@ -336,7 +336,7 @@ class FuselageWeight_SmallTurboprop(ExplicitComponent):
+                 * 8
+             )
+             ** (0.271 - 1)
+-            * (math.pi * (inputs["ac|geom|fuselage|width"] + inputs["ac|geom|fuselage|height"]) / 2 * 0.8 * 8)
++            * (np.pi * (inputs["ac|geom|fuselage|width"] + inputs["ac|geom|fuselage|height"]) / 2 * 0.8 * 8)
+             + 0.052
+             * inputs["ac|geom|fuselage|S_wet"] ** 1.086
+             * (n_ult * inputs["ac|weights|MTOW"]) ** 0.177
+@@ -552,7 +552,7 @@ class EquipmentWeight_SmallTurboprop(ExplicitComponent):
+         self.declare_partials(["W_equipment"], ["*"])
+ 
+     def compute(self, inputs, outputs):
+-        b = math.sqrt(inputs["ac|geom|wing|S_ref"] * inputs["ac|geom|wing|AR"])
++        b = np.sqrt(inputs["ac|geom|wing|S_ref"] * inputs["ac|geom|wing|AR"])
+ 
+         # Flight control system (unpowered)
+         # Roskam PVC7p98eq7.2
+@@ -579,7 +579,7 @@ class EquipmentWeight_SmallTurboprop(ExplicitComponent):
+         outputs["W_equipment"] = Wfc_Torenbeek + Welec + Wavionics + Wapi + Woxygen + Wfur + Wpaint + Whydraulics
+ 
+     def compute_partials(self, inputs, J):
+-        b = math.sqrt(inputs["ac|geom|wing|S_ref"] * inputs["ac|geom|wing|AR"])
++        b = np.sqrt(inputs["ac|geom|wing|S_ref"] * inputs["ac|geom|wing|AR"])
+         Wavionics = 2.117 * (np.array([110])) ** 0.933
+         J["W_equipment", "ac|weights|MTOW"] = (
+             0.23 * inputs["ac|weights|MTOW"] ** (0.666 - 1) * 0.666
+diff --git a/setup.py b/setup.py
+index 7081b8f..2e7e877 100644
+--- a/setup.py
++++ b/setup.py
+@@ -45,7 +45,7 @@ setup(
+     install_requires=[
+         # Update the oldest package versions in the GitHub Actions build file, the readme,
+         # and the index.rst file in the docs when you change these
+-        "numpy >=1.20, <2",
++        "numpy >=1.20",
+         "scipy>=1.7.0",
+         "openmdao >=3.21",
+     ],

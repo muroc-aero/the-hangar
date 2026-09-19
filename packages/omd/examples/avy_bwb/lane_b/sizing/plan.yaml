@@ -6,11 +6,10 @@ metadata:
     The upstream blended-wing-body benchmark (bwb_simple_FLOPS deck,
     M0.85 / 7750 nmi transpacific) with the fixed-profile mission
     adaptation (hangar.avy.config.missions_bwb_fixed -- the raw benchmark
-    mission needs SNOPT/IPOPT), via the avy/Sizing subprocess factory in
-    the isolated .venv-avy. Self-driving component: mode=analysis runs the
-    embedded SLSQP sizing; check the 'converged' output. The mission's own
-    post_mission range constraint (7750 nmi) applies -- no target_range_nm
-    override here.
+    mission needs SNOPT/IPOPT), via the native avy/Sizing factory. Run
+    with mode=optimize (every Aviary run is an optimization); check the
+    summary's 'converged' flag. The mission's own post_mission range
+    constraint (7750 nmi) applies -- no target_range_nm override here.
 
 operating_points: {}
 

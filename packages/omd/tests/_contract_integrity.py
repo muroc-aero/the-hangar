@@ -223,9 +223,11 @@ def validate_contract_integrity(
                 # resolves it at runtime. If we see this specific
                 # error for the skipped name, treat it as honored.
                 msg = str(exc)
-                if (
+                # OpenMDAO <3.45 wording vs >=3.45 ("have different values,
+                # so the value of ... is ambiguous").
+                if f"promoted to '{name}'" in msg and (
                     "are connected but their metadata entries" in msg
-                    and f"promoted to '{name}'" in msg
+                    or "is ambiguous" in msg
                 ):
                     continue
                 raise

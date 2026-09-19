@@ -6,8 +6,8 @@ same fixed-profile adaptation the 'bwb_fixed' mission template applies --
 duplicated here inline because Lane A must not import hangar code; the
 A-vs-B parity test is what proves the two constructions are identical.
 
-Run standalone (inside .venv-avy):
-    .venv-avy/bin/python packages/avy/examples/bwb_sizing/lane_a/sizing.py
+Run standalone (from the workspace venv):
+    uv run python packages/avy/examples/bwb_sizing/lane_a/sizing.py
 """
 
 from __future__ import annotations

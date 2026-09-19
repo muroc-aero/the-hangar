@@ -1,8 +1,8 @@
 """Slow integration tests: full run_sizing through the tool surface.
 
-Need the aviary package (run in .venv-avy; see scripts/setup-avy-venv.sh):
+Need the aviary package (a workspace dependency; `bash scripts/dev-setup.sh`):
 
-    .venv-avy/bin/python -m pytest packages/avy/tests/ -v
+    uv run pytest packages/avy/tests/ -v
 """
 
 from __future__ import annotations

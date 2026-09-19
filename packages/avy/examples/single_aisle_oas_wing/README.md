@@ -22,5 +22,5 @@ Each converged run costs ~50 s (nested wingbox sub-opt + sizing). Needs
 aviary + openaerostruct + ambiance:
 
 ```bash
-.venv-avy/bin/python -m pytest packages/avy/examples/single_aisle_oas_wing/tests/ -v --rootdir=.
+uv run pytest packages/avy/examples/single_aisle_oas_wing/tests/ -v --rootdir=.
 ```

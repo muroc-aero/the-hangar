@@ -4,19 +4,20 @@ This package wraps Aviary (>=1.0) as an MCP tool server for coupled
 aircraft sizing + mission trajectory optimization (legacy FLOPS/GASP
 methods on OpenMDAO/dymos).
 
-## The isolated venv (read this first)
+## Runtime
 
-Aviary >=1.0.1 requires openmdao>=3.43 (numpy>=2); the openconcept pin caps
-numpy<2. So `aviary` is NOT a declared dependency and does NOT live in the
-main workspace venv. The Aviary runtime lives in `.venv-avy` at the repo
-root (`bash scripts/setup-avy-venv.sh`: hangar-sdk + hangar-avy + editable
-`upstream/Aviary` at AVY_REF), and in this package's own Docker image.
+`aviary` is an ordinary dependency of this package, installed into the
+single workspace venv by `bash scripts/dev-setup.sh` (editable
+`upstream/Aviary` at AVY_REF; numpy 2 / OpenMDAO >=3.43 / dymos). There is
+no separate Aviary venv: OpenConcept runs in the same venv via the managed
+`scripts/openconcept-numpy2.patch` applied by `scripts/setup-upstream.sh`.
 
-- Server / CLI: `.venv-avy/bin/avy-server`, `.venv-avy/bin/avy-cli`
-- Tests that touch aviary `importorskip("aviary")` -- in the main venv they
-  skip; run them for real with `.venv-avy/bin/python -m pytest ...`
-- `hangar.avy` imports aviary lazily; in the main venv every module still
-  imports and analysis tools raise a clear install-instruction error.
+- Server / CLI: `uv run avy-server`, `uv run avy-cli`
+- Tests that touch aviary `importorskip("aviary")` so an install without it
+  skips them; in the workspace venv they run for real.
+- `hangar.avy` still imports aviary lazily so other tools' Docker images can
+  import it without aviary installed; analysis tools then raise a clear
+  install-instruction error.
 
 ## Key constraints
 
@@ -58,8 +59,8 @@ root (`bash scripts/setup-avy-venv.sh`: hangar-sdk + hangar-avy + editable
   `list_external_subsystems`/`add_external_subsystem`): `oas_wing_mass`
   wraps upstream Aviary's own OpenAeroStruct integration -- a nested
   wingbox sub-optimization (~40 s) whose wing mass overrides the FLOPS
-  estimate on Aircraft.Wing.MASS. Needs openaerostruct + ambiance in
-  .venv-avy (setup-avy-venv.sh installs them). `run_sizing` couples it
+  estimate on Aircraft.Wing.MASS. Needs openaerostruct + ambiance
+  (declared dependencies of hangar-avy). `run_sizing` couples it
   `coupled` (inside the Aviary problem) or `precompute` (sub-opt once ->
   deck override -> plain sizing) -- exactly equivalent here (feed-forward
   topology, measured bit-identical; docs/aviary-oas-integration-plan.md).
@@ -67,7 +68,7 @@ root (`bash scripts/setup-avy-venv.sh`: hangar-sdk + hangar-avy + editable
   `planform: "deck"` derives a simple trapezoid from the deck, or an
   explicit planform dict. The upstream import path is an example
   namespace -- packages/avy/tests/test_avy_oas_contract.py pins it;
-  re-run in .venv-avy after any AVY_REF/OAS_REF bump.
+  re-run after any AVY_REF/OAS_REF bump.
 - Session state is `hangar.avy.state.AvySession` (typed `aircraft`
   registry); the artifact store is the shared SDK singleton.
 
@@ -79,18 +80,18 @@ defaults; docker-compose maps the same host ports onto in-container 8000).
 ## Testing
 
 ```bash
-# Aviary-free unit tests (main venv; aviary-dependent tests skip)
+# Fast unit tests (skips the slow sizing runs)
 uv run pytest packages/avy/tests/ -m "not slow"
 
-# Full suite incl. sizing runs + golden anchors (isolated venv)
-.venv-avy/bin/python -m pytest packages/avy/tests/ -v
+# Full suite incl. sizing runs + golden anchors
+uv run pytest packages/avy/tests/ -v
 
 # OAS-in-Aviary drift contract tests (after AVY_REF/OAS_REF bumps)
-.venv-avy/bin/python -m pytest packages/avy/tests/test_avy_oas_contract.py -v
+uv run pytest packages/avy/tests/test_avy_oas_contract.py -v
 
 # Lane A/B parity examples (run each directory separately)
-.venv-avy/bin/python -m pytest packages/avy/examples/single_aisle_sizing/tests/ -v --rootdir=.
-.venv-avy/bin/python -m pytest packages/avy/examples/large_single_aisle_sizing/tests/ -v --rootdir=.
-.venv-avy/bin/python -m pytest packages/avy/examples/bwb_sizing/tests/ -v --rootdir=.
-.venv-avy/bin/python -m pytest packages/avy/examples/single_aisle_oas_wing/tests/ -v --rootdir=.
+uv run pytest packages/avy/examples/single_aisle_sizing/tests/ -v --rootdir=.
+uv run pytest packages/avy/examples/large_single_aisle_sizing/tests/ -v --rootdir=.
+uv run pytest packages/avy/examples/bwb_sizing/tests/ -v --rootdir=.
+uv run pytest packages/avy/examples/single_aisle_oas_wing/tests/ -v --rootdir=.
 ```

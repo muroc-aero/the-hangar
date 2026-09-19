@@ -1,8 +1,8 @@
 # Commands Reference
 
 All tools, one-shot subcommand names, and key parameters. Every tool is
-also callable in interactive/script mode by its Python name. Invoke via
-`.venv-avy/bin/avy-cli` (see SKILL.md).
+also callable in interactive/script mode by its Python name. Invoke as
+`avy-cli` (or `uv run avy-cli`; see SKILL.md).
 
 ## Aircraft definition
 

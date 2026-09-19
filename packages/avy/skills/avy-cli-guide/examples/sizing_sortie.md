@@ -16,7 +16,7 @@ result. Script mode (`sizing_sortie.json`):
 ```
 
 ```bash
-.venv-avy/bin/avy-cli run-script sizing_sortie.json
+avy-cli run-script sizing_sortie.json
 ```
 
 Reading the run_sizing envelope:
@@ -34,6 +34,6 @@ Reading the run_sizing envelope:
 Then visualize:
 
 ```bash
-.venv-avy/bin/avy-cli visualize --run-id <run_id> --plot-type mission_profile --output file
-.venv-avy/bin/avy-cli visualize --run-id <run_id> --plot-type mass_breakdown --output file
+avy-cli visualize --run-id <run_id> --plot-type mission_profile --output file
+avy-cli visualize --run-id <run_id> --plot-type mass_breakdown --output file
 ```

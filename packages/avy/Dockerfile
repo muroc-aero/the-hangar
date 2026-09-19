@@ -11,15 +11,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # Install Aviary from upstream at a pinned ref (brings openmdao>=3.43,
-# dymos, numpy 2 -- this image is the isolated Aviary environment; no
-# openconcept/oas/pycycle here, so the workspace numpy-2 conflict does not
-# apply). Default tracks scripts/upstream-pins.env (AVY_REF); bump both
-# together. Override at build time: --build-arg AVY_REF=<commit|tag|branch>
+# dymos, numpy 2 -- the same stack the whole workspace runs on).
+# Default tracks scripts/upstream-pins.env (AVY_REF); bump both together.
+# Override at build time: --build-arg AVY_REF=<commit|tag|branch>
 ARG AVY_REF=2af552a9b2aae5965c12ae8afde091cce7587c32
 RUN pip install --no-cache-dir "aviary @ git+https://github.com/OpenMDAO/Aviary.git@${AVY_REF}"
 
-# OpenAeroStruct + ambiance for the OAS-in-Aviary external subsystem
-# (aviary's own numpy-2 stack satisfies OAS -- no cap conflict here).
+# OpenAeroStruct + ambiance for the OAS-in-Aviary external subsystem.
 # Default tracks OAS_REF in scripts/upstream-pins.env; bump both together.
 ARG OAS_REF=0a4d614f9494cbadaba4a6fa32a33d6e54e14f34
 RUN pip install --no-cache-dir \

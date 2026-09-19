@@ -33,8 +33,8 @@ Reading the envelopes:
 Payload-range diagram (sizing + 2 more off-design missions, ~3x):
 
 ```bash
-.venv-avy/bin/avy-cli run-payload-range --run-name "PR diagram"
-.venv-avy/bin/avy-cli visualize --run-id <run_id> --plot-type payload_range --output file
+avy-cli run-payload-range --run-name "PR diagram"
+avy-cli visualize --run-id <run_id> --plot-type payload_range --output file
 ```
 
 `results.payload_range.points` has the four classic points: max payload @

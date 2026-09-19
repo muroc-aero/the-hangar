@@ -310,11 +310,11 @@ def _register_builtins() -> None:
     except ImportError:
         logger.info("evt/evtolpy not available, evt factories not registered")
 
-    # avy factory: a subprocess black box into the isolated Aviary venv
-    # (.venv-avy) -- aviary needs numpy>=2 and cannot be imported here, so
-    # registration has no aviary dependency at all; the component errors at
-    # compute time with setup instructions if the venv is missing. Guarded
-    # like the others so omd core survives a broken optional module.
+    # avy factory: native Aviary composition (AviaryGroup inside the omd
+    # problem). The module imports hangar.avy (lazy aviary imports), so it
+    # registers wherever hangar-avy is installed; the factory itself errors
+    # with install instructions when aviary is missing. Guarded like the
+    # others so omd core survives a broken optional module.
     try:
         from hangar.omd.factories.avy import build_avy_sizing
         register_factory("avy/Sizing", build_avy_sizing)

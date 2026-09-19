@@ -5,9 +5,7 @@ description = "Shared infrastructure for Hangar engineering MCP servers"
 requires-python = ">=3.11"
 dependencies = [
     # fastmcp 4 / mcp 2 renamed FastMCP -> MCPServer and moved the
-    # fastmcp.* helpers this SDK and the tool servers import. The workspace
-    # venv is protected by uv.lock; the isolated .venv-avy (no lockfile)
-    # is not, so the bound must live here.
+    # fastmcp.* helpers this SDK and the tool servers import.
     "fastmcp>=2.0,<4",
     "mcp>=1.0,<2",
     "pydantic>=2.0",

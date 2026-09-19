@@ -22,10 +22,10 @@ values** (gross 782,430 lbm / fuel 239,188 lbm) at `rel=2e-2` -- the fixed
 profile lands ~0.4% heavier on gross and ~1.2% on fuel, and the test also
 asserts it can never *beat* the profile-optimized fuel burn.
 
-Run (inside `.venv-avy`; see `scripts/setup-avy-venv.sh`):
+Run (needs aviary, installed into the workspace venv by `bash scripts/dev-setup.sh`):
 
 ```bash
-.venv-avy/bin/python -m pytest packages/avy/examples/bwb_sizing/tests/ -v --rootdir=.
+uv run pytest packages/avy/examples/bwb_sizing/tests/ -v --rootdir=.
 ```
 
 ## Why there is no GwFm (GASP-mass) example

@@ -1,7 +1,7 @@
 """Unit tests for the avy tool surface.
 
-Aviary-free tests run in the main workspace venv; tests marked with
-``importorskip("aviary")`` need the isolated .venv-avy.
+Aviary-free tests run anywhere; tests guarded with
+``importorskip("aviary")`` need the aviary package (a workspace dependency).
 """
 
 from __future__ import annotations
@@ -130,17 +130,17 @@ async def test_reset_clears_aircraft(single_aisle):
 
 @pytest.mark.skipif(HAS_AVIARY, reason="aviary installed; error path not reachable")
 async def test_run_sizing_without_aviary_gives_install_instructions(single_aisle):
-    with pytest.raises(RuntimeError, match="setup-avy-venv"):
+    with pytest.raises(RuntimeError, match="dev-setup"):
         await run_sizing(aircraft_name=single_aisle)
 
 
 @pytest.mark.skipif(HAS_AVIARY, reason="aviary installed; error path not reachable")
 async def test_definition_tools_without_aviary_give_install_instructions(single_aisle):
-    with pytest.raises(RuntimeError, match="setup-avy-venv"):
+    with pytest.raises(RuntimeError, match="dev-setup"):
         await define_aircraft(
             aircraft_name=single_aisle, overrides={"aircraft:wing:span": 100}
         )
-    with pytest.raises(RuntimeError, match="setup-avy-venv"):
+    with pytest.raises(RuntimeError, match="dev-setup"):
         await configure_mission(aircraft_name=single_aisle)
 
 
@@ -171,7 +171,7 @@ def test_payload_range_findings_partial_diagram_fails():
 
 
 # ---------------------------------------------------------------------------
-# Tests that need aviary (run in .venv-avy)
+# Tests that need aviary (workspace venv)
 # ---------------------------------------------------------------------------
 
 

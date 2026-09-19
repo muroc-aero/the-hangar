@@ -10,8 +10,8 @@ benchmark family) sized on the default 3-phase energy_state mission with a
 - **Lane B** (`lane_b/sizing.json`): the identical problem through the MCP
   tool script (`load_aircraft_template -> configure_mission -> run_sizing`).
 
-Run (inside `.venv-avy`; see `scripts/setup-avy-venv.sh`):
+Run (needs aviary, installed into the workspace venv by `bash scripts/dev-setup.sh`):
 
 ```bash
-.venv-avy/bin/python -m pytest packages/avy/examples/large_single_aisle_sizing/tests/ -v --rootdir=.
+uv run pytest packages/avy/examples/large_single_aisle_sizing/tests/ -v --rootdir=.
 ```

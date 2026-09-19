@@ -35,10 +35,10 @@ The agent's output should match Lane A and Lane B.
 | `oas_ocp_combined/` | Composite | OAS wing + OCP mission side-by-side (uncoupled) |
 | `ocp_oas_coupled/` | Slot-coupled | OCP mission with OAS VLM drag via slot system |
 | `evt_native_sizing/` | Sizing | Native (gradient-capable) eVTOL MTOW closure sizing |
-| `avy_single_aisle/` | Sizing | Aviary single-aisle coupled sizing + mission (subprocess into `.venv-avy`) |
+| `avy_single_aisle/` | Sizing | Aviary single-aisle coupled sizing + mission (native `avy/Sizing` factory, `mode: optimize`) |
 | `avy_bwb/` | Sizing | Aviary blended-wing-body fixed-profile sizing |
-| `avy_oas_wing/` | Tight-coupled | OAS wingbox wing mass *inside* Aviary sizing (external subsystem) |
-| `oas_avy_wing_mass/` | Loose-coupled | OAS structural mass drives Aviary sizing across the venv boundary (`override_inputs`) |
+| `avy_oas_wing/` | Tight-coupled | OAS wingbox wing mass *inside* Aviary sizing (`external_subsystems`, built inside the `AviaryGroup`) |
+| `oas_avy_wing_mass/` | Loose-coupled | OAS structural mass drives Aviary's `aircraft:wing:mass` through a plan connection (deck `overrides` make it a boundary input) |
 
 ## Prerequisites
 
@@ -77,9 +77,10 @@ Lane C parity is covered in two stages:
    assemble_plan -> validate_plan -> run_plan -> get_results) in
    process and compares against Lane A. Covers every parity case except
    `ocp_pyc_coupled` (a documented Lane B/C gap -- see that example's
-   TODO.md) and the slow Aviary cases beyond `avy_single_aisle`
-   (`avy_bwb`, `avy_oas_wing`, `oas_avy_wing_mass` ship closed Lane C
-   prompts only).
+   TODO.md) and the Aviary cases beyond `avy_single_aisle`
+   (`avy_oas_wing` and `oas_avy_wing_mass` ship closed Lane C prompts
+   only; `avy_bwb` has no Lane C prompt). The Aviary cases need `aviary`
+   in the workspace venv (`bash scripts/dev-setup.sh`) and skip otherwise.
 2. **Agent eval (manual / automatable)** -- `agent_eval/eval_lane_c.py`
    launches a blind agent through the Claude Agent SDK, restricted to
    the omd MCP tools, and scores its reported metrics against Lane A.
