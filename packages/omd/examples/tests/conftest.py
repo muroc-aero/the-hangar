@@ -23,7 +23,7 @@ _EXAMPLE_PKGS = [
     "oas_ocp_combined", "ocp_oas_coupled", "ocp_oas_direct",
     "ocp_pyc_coupled", "pyc_turbojet", "ocp_three_tool",
     "evt_native_sizing", "avy_single_aisle", "avy_bwb", "avy_oas_wing",
-    "oas_avy_wing_mass",
+    "oas_avy_wing_mass", "avy_three_tool",
 ]
 
 

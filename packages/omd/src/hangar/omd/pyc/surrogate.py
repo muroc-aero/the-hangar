@@ -210,6 +210,13 @@ def _run_hbtf_deck(
 
     HBTF off-design uses T4 throttle mode, so Fn_target is converted
     to a T4 value via linear mapping from throttle fraction.
+
+    A point counts as converged only when the DESIGN and OD_0 cycle Newton
+    solvers converge: they are run with ``err_on_non_converge`` so a stalled
+    solve (NaN residuals, maxiter) raises instead of reporting whatever the
+    balances held -- stale guesses, 1e14 lbf -- as a valid deck row.
+    (Warm-starting each point from its converged neighbour was tried and
+    changed nothing: the points that fail do so from any guess.)
     """
     from hangar.omd.pyc.archetypes import MPHbtf
     from hangar.omd.pyc.defaults import (
@@ -229,6 +236,10 @@ def _run_hbtf_deck(
     T4_all = np.zeros(n)
     converged_all = np.ones(n, dtype=bool)
 
+    od_guesses = {
+        k: DEFAULT_HBTF_OD_GUESSES[k] for k in ("FAR", "W", "BPR", "lp_Nmech", "hp_Nmech")
+    }
+
     for i, pt in enumerate(od_points):
         thr_frac = pt["Fn_target"] / design_Fn
         t4_val = idle_T4 + thr_frac * (design_T4 - idle_T4)
@@ -239,49 +250,69 @@ def _run_hbtf_deck(
             "throttle_mode": "T4",
         }]
 
-        try:
-            prob = om.Problem(reports=False)
-            prob.model = MPHbtf(params=merged, od_points=hbtf_od)
-            prob.setup(check=False)
-
-            prob.set_val("DESIGN.fc.alt", design_conditions["alt"], units="ft")
-            prob.set_val("DESIGN.fc.MN", design_conditions["MN"])
-            prob.set_val("DESIGN.Fn_DES", design_Fn, units="lbf")
-            prob.set_val("DESIGN.T4_MAX", design_T4, units="degR")
-
-            dg = DEFAULT_HBTF_DESIGN_GUESSES
-            prob.set_val("DESIGN.balance.FAR", dg["FAR"])
-            prob.set_val("DESIGN.balance.W", dg["W"])
-            prob.set_val("DESIGN.balance.lpt_PR", dg["lpt_PR"])
-            prob.set_val("DESIGN.balance.hpt_PR", dg["hpt_PR"])
-            prob.set_val("DESIGN.fc.conv.balance.Pt", dg["fc_Pt"])
-            prob.set_val("DESIGN.fc.conv.balance.Tt", dg["fc_Tt"])
-
-            og = DEFAULT_HBTF_OD_GUESSES
-            prob.set_val("OD_0.fc.MN", pt["MN"])
-            prob.set_val("OD_0.fc.alt", pt["alt"], units="ft")
-            prob.set_val("OD_0.T4_MAX", t4_val, units="degR")
-            prob.set_val("OD_0.balance.FAR", og["FAR"])
-            prob.set_val("OD_0.balance.W", og["W"])
-            prob.set_val("OD_0.balance.BPR", og["BPR"])
-            prob.set_val("OD_0.balance.lp_Nmech", og["lp_Nmech"])
-            prob.set_val("OD_0.balance.hp_Nmech", og["hp_Nmech"])
-
-            _suppress_and_run(prob)
-
-            thrust_all[i] = float(prob.get_val("OD_0.perf.Fn", units="lbf"))
-            fuel_all[i] = float(prob.get_val("OD_0.burner.Wfuel", units="lbm/s"))
-            T4_all[i] = float(prob.get_val("OD_0.burner.Fl_O:tot:T", units="degR"))
-            if thrust_all[i] <= 0 or fuel_all[i] <= 0:
-                converged_all[i] = False
-            prob.cleanup()
-        except Exception as e:
-            logger.debug("HBTF OD point %d failed: %s", i, e)
-            converged_all[i] = False
+        converged_all[i] = _run_hbtf_od_point(
+            merged, hbtf_od, design_conditions, design_Fn, design_T4,
+            t4_val, od_guesses, i, thrust_all, fuel_all, T4_all,
+        )
 
     n_ok = converged_all.sum()
     logger.info("HBTF deck: %d/%d points converged", n_ok, n)
     return thrust_all, fuel_all, T4_all, converged_all
+
+
+def _run_hbtf_od_point(
+    merged, hbtf_od, design_conditions, design_Fn, design_T4, t4_val, og,
+    i, thrust_all, fuel_all, T4_all,
+) -> bool:
+    """Build and solve one HBTF design + off-design problem; True if converged."""
+    from hangar.omd.pyc.archetypes import MPHbtf
+    from hangar.omd.pyc.defaults import DEFAULT_HBTF_DESIGN_GUESSES
+
+    try:
+        prob = om.Problem(reports=False)
+        prob.model = MPHbtf(params=merged, od_points=hbtf_od)
+        prob.setup(check=False)
+        for cycle in ("DESIGN", "OD_0"):
+            solver = prob.model._get_subsystem(cycle).nonlinear_solver
+            if solver is not None and "err_on_non_converge" in solver.options:
+                solver.options["err_on_non_converge"] = True
+
+        prob.set_val("DESIGN.fc.alt", design_conditions["alt"], units="ft")
+        prob.set_val("DESIGN.fc.MN", design_conditions["MN"])
+        prob.set_val("DESIGN.Fn_DES", design_Fn, units="lbf")
+        prob.set_val("DESIGN.T4_MAX", design_T4, units="degR")
+
+        dg = DEFAULT_HBTF_DESIGN_GUESSES
+        prob.set_val("DESIGN.balance.FAR", dg["FAR"])
+        prob.set_val("DESIGN.balance.W", dg["W"])
+        prob.set_val("DESIGN.balance.lpt_PR", dg["lpt_PR"])
+        prob.set_val("DESIGN.balance.hpt_PR", dg["hpt_PR"])
+        prob.set_val("DESIGN.fc.conv.balance.Pt", dg["fc_Pt"])
+        prob.set_val("DESIGN.fc.conv.balance.Tt", dg["fc_Tt"])
+
+        prob.set_val("OD_0.fc.MN", hbtf_od[0]["MN"])
+        prob.set_val("OD_0.fc.alt", hbtf_od[0]["alt"], units="ft")
+        prob.set_val("OD_0.T4_MAX", t4_val, units="degR")
+        for key, val in og.items():
+            prob.set_val(f"OD_0.balance.{key}", val)
+
+        _suppress_and_run(prob)
+
+        thrust = float(prob.get_val("OD_0.perf.Fn", units="lbf"))
+        fuel = float(prob.get_val("OD_0.burner.Wfuel", units="lbm/s"))
+        T4 = float(prob.get_val("OD_0.burner.Fl_O:tot:T", units="degR"))
+        if thrust <= 0 or fuel <= 0:
+            prob.cleanup()
+            return False
+        thrust_all[i], fuel_all[i], T4_all[i] = thrust, fuel, T4
+        prob.cleanup()
+        return True
+    except om.AnalysisError as e:
+        logger.debug("HBTF OD point %d did not converge: %s", i, e)
+        return False
+    except Exception as e:
+        logger.debug("HBTF OD point %d failed: %s", i, e)
+        return False
 
 
 def _suppress_and_run(prob: om.Problem) -> None:

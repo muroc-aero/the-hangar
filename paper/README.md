@@ -23,29 +23,38 @@ the agent's own report agreed it had failed. `Lost` and `Review` are 0.
 
 **Stale.** Lanes A, B and C (scripted) are from 2026-07-17 at git `ac32a6f`
 (`paper/results/lane_parity_meta.json`), 26 comparisons, pytest exit 0. They
-are a `paper/run_lanes.py` away from current, but that refresh waits on a
-decision about PR #88 (`fix/ocp-three-tool-convergence`), which changes the
-B738 row. Deciding #88 first avoids rendering the table twice.
+are a `paper/run_lanes.py` away from current. The B738 three-tool case
+(`ocp_three_tool`) was deactivated on 2026-09-20 (skip marks in both parity
+suites): on the numpy-2 stack its Lane A takes ~97 min and its fuel burn
+moved from 2449.70 to 2855.08 kg, which belongs to PR #88
+(`fix/ocp-three-tool-convergence`). The next `run_lanes.py` refresh therefore
+drops that row and adds the Aviary rows below; the three-tool row comes back
+with #88.
 
 **Unfinished:**
 
-1. **`ocp_three_tool` is not in the anchor manifest.** `configs/lane_c_anchor/`
-   holds 11 cases and that is not one of them, so its agent cells read `--`.
-   Adding it to the arm is the fix -- not back-filling from the retired
-   `eval_lane_c.py` harness, which would give that one column a second
-   provenance. Budget a Lane A reference run first.
+1. **No three-tool case is in the anchor manifest.** `configs/lane_c_anchor/`
+   holds 11 cases; `ocp_three_tool` was never one of them (its agent cells
+   read `--`) and is now deactivated. The three-tool case to add to the arm
+   is `avy_three_tool` (Aviary + OAS + pyCycle, see item 3) -- not a
+   back-fill from the retired `eval_lane_c.py` harness, which would give
+   that one column a second provenance. Budget a Lane A reference run first.
 2. **The local arms predate the current policy.** The newest gemma records are
    2026-08-11 and the newest qwen ones 2026-06/07, so both were graded under
    last-run-of-mode and ran on the pre-calibration budgets. They are in the
    table for reference but are **not comparable with the anchor** until
    re-run (gemma ~14 h, qwen ~9 h, both on-device and free).
 3. **The Aviary lanes are not in the table yet.** `packages/omd/examples/`
-   gained four Aviary cases (`avy_single_aisle`, `avy_bwb`, `avy_oas_wing`,
-   `oas_avy_wing_mass`) after the 07-17 run; their A-vs-B comparisons and
-   the scripted Lane C for `avy_single_aisle` flow through `run_lanes.py`
-   on the next run (Aviary now lives in the workspace venv -- no separate
-   venv to set up). None of them is in the anchor manifest, so the agent
-   column stays `--` until a case is added there.
+   gained five Aviary cases (`avy_single_aisle`, `avy_bwb`, `avy_oas_wing`,
+   `oas_avy_wing_mass`, and on 2026-09-20 `avy_three_tool` -- Aviary + OAS
+   + pyCycle, the three-tool demo replacing `ocp_three_tool`) after the
+   07-17 run; their A-vs-B comparisons and the scripted Lane C for
+   `avy_single_aisle` and `avy_three_tool` flow through `run_lanes.py` on
+   the next run (Aviary now lives in the workspace venv -- no separate venv
+   to set up; `make_tables.py` has their titles). None of them is in the
+   anchor manifest, so the agent column stays `--` until a case is added
+   there. The first `avy_three_tool` run also pays ~5 min for the pyCycle
+   sweep, cached afterwards under `hangar_data/pyc_decks/`.
 4. **The prompt and budget changes have never been exercised by a fresh run.**
    the-hangar #107/#108 and hangar-evals #24 landed after the arm was measured,
    and the 09-12 work re-*scored* the stored arm rather than re-running it.

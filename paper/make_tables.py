@@ -113,6 +113,37 @@ CASE_INFO: dict[str, dict] = {
         "tools": "OCP + OAS + pyCycle",
         "metrics": ["fuel_burn_kg", "OEW_kg", "MTOW_kg"],
     },
+    # Aviary cases (native avy/Sizing factory; run_lanes.py emits them
+    # once aviary is installed in the venv)
+    "avy_single_aisle": {
+        "title": "Single-aisle sizing (Aviary)",
+        "tools": "Aviary",
+        "metrics": ["gross_mass_lbm", "total_fuel_mass_lbm", "final_time_min"],
+    },
+    "avy_bwb": {
+        "title": "BWB sizing (Aviary)",
+        "tools": "Aviary",
+        "metrics": ["gross_mass_lbm", "total_fuel_mass_lbm",
+                    "operating_mass_lbm", "final_time_min"],
+    },
+    "avy_oas_wing": {
+        "title": "Sizing w/ OAS wingbox in Aviary",
+        "tools": "Aviary + OAS",
+        "metrics": ["gross_mass_lbm", "total_fuel_mass_lbm", "wing_mass_lbm",
+                    "final_time_min"],
+    },
+    "oas_avy_wing_mass": {
+        "title": "OAS wing mass -> Aviary sizing",
+        "tools": "OAS + Aviary",
+        "metrics": ["wing_mass_lbm", "gross_mass_lbm", "total_fuel_mass_lbm",
+                    "final_time_min"],
+    },
+    "avy_three_tool": {
+        "title": "Single-aisle three-tool sizing",
+        "tools": "Aviary + OAS + pyCycle",
+        "metrics": ["gross_mass_lbm", "total_fuel_mass_lbm", "wing_mass_lbm",
+                    "final_time_min", "engine_scale_factor"],
+    },
 }
 
 # Agent-eval case/metric names -> (parity case slug, metric key).
@@ -335,6 +366,11 @@ TEX_TITLE = {
     "evt_native_sizing": "Archer Midnight eVTOL sizing",
     "evt_open_sizing": "Archer Midnight eVTOL sizing",
     "ocp_three_tool": "737-800 three-tool coupled mission",
+    "avy_single_aisle": "Single-aisle sizing and mission",
+    "avy_bwb": "Blended-wing-body sizing",
+    "avy_oas_wing": "Sizing with OAS wingbox wing mass",
+    "oas_avy_wing_mass": "OAS wing mass into Aviary sizing",
+    "avy_three_tool": "Single-aisle three-tool coupled sizing",
 }
 
 _SLUG_BY_TITLE = {info["title"]: slug for slug, info in CASE_INFO.items()}
@@ -348,6 +384,9 @@ TEX_TOOLS = {
     "OCP + pyCycle": r"OCP\,+\ pyCycle",
     "OCP + OAS + pyCycle": r"OCP\,+\ OAS\,+\ pyCycle",
     "evt (native)": "evtolpy",
+    "Aviary + OAS": r"Aviary\,+\ OAS",
+    "OAS + Aviary": r"OAS\,+\ Aviary",
+    "Aviary + OAS + pyCycle": r"Aviary\,+\ OAS\,+\ pyCycle",
 }
 
 # Metric keys are variable names; the paper wants units.
@@ -361,6 +400,12 @@ TEX_METRIC = {
     "wing_CL": "wing CL",
     "wing_CD": "wing CD",
     "Fn": "Fn (lbf)",
+    "gross_mass_lbm": "gross mass (lbm)",
+    "total_fuel_mass_lbm": "fuel (lbm)",
+    "operating_mass_lbm": "OEW (lbm)",
+    "wing_mass_lbm": "wing mass (lbm)",
+    "final_time_min": "block time (min)",
+    "engine_scale_factor": "engine scale factor",
 }
 
 # Column headings have to survive a 3pt-separated numeric column, so the
