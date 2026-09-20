@@ -842,6 +842,7 @@ version = "0.1.0"
 source = { editable = "packages/sdk" }
 dependencies = [
     { name = "fastmcp" },
+    { name = "mcp" },
     { name = "pydantic" },
     { name = "python-dotenv" },
     { name = "pyyaml" },
@@ -869,13 +870,14 @@ viz = [
 
 [package.metadata]
 requires-dist = [
-    { name = "fastmcp", specifier = ">=2.0" },
+    { name = "fastmcp", specifier = ">=2.0,<4" },
     { name = "httpx", marker = "extra == 'all'", specifier = ">=0.27" },
     { name = "httpx", marker = "extra == 'auth'", specifier = ">=0.27" },
     { name = "itsdangerous", marker = "extra == 'all'", specifier = ">=2.1" },
     { name = "itsdangerous", marker = "extra == 'http'", specifier = ">=2.1" },
     { name = "matplotlib", marker = "extra == 'all'" },
     { name = "matplotlib", marker = "extra == 'viz'" },
+    { name = "mcp", specifier = ">=1.0,<2" },
     { name = "pydantic", specifier = ">=2.0" },
     { name = "pyjwt", extras = ["crypto"], marker = "extra == 'all'", specifier = ">=2.8" },
     { name = "pyjwt", extras = ["crypto"], marker = "extra == 'auth'", specifier = ">=2.8" },

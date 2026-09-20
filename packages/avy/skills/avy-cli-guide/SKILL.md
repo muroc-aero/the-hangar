@@ -112,8 +112,12 @@ response is a versioned envelope; the headline numbers are under
   validated against Aviary's metadata; typos error with close matches.
 - Only energy_state missions run today; GASP 2DOF templates are listed but
   rejected by analysis tools.
-- `run_off_design` / `run_payload_range` re-run the sizing internally
-  (no live problem is cached) -- expect ~2x / ~3x run_sizing wall-clock.
+- `run_off_design` / `run_payload_range` fly from the session's last
+  converged sizing of the aircraft when its deck/overrides/mission/
+  subsystems/optimizer settings still match (see
+  `results.design_point.sizing_reused`); otherwise they re-run the sizing
+  internally first (~2x / ~3x run_sizing wall-clock). `run_payload_range`
+  consumes the cached sizing (upstream widens its cruise bounds in place).
 
 ## Common pitfalls
 

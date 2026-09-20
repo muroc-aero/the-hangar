@@ -113,5 +113,5 @@ exactly this format.
 | Tool | Wall-clock (default mission, SLSQP) |
 |------|-------------------------------------|
 | `run_sizing` | ~20 s |
-| `run_off_design` | ~40 s (re-runs the sizing internally) |
-| `run_payload_range` | ~60 s (sizing + 2 off-design missions) |
+| `run_off_design` | ~20 s after a matching `run_sizing`; ~40 s when it must re-size first |
+| `run_payload_range` | ~40 s after a matching `run_sizing` (2 off-design missions); ~60 s when it must re-size first |

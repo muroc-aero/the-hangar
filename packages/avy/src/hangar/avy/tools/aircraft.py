@@ -57,6 +57,7 @@ async def load_aircraft_template(
     cfg = get_template(template)
 
     session = _sessions.get(session_id)
+    session.drop_sized(name)  # a reloaded aircraft is a new design
     session.aircraft[name] = {
         "template": template,
         "deck": cfg["deck"],
@@ -64,6 +65,7 @@ async def load_aircraft_template(
         "mission_method": cfg["mission_method"],
         "overrides": {},
         "mission": None,
+        "sized_run_id": None,
     }
 
     runnable = cfg["mission_method"] in MISSION_METHODS
