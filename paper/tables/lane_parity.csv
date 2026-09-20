@@ -10,10 +10,10 @@ Rect wing aerostructural,OAS (tube FEM),CL,0.480648,0.480648,0,0.480648,0,0.4806
 Caravan 3-phase mission,OCP,fuel_burn_kg,171.309,171.309,0,171.309,0,171.309,7.9e-07
 ,,OEW_kg,2267.46,2267.46,0,2267.46,0,2267.46,0
 ,,MTOW_kg,3970,3970,0,3970,0,3970,0
-Caravan full mission (BFL),OCP,fuel_burn_kg,172.321,172.321,0,172.321,0,172.321,0
+Caravan full mission (BFL),OCP,fuel_burn_kg,172.321,172.321,0,172.321,0,172.321,1.8e-10
 ,,OEW_kg,2267.46,2267.46,0,2267.46,0,2267.46,0
 ,,MTOW_kg,3970,3970,0,3970,0,3970,0
-King Air series-hybrid mission,OCP,fuel_burn_kg,391.894,391.894,0,391.894,0,391.894,0
+King Air series-hybrid mission,OCP,fuel_burn_kg,391.894,391.894,0,391.894,0,391.894,1.5e-16
 ,,OEW_kg,2969.39,2969.39,0,2969.39,0,2969.39,0
 ,,MTOW_kg,4581,4581,0,4581,0,4581,0
 "Wing + mission, uncoupled composite",OAS + OCP,wing_CL,0.269813,0.269813,0,0.269813,0,0.269813,0
@@ -21,18 +21,35 @@ King Air series-hybrid mission,OCP,fuel_burn_kg,391.894,391.894,0,391.894,0,391.
 ,,fuel_burn_kg,171.309,171.309,0,171.309,0,171.309,7.9e-07
 ,,OEW_kg,2267.46,2267.46,0,2267.46,0,2267.46,0
 ,,MTOW_kg,3970,3970,0,3970,0,3970,0
-Mission w/ VLM drag slot,OCP + OAS,fuel_burn_kg,136.923,136.923,0,136.923,0,136.923,0
+Mission w/ VLM drag slot,OCP + OAS,fuel_burn_kg,136.923,136.923,0,136.923,0,136.923,2.1e-16
 ,,OEW_kg,2267.46,2267.46,0,2267.46,0,2267.46,0
 ,,MTOW_kg,3970,3970,0,3970,0,3970,0
 Mission w/ direct-coupled VLM drag,OCP + OAS,fuel_burn_kg,135.177,135.177,0,135.177,0,135.177,1.2e-06
 ,,OEW_kg,2267.46,2267.46,0,2267.46,0,2267.46,0
 ,,MTOW_kg,3970,3970,0,3970,0,3970,0
-Turbojet design point,pyCycle,Fn,11800,11800,0,11800,0,11800,0
-,,TSFC,0.782231,0.782231,0,0.782231,0,0.782231,0
+Turbojet design point,pyCycle,Fn,11800,11800,0,11800,0,11800,7.7e-13
+,,TSFC,0.782231,0.782231,0,0.782231,0,0.782231,7.8e-13
 ,,OPR,13.5,13.5,0,13.5,0,13.5,0
 Archer Midnight eVTOL sizing,evt (native),sized_mtow_kg,2019.47,2019.47,0,2019.47,0,2019.47,0
 ,,total_mission_energy_kw_hr,65.9496,65.9496,0,65.9496,0,65.9496,0
 ,,peak_power_kw,846.521,846.521,0,846.521,0,846.521,0
-B738 three-tool mission,OCP + OAS + pyCycle,fuel_burn_kg,2449.7,2449.7,3.9e-15,2449.7,1.2e-14,--,--
-,,OEW_kg,41871,41871,0,41871,0,--,--
-,,MTOW_kg,79002,79002,0,79002,0,--,--
+Single-aisle sizing (Aviary),Aviary,gross_mass_lbm,116423,116423,0,116423,0,--,--
+,,total_fuel_mass_lbm,13814,13814,0,13814,0,--,--
+,,final_time_min,300.685,300.685,0,300.685,0,--,--
+BWB sizing (Aviary),Aviary,gross_mass_lbm,785679,785679,0,--,--,--,--
+,,total_fuel_mass_lbm,242074,242074,0,--,--,--,--
+,,operating_mass_lbm,445794,445794,0,--,--,--,--
+,,final_time_min,994.866,994.866,0,--,--,--,--
+Sizing w/ OAS wingbox in Aviary,Aviary + OAS,gross_mass_lbm,122876,122876,0,--,--,--,--
+,,total_fuel_mass_lbm,13812.2,13812.2,0,--,--,--,--
+,,wing_mass_lbm,14539.3,14539.3,0,--,--,--,--
+,,final_time_min,290.226,290.226,0,--,--,--,--
+OAS wing mass -> Aviary sizing,OAS + Aviary,wing_mass_lbm,13851.6,13851.6,0,--,--,--,--
+,,gross_mass_lbm,122560,122560,0,--,--,--,--
+,,total_fuel_mass_lbm,14198,14198,0,--,--,--,--
+,,final_time_min,300.829,300.829,0,--,--,--,--
+Single-aisle three-tool sizing,Aviary + OAS + pyCycle,gross_mass_lbm,129274,129274,0,129274,0,--,--
+,,total_fuel_mass_lbm,14541.6,14541.6,0,14541.6,0,--,--
+,,wing_mass_lbm,14539.3,14539.3,0,14539.3,0,--,--
+,,final_time_min,290.226,290.226,0,290.226,0,--,--
+,,engine_scale_factor,1.37026,1.37026,0,1.37026,0,--,--
