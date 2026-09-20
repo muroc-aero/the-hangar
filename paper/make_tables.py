@@ -167,6 +167,12 @@ for _m in ("Fn", "TSFC", "OPR"):
 for _m in ("sized_mtow_kg", "total_mission_energy_kw_hr", "peak_power_kw"):
     AGENT_METRIC_MAP[("evt_open_sizing", _m)] = ("evt_native_sizing", _m)
     AGENT_METRIC_MAP[("evt_native_sizing", _m)] = ("evt_native_sizing", _m)
+# Aviary cases (anchor arm since 2026-09-20): same keys in the arm and here.
+for _m in ("gross_mass_lbm", "total_fuel_mass_lbm", "range_nmi", "final_time_min"):
+    AGENT_METRIC_MAP[("avy_single_aisle", _m)] = ("avy_single_aisle", _m)
+for _m in ("gross_mass_lbm", "total_fuel_mass_lbm", "wing_mass_lbm", "range_nmi",
+           "final_time_min", "engine_scale_factor"):
+    AGENT_METRIC_MAP[("avy_three_tool", _m)] = ("avy_three_tool", _m)
 
 
 def _fmt(v: float | None) -> str:

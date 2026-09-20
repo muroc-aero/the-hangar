@@ -25,42 +25,41 @@ both parity suites; on the numpy-2 stack its Lane A takes ~97 min and its
 fuel burn moved from 2449.70 to 2855.08 kg) and comes back with PR #88
 (`fix/ocp-three-tool-convergence`).
 
-**Stale.** The Lane C (agent) column and every row of `sandboxed_evals`
-still come from the `claude-opus-5` anchor arm run 2026-09-10/11 and
-re-scored on 09-12 (32 of 33 seeds pass; the one failure, `oas_aero_rect`
-seed 0 with CD off by 2.7 %, is genuine). That arm predates the numpy-2
-stack, the prompt and budget changes below, and the Aviary cases, so their
-agent cells read `--`.
+**Current, too.** The Lane C (agent) column and every row of
+`sandboxed_evals` come from the `claude-opus-5` anchor arm run 2026-09-20
+(hangar-evals campaigns `anchor_20260920T134338Z` + the resume
+`anchor_20260920T200044Z`): 13 cases x 3 seeds, sandboxed, 38 of 39 graded
+seeds pass, `Lost` and `Review` 0. This is the first arm on the numpy-2
+stack, the first with the #107/#108 prompts and hangar-evals #24 budgets,
+and the first with the Aviary cases: `avy_single_aisle` and
+`avy_three_tool` (Aviary + OAS + pyCycle, the three-tool row) both 3/3,
+every metric matching Lane A to the printed digits, so the three-tool
+demo now has an agent column. The one failure -- `oas_aerostruct_rect`
+seed 2, CD 0.0209 vs 0.0359, exactly the CD0 term the agent left out of
+the surface -- is genuine and the agent's own report agreed. The
+`oas_aero_rect` seed that failed on 09-11 passed this time. Two
+`avy_three_tool` seeds were first lost to the plan's five-hour usage
+limit and re-run after the reset; `--force` re-ran the 11 old cells.
+
+Two operational notes from that run. The Mac slept for ~50 min during
+`paraboloid` seed 2; the runner and the CLI both measure with monotonic
+clocks, which stop during sleep, so the seed recorded 880 s and the
+1100 s cap never fired. Run arms under `caffeinate -i -w <runner pid>`
+(or keep the machine awake). And a rate-limit rejection mid-case shows up
+as `Lost` seeds with a `rate_limit_event` in the harness stdout tail; the
+plain `scripts/evals run anchor` (no `--force`) resumes exactly those.
 
 **Unfinished:**
 
-1. **The anchor arm has not been re-run.** hangar-evals now carries 13
-   cases: the 11 plus `avy_single_aisle` and `avy_three_tool` (the
-   three-tool case the arm never had). Both are proven achievable through
-   the tool surface by the scripted validity baselines
-   (`python -m hangar.evals.validity --case ...`, 2026-09-20: VALID, every
-   metric PASS, `avy_three_tool` in 28 s with the shared pyCycle deck
-   cache). The run is one command, but it needs the 1Password unlock for
-   the Claude token, which an unattended session cannot supply:
-
-   ```bash
-   cd ../hangar-evals && op run --env-file=op.env -- scripts/evals run anchor --force
-   ```
-
-   `--force` matters: the 11 old cells are graded, and without it the
-   runner skips them and runs only the two Aviary cases. Prior wall
-   clocks put the 13 cases at ~3.5 h plus the two new ones. The runner
-   re-renders these tables when it finishes.
-2. **The local arms predate the current policy.** The newest gemma records are
+1. **The local arms predate the current policy.** The newest gemma records are
    2026-08-11 and the newest qwen ones 2026-06/07, so both were graded under
    last-run-of-mode and ran on the pre-calibration budgets. They are in the
    table for reference but are **not comparable with the anchor** until
    re-run (gemma ~14 h, qwen ~9 h, both on-device and free). Their
    manifests carry the two Aviary cases too.
-3. **The prompt and budget changes have never been exercised by a fresh run.**
-   the-hangar #107/#108 and hangar-evals #24 landed after the arm was measured,
-   and the 09-12 work re-*scored* the stored arm rather than re-running it.
-   The next anchor arm is the first real test of them.
+2. **The anchor image pins Claude Code 2.1.212** while the host CLI is
+   2.1.270. The arm above ran on 2.1.212; bump `containers/build.sh` and
+   `ANCHOR_IMAGE` before the next arm if it should be on the current CLI.
 
 ## What gets produced
 
@@ -144,8 +143,8 @@ uv run python paper/make_tables.py --agent-model claude-opus-5   # the default
 ```
 
 The arm is the column's only source. A case the arm has not run shows `--`
-rather than a value from some other run -- today that is every Aviary case,
-until the anchor arm is re-run with its 13-case manifest. The legacy
+rather than a value from some other run -- today `avy_bwb`, `avy_oas_wing`
+and `oas_avy_wing_mass`, which have no Lane C and are not in the manifest. The legacy
 `eval_lane_c.py` harness still runs a single blind case if you want one, but
 `make_tables.py` no longer reads its output.
 
