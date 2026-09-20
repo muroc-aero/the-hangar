@@ -348,6 +348,25 @@ Config keys:
   upstream's OAS wingbox wing-mass sub-optimization, ~40 s), materialized
   INSIDE the group -- the seam for components that must live inside the
   mission phases.
+- `engine_deck` -- `{provider: pyc/hbtf | pyc/turbojet, config: {...},
+  cache: true | false | dir}`: replace the aircraft deck's file engine
+  (`aircraft:engine:data_file`) with a pyCycle one. A hangar pyCycle
+  off-design sweep (`hangar.omd.pyc.surrogate.generate_deck`) is
+  tabulated as an in-memory Aviary `EngineDeck`
+  (`hangar.omd.pyc.aviary_deck`) and handed to
+  `load_external_subsystems`, which routes any `EngineModel` into
+  `engine_models`. pyCycle sets the engine's lapse and SFC; Aviary reads
+  the reference SLS thrust off the table (the grid must include
+  alt 0 / Mach 0 / throttle 1) and scales the deck to the aircraft's
+  `scaled_sls_thrust` like any file deck. `config` keys: `design_alt_ft`,
+  `design_MN`, `design_Fn_lbf`, `design_T4_degR`, `engine_params`, `grid`
+  (`{alt_ft, MN, throttle}`; default = a transport envelope the HBTF
+  converges on). The sweep (~3 s/point) is cached at
+  `<HANGAR_DATA_DIR>/pyc_decks/<archetype>_<sha>.npz`, keyed on the
+  resolved spec + pyCycle version. Points whose cycle Newton fails are
+  dropped, and a deck whose thrust is not monotone in throttle at any
+  flight condition is refused before it reaches Aviary. Third tool in
+  `examples/avy_three_tool/` (Aviary + OAS + pyCycle).
 - `optimizer` -- SLSQP only under omd (ScipyOptimizeDriver); use
   avy-cli / avy-server for IPOPT or SNOPT.
 - `max_iter` -- driver maxiter (default 50).
@@ -384,7 +403,10 @@ Results: the run summary carries `gross_mass_lbm`, `total_fuel_mass_lbm`,
 short names resolve through `var_paths` for plan DVs/constraints/
 objectives) and a boolean `converged` taken from the driver result --
 Aviary optimizer non-convergence does not raise, so check it. `converged`
-is a summary field, not an OpenMDAO output.
+is a summary field, not an OpenMDAO output. With `engine_deck`, the
+summary also carries `engine_deck` (`provider`, `sha`, `cache_hit`,
+`n_points`/`n_converged`/`n_used`, `reference_sls_thrust_lbf`,
+`scale_factor`, `scaled_sls_thrust_lbf`).
 
 Generic materializer hooks the factory uses (all documented in
 `factory_metadata.py`; nothing Aviary-specific lives in the materializer):

@@ -39,6 +39,7 @@ The agent's output should match Lane A and Lane B.
 | `avy_bwb/` | Sizing | Aviary blended-wing-body fixed-profile sizing |
 | `avy_oas_wing/` | Tight-coupled | OAS wingbox wing mass *inside* Aviary sizing (`external_subsystems`, built inside the `AviaryGroup`) |
 | `oas_avy_wing_mass/` | Loose-coupled | OAS structural mass drives Aviary's `aircraft:wing:mass` through a plan connection (deck `overrides` make it a boundary input) |
+| `avy_three_tool/` | Three-tool | Aviary sizing with the OAS wingbox wing mass inside the `AviaryGroup` (`external_subsystems`) and a pyCycle HBTF sweep as the engine deck (`engine_deck`) -- the three-tool demo that runs today |
 
 ## Prerequisites
 
@@ -77,7 +78,8 @@ Lane C parity is covered in two stages:
    assemble_plan -> validate_plan -> run_plan -> get_results) in
    process and compares against Lane A. Covers every parity case except
    `ocp_pyc_coupled` (a documented Lane B/C gap -- see that example's
-   TODO.md) and the Aviary cases beyond `avy_single_aisle`
+   TODO.md), `ocp_three_tool` (deactivated, see its README) and the
+   Aviary cases beyond `avy_single_aisle` and `avy_three_tool`
    (`avy_oas_wing` and `oas_avy_wing_mass` ship closed Lane C prompts
    only; `avy_bwb` has no Lane C prompt). The Aviary cases need `aviary`
    in the workspace venv (`bash scripts/dev-setup.sh`) and skip otherwise.

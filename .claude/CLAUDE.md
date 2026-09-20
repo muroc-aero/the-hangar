@@ -143,6 +143,15 @@ uv run pytest packages/omd/tests/
 uv run pytest packages/oas/examples/rectangular_wing/tests/
 ```
 
+OpenMDAO >= 3.35 writes `<problem-name>_out/` (reports, coloring files)
+into the cwd, named after the launching script (`pytest_out/`,
+`__main__2_out/`). Under pytest the hangar-sdk `pytest11` plugin
+(`hangar.sdk.pytest_openmdao`) redirects that to pytest's temp area for
+every rootdir; outside pytest, omd puts it under `<data>/omd/work/<run_id>/`
+and the avy runner under its per-run scratch dir. A stray `*_out/` in the
+repo means a Problem was built with reports on and no work dir -- fix the
+call site (`om.Problem(reports=False)`), don't just delete the folder.
+
 ## Skills
 
 Skills live in two places and must be kept in sync:

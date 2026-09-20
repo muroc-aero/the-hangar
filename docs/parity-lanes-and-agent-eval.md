@@ -106,7 +106,8 @@ coupled-tool, and three-tool problems, each a directory with `lane_a/`,
 | `ocp_pyc_coupled` | OCP + pyCycle | mission masses *(known gap, §6)* |
 | `pyc_turbojet` | pyCycle | `Fn`, `TSFC`, `OPR` |
 | `evt_native_sizing` | native-evt OpenMDAO | `sized_mtow_kg`, energy, peak power |
-| `ocp_three_tool` | OCP + OAS + pyCycle | mission masses |
+| `ocp_three_tool` | OCP + OAS + pyCycle | mission masses (deactivated 2026-09-20, see its README; PR #88) |
+| `avy_three_tool` | Aviary + OAS + pyCycle | sizing masses, wing mass, engine scale factor |
 
 The list is the same set the paper's Table renders; slugs match the `case=` tags
 in the tests (`paper/make_tables.py:37`, `CASE_INFO`).

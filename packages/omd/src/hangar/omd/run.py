@@ -1131,6 +1131,25 @@ def _extract_avy_summary(prob, metadata: dict, mode: str, prefix: str = "") -> d
     subsystems = metadata.get("avy_external_subsystems") or []
     if subsystems:
         summary["external_subsystems"] = list(subsystems)
+    engine = metadata.get("avy_engine_deck")
+    if engine:
+        deck: dict = {
+            k: engine[k]
+            for k in ("provider", "sha", "cache_hit", "n_points", "n_converged",
+                      "n_used", "reference_sls_thrust_lbf")
+            if k in engine
+        }
+        # Aviary's thrust scaling of the pyCycle deck to the airframe rating
+        for key, path, units in (
+            ("scale_factor", "aircraft:engine:scale_factor", None),
+            ("scaled_sls_thrust_lbf", "aircraft:engine:scaled_sls_thrust", "lbf"),
+        ):
+            try:
+                val = prob.get_val(f"{prefix}{path}", units=units)
+                deck[key] = float(np.atleast_1d(val).flat[0])
+            except Exception:
+                pass
+        summary["engine_deck"] = deck
     return summary
 
 
