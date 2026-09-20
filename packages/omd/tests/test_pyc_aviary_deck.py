@@ -10,6 +10,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from hangar.omd.pyc import aviary_deck
 from hangar.omd.pyc.aviary_deck import (
     DEFAULT_AVIARY_GRID,
     STATIC_MN,
@@ -155,3 +156,11 @@ def test_engine_deck_from_aircraft_values():
     assert engine.get_val(Aircraft.Engine.SCALE_FACTOR) == pytest.approx(22200.0 / 12000.0)
     assert [v.name for v in engine.inputs] == ["MACH", "ALTITUDE", "THROTTLE"]
     assert [v.name for v in engine.outputs] == ["THRUST", "FUEL_FLOW"]
+
+
+def test_cache_dir_env_override(tmp_path, monkeypatch):
+    monkeypatch.setenv("HANGAR_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.delenv("HANGAR_PYC_DECK_CACHE", raising=False)
+    assert aviary_deck.default_cache_dir() == tmp_path / "data" / "pyc_decks"
+    monkeypatch.setenv("HANGAR_PYC_DECK_CACHE", str(tmp_path / "shared"))
+    assert aviary_deck.default_cache_dir() == tmp_path / "shared"

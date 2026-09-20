@@ -406,7 +406,10 @@ Aviary optimizer non-convergence does not raise, so check it. `converged`
 is a summary field, not an OpenMDAO output. With `engine_deck`, the
 summary also carries `engine_deck` (`provider`, `sha`, `cache_hit`,
 `n_points`/`n_converged`/`n_used`, `reference_sls_thrust_lbf`,
-`scale_factor`, `scaled_sls_thrust_lbf`).
+`scale_factor`, `scaled_sls_thrust_lbf`) and a top-level
+`engine_scale_factor` copy of `scale_factor` (the assessment snapshot
+keeps top-level scalars only). The deck cache directory is
+`$HANGAR_PYC_DECK_CACHE` when set, else `<HANGAR_DATA_DIR>/pyc_decks/`.
 
 Generic materializer hooks the factory uses (all documented in
 `factory_metadata.py`; nothing Aviary-specific lives in the materializer):

@@ -1150,6 +1150,11 @@ def _extract_avy_summary(prob, metadata: dict, mode: str, prefix: str = "") -> d
             except Exception:
                 pass
         summary["engine_deck"] = deck
+        # Also a top-level scalar: the assessment snapshot (and any grader
+        # reading it) keeps only top-level scalars, and this is the one
+        # engine_deck value a sizing result is judged on.
+        if "scale_factor" in deck:
+            summary["engine_scale_factor"] = deck["scale_factor"]
     return summary
 
 

@@ -25,6 +25,9 @@ Lanes:
   `avy/Sizing` component (`external_subsystems` + `engine_deck`).
 - **C** -- `lane_c/coupled_sizing.prompt.md`: closed prompt for the omd
   plan tools; scripted parity in `examples/tests/test_parity_lane_c.py`.
+  `lane_c/coupled_sizing_open.prompt.md` is the blind-agent form (goal and
+  physical inputs only, no component type or config keys) that the
+  hangar-evals anchor arm runs.
 
 The pyCycle sweep is 80 points at ~3 s each and is cached under
 `<HANGAR_DATA_DIR>/pyc_decks/` keyed on the engine spec + pyCycle version,

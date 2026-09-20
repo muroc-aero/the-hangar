@@ -30,6 +30,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -138,8 +139,18 @@ def deck_cache_key(spec: dict) -> str:
 
 
 def default_cache_dir() -> Path:
+    """``$HANGAR_PYC_DECK_CACHE`` if set, else ``<HANGAR_DATA_DIR>/pyc_decks``.
+
+    The dedicated override exists for hosts that run many omd servers with
+    per-run data roots (the hangar-evals harness): a deck is a pure function
+    of its spec and the pyCycle version, so sharing one cache across runs
+    saves the ~4 min sweep per run without coupling any other state.
+    """
     from hangar.sdk.env import _hangar_env
 
+    explicit = os.environ.get("HANGAR_PYC_DECK_CACHE")
+    if explicit:
+        return Path(explicit)
     return Path(_hangar_env("HANGAR_DATA_DIR", "OAS_DATA_DIR", default="./hangar_data")) / "pyc_decks"
 
 
