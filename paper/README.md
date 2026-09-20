@@ -9,53 +9,55 @@ This file is the map of what exists and where it comes from. The step-by-step
 runbook for regenerating the two tables is `paper/tables/README.md` -- start
 there if you just want current numbers.
 
-## Where this stands (2026-09-12)
+## Where this stands (2026-09-20)
 
 What is current, what is stale, and what is unfinished. Update this section
 when you change the answer -- it is the first thing to read when picking the
 work back up.
 
-**Current.** The Lane C (agent) column and every row of `sandboxed_evals`
-come from the `claude-opus-5` anchor arm run 2026-09-10/11 and re-scored
-offline on 09-12 under the named-run grading policy. 32 of 33 seeds pass.
-The one failure -- `oas_aero_rect` seed 0, CD off by 2.7 % -- is genuine, and
-the agent's own report agreed it had failed. `Lost` and `Review` are 0.
+**Current.** Lanes A, B and C (scripted) were re-run on 2026-09-20 at git
+`ae3227b` (`paper/results/lane_parity_meta.json`): 31 comparisons, pytest
+exit 0, every relative difference 0. The table now carries the five Aviary
+cases (`avy_single_aisle`, `avy_bwb`, `avy_oas_wing`, `oas_avy_wing_mass`,
+and `avy_three_tool` -- Aviary + OAS + pyCycle, the three-tool demo) and no
+`ocp_three_tool` row: that case was deactivated the same day (skip marks in
+both parity suites; on the numpy-2 stack its Lane A takes ~97 min and its
+fuel burn moved from 2449.70 to 2855.08 kg) and comes back with PR #88
+(`fix/ocp-three-tool-convergence`).
 
-**Stale.** Lanes A, B and C (scripted) are from 2026-07-17 at git `ac32a6f`
-(`paper/results/lane_parity_meta.json`), 26 comparisons, pytest exit 0. They
-are a `paper/run_lanes.py` away from current. The B738 three-tool case
-(`ocp_three_tool`) was deactivated on 2026-09-20 (skip marks in both parity
-suites): on the numpy-2 stack its Lane A takes ~97 min and its fuel burn
-moved from 2449.70 to 2855.08 kg, which belongs to PR #88
-(`fix/ocp-three-tool-convergence`). The next `run_lanes.py` refresh therefore
-drops that row and adds the Aviary rows below; the three-tool row comes back
-with #88.
+**Stale.** The Lane C (agent) column and every row of `sandboxed_evals`
+still come from the `claude-opus-5` anchor arm run 2026-09-10/11 and
+re-scored on 09-12 (32 of 33 seeds pass; the one failure, `oas_aero_rect`
+seed 0 with CD off by 2.7 %, is genuine). That arm predates the numpy-2
+stack, the prompt and budget changes below, and the Aviary cases, so their
+agent cells read `--`.
 
 **Unfinished:**
 
-1. **No three-tool case is in the anchor manifest.** `configs/lane_c_anchor/`
-   holds 11 cases; `ocp_three_tool` was never one of them (its agent cells
-   read `--`) and is now deactivated. The three-tool case to add to the arm
-   is `avy_three_tool` (Aviary + OAS + pyCycle, see item 3) -- not a
-   back-fill from the retired `eval_lane_c.py` harness, which would give
-   that one column a second provenance. Budget a Lane A reference run first.
+1. **The anchor arm has not been re-run.** hangar-evals now carries 13
+   cases: the 11 plus `avy_single_aisle` and `avy_three_tool` (the
+   three-tool case the arm never had). Both are proven achievable through
+   the tool surface by the scripted validity baselines
+   (`python -m hangar.evals.validity --case ...`, 2026-09-20: VALID, every
+   metric PASS, `avy_three_tool` in 28 s with the shared pyCycle deck
+   cache). The run is one command, but it needs the 1Password unlock for
+   the Claude token, which an unattended session cannot supply:
+
+   ```bash
+   cd ../hangar-evals && op run --env-file=op.env -- scripts/evals run anchor --force
+   ```
+
+   `--force` matters: the 11 old cells are graded, and without it the
+   runner skips them and runs only the two Aviary cases. Prior wall
+   clocks put the 13 cases at ~3.5 h plus the two new ones. The runner
+   re-renders these tables when it finishes.
 2. **The local arms predate the current policy.** The newest gemma records are
    2026-08-11 and the newest qwen ones 2026-06/07, so both were graded under
    last-run-of-mode and ran on the pre-calibration budgets. They are in the
    table for reference but are **not comparable with the anchor** until
-   re-run (gemma ~14 h, qwen ~9 h, both on-device and free).
-3. **The Aviary lanes are not in the table yet.** `packages/omd/examples/`
-   gained five Aviary cases (`avy_single_aisle`, `avy_bwb`, `avy_oas_wing`,
-   `oas_avy_wing_mass`, and on 2026-09-20 `avy_three_tool` -- Aviary + OAS
-   + pyCycle, the three-tool demo replacing `ocp_three_tool`) after the
-   07-17 run; their A-vs-B comparisons and the scripted Lane C for
-   `avy_single_aisle` and `avy_three_tool` flow through `run_lanes.py` on
-   the next run (Aviary now lives in the workspace venv -- no separate venv
-   to set up; `make_tables.py` has their titles). None of them is in the
-   anchor manifest, so the agent column stays `--` until a case is added
-   there. The first `avy_three_tool` run also pays ~5 min for the pyCycle
-   sweep, cached afterwards under `hangar_data/pyc_decks/`.
-4. **The prompt and budget changes have never been exercised by a fresh run.**
+   re-run (gemma ~14 h, qwen ~9 h, both on-device and free). Their
+   manifests carry the two Aviary cases too.
+3. **The prompt and budget changes have never been exercised by a fresh run.**
    the-hangar #107/#108 and hangar-evals #24 landed after the arm was measured,
    and the 09-12 work re-*scored* the stored arm rather than re-running it.
    The next anchor arm is the first real test of them.
@@ -142,8 +144,8 @@ uv run python paper/make_tables.py --agent-model claude-opus-5   # the default
 ```
 
 The arm is the column's only source. A case the arm has not run shows `--`
-rather than a value from some other run -- today that is `ocp_three_tool`
-alone, which needs adding to the anchor manifest. The legacy
+rather than a value from some other run -- today that is every Aviary case,
+until the anchor arm is re-run with its 13-case manifest. The legacy
 `eval_lane_c.py` harness still runs a single blind case if you want one, but
 `make_tables.py` no longer reads its output.
 
@@ -160,7 +162,7 @@ re-renders these tables when it finishes:
 
 ```bash
 cd ../hangar-evals
-op run --env-file=op.env -- scripts/evals run anchor   # 11 cases x 3 seeds, ~5 h
+op run --env-file=op.env -- scripts/evals run anchor   # 13 cases x 3 seeds, ~4 h
 scripts/evals run gemma                                # on-device, ~14 h, free
 scripts/evals run anchor --dry-run                     # plan only, no spend
 ```
