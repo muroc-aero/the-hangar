@@ -143,9 +143,13 @@ def materialize(
         prob.model_options[pattern] = opts
 
     # Keep per-run OpenMDAO outputs (coloring files, any reports) next to
-    # the recording instead of littering the cwd.
+    # the recording instead of littering the cwd: <data>/work/<run_id>/.
+    # OpenMDAO names the output dir after the launching script plus a
+    # process-wide counter, so a per-run folder keeps runs from stacking
+    # up as <script>2_out, <script>3_out, ... in one shared directory.
     if recorder_path is not None and not setup_done:
-        work_dir = Path(recorder_path).resolve().parent.parent / "work"
+        rec = Path(recorder_path).resolve()
+        work_dir = rec.parent.parent / "work" / rec.stem
         work_dir.mkdir(parents=True, exist_ok=True)
         prob.options["work_dir"] = str(work_dir)
 

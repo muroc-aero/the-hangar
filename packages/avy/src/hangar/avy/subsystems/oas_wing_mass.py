@@ -324,7 +324,11 @@ def run_wing_mass_sub_opt(config: dict | None = None, aviary_values=None) -> flo
     import aviary.api as av
     import openmdao.api as om
 
-    prob = om.Problem()
+    # reports=False: with reports on, OpenMDAO >= 3.35 writes
+    # <script>_out/reports/ into the cwd for this nested problem -- the
+    # repo root when omd runs Aviary natively (the avy server hides it
+    # behind its per-run scratch chdir).
+    prob = om.Problem(reports=False)
     prob.model.add_subsystem(
         "wing_mass",
         builder.build_pre_mission(aviary_values or av.AviaryValues()),

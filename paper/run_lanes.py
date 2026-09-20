@@ -42,6 +42,9 @@ SUITES = {
 # reference (see packages/omd/examples/ocp_pyc_coupled/TODO.md).
 # Nodeids are rootdir-relative and pytest resolves rootdir to packages/omd
 # for these suites, so list both forms; unmatched deselects are ignored.
+# ocp_three_tool is deactivated with a pytest skip mark in both suites (not
+# a deselect here, so --include-known-gaps does not revive it): it belongs
+# to PR #88, which reworks the case. See its README for the numbers.
 KNOWN_GAPS = [
     "examples/tests/test_parity.py"
     "::TestOCPPyCycleCoupledParity::test_coupled_mission_parity",

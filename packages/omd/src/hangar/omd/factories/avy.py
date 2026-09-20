@@ -25,6 +25,11 @@ derivatives flowing through one driver:
 - ``external_subsystems`` are Aviary SubsystemBuilders from the hangar.avy
   registry (e.g. ``oas_wing_mass``), materialized INSIDE the group -- the
   seam for components that must live inside the mission phases.
+- ``engine_deck`` replaces the aircraft deck's file engine with a pyCycle
+  one: a hangar pyCycle off-design sweep tabulated as an in-memory Aviary
+  ``EngineDeck`` (``hangar.omd.pyc.aviary_deck``), which Aviary scales to
+  the airframe's ``scaled_sls_thrust`` like any deck. That is the third
+  tool in the Aviary + OAS + pyCycle composition (``examples/avy_three_tool``).
 
 What the factory hands the materializer through metadata (all generic
 hooks, nothing Aviary-specific in the materializer): ``self_optimizing`` /
@@ -187,7 +192,11 @@ def build_avy_sizing(
     connectable boundary input), ``external_subsystems`` ([{"name": ...,
     "config": {...}}] from the hangar.avy registry, built inside the group),
     ``optimizer`` (SLSQP -- omd drives with ScipyOptimizeDriver), ``max_iter``,
-    ``objective`` (fuel | fuel_burned | mass | time | none).
+    ``objective`` (fuel | fuel_burned | mass | time | none),
+    ``engine_deck`` ({"provider": "pyc/hbtf" | "pyc/turbojet", "config":
+    {design_alt_ft, design_MN, design_Fn_lbf, design_T4_degR, engine_params,
+    grid}, "cache": true | false | dir} -- a pyCycle-generated engine deck in
+    place of the aircraft deck's ``aircraft:engine:data_file``).
 
     Returns (problem, metadata). Problem has setup NOT called; the plan runs
     in ``mode: optimize`` (metadata ``requires_driver``).
@@ -244,6 +253,37 @@ def build_avy_sizing(
     validate_deck_overrides(overrides)
     aircraft_data = load_deck(config["deck"], overrides)
     builders = build_external_subsystems(subsystem_specs)
+
+    engine_info: dict | None = None
+    engine_spec = config.get("engine_deck")
+    if engine_spec is not None:
+        if not isinstance(engine_spec, dict) or "provider" not in engine_spec:
+            raise ValueError(
+                "avy/Sizing engine_deck must be a dict with a 'provider' key "
+                "(e.g. {'provider': 'pyc/hbtf', 'config': {...}})."
+            )
+        unknown = set(engine_spec) - {"provider", "config", "cache"}
+        if unknown:
+            raise ValueError(
+                f"avy/Sizing engine_deck has unknown keys {sorted(unknown)}; "
+                "valid keys: provider, config, cache."
+            )
+        from hangar.omd.pyc.aviary_deck import build_aviary_engine_deck
+
+        if isinstance(aircraft_data, str):
+            # the engine options come from the loaded aircraft values
+            from aviary.utils.process_input_decks import create_vehicle
+
+            aircraft_data, _guesses = create_vehicle(aircraft_data)
+        engine, engine_info = build_aviary_engine_deck(
+            engine_spec["provider"],
+            engine_spec.get("config"),
+            aircraft_data,
+            cache=engine_spec.get("cache", True),
+        )
+        # An EngineModel handed to load_external_subsystems goes into
+        # engine_models in place of the file deck.
+        builders = [engine, *builders]
 
     # -- the level-2 sequence, on the bare group ------------------------------
     from aviary.core.aviary_group import AviaryGroup
@@ -308,6 +348,8 @@ def build_avy_sizing(
         "avy_objective": objective,
         "avy_external_subsystems": [e["name"] for e in subsystem_specs],
     }
+    if engine_info is not None:
+        metadata["avy_engine_deck"] = engine_info
     return prob, metadata
 
 
