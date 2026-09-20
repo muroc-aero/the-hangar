@@ -33,29 +33,23 @@ RUN pip install --no-cache-dir packages/results-reader
 COPY packages/evt/ packages/evt/
 RUN pip install --no-cache-dir --no-deps packages/evt
 
-# Copy and install the omd package (openaerostruct dep already satisfied;
-# ocp/pyc factories degrade gracefully when those extras are absent)
+# Aviary (native avy/Sizing factory + the hangar-avy package omd builds on).
+# Default tracks scripts/upstream-pins.env (AVY_REF); bump both together.
+# Aviary brings openmdao>=3.43 / numpy 2 -- the whole image runs on that
+# stack now (OAS above is numpy-2 clean). ambiance is for the oas_wing_mass
+# external subsystem.
+ARG AVY_REF=2af552a9b2aae5965c12ae8afde091cce7587c32
+RUN pip install --no-cache-dir \
+        "aviary @ git+https://github.com/OpenMDAO/Aviary.git@${AVY_REF}" \
+        ambiance
+COPY packages/avy/ packages/avy/
+RUN pip install --no-cache-dir --no-deps packages/avy
+
+# Copy and install the omd package (openaerostruct/aviary deps already
+# satisfied; ocp/pyc factories degrade gracefully when those extras are absent)
 COPY packages/omd/ packages/omd/
 RUN pip install --no-cache-dir --no-deps packages/omd && \
-    pip install --no-cache-dir click jsonschema pyyaml matplotlib "openmdao>=3.35,!=3.40"
-
-# Aviary runtime for the avy/Sizing factory. Aviary needs numpy>=2 while
-# this image's OAS/openconcept stack is numpy<2, so -- exactly as in dev
-# (.venv-avy, scripts/setup-avy-venv.sh) -- it lives in its own venv and
-# the factory runs it as a subprocess (factories/avy_worker.py). Same
-# contents and pins as packages/avy/Dockerfile: aviary at AVY_REF,
-# openaerostruct + ambiance for the oas_wing_mass subsystem, hangar-sdk,
-# hangar-avy. AVY_PYTHON is what the factory resolves the interpreter from.
-ARG AVY_REF=2af552a9b2aae5965c12ae8afde091cce7587c32
-COPY packages/avy/ packages/avy/
-RUN python -m venv /opt/venv-avy && \
-    /opt/venv-avy/bin/pip install --no-cache-dir \
-        "aviary @ git+https://github.com/OpenMDAO/Aviary.git@${AVY_REF}" \
-        "openaerostruct @ git+https://github.com/mdolab/OpenAeroStruct.git@${OAS_REF}" \
-        ambiance && \
-    /opt/venv-avy/bin/pip install --no-cache-dir "packages/sdk[all]" && \
-    /opt/venv-avy/bin/pip install --no-cache-dir --no-deps packages/avy
-ENV AVY_PYTHON=/opt/venv-avy/bin/python
+    pip install --no-cache-dir click jsonschema pyyaml matplotlib "openmdao>=3.43" "numpy>=2,<2.4"
 
 # Create non-root user for runtime with a writable home directory
 RUN useradd -r -m -s /usr/sbin/nologin omd && \

@@ -4,7 +4,7 @@
 omd materializes YAML analysis plans into OpenMDAO problems, runs them, and
 records results with PROV-Agent provenance tracking. It uses a factory registry
 to support different component types (OAS aero, OAS aerostruct, pyCycle, paraboloid,
-and Aviary sizing via the avy/Sizing subprocess factory into .venv-avy)
+and Aviary sizing via the native avy/Sizing factory)
 and a plot provider registry so each factory brings its own visualization.
 
 ## Architecture
@@ -64,6 +64,11 @@ All runtime data lives under `hangar_data/omd/` (configurable via `OMD_DATA_ROOT
     complex-step partials + a real MTOW-closure solver, so sizing runs with
     analytic gradients). `build_evt_sizing_fd()` (`evt/SizingFD`) keeps the
     gradient-free `EvtolSizingComp` black box as a fallback/parity reference.
+  - `avy.py` -- `build_avy_sizing()`: NASA Aviary sizing + mission optimization
+    as a **native** composition -- Aviary's `AviaryGroup` is added to the omd
+    problem as subsystem `aviary` with `promotes=["*"]`, so its DVs,
+    constraints and objective are collected by omd's driver (see "Aviary in
+    omd" below)
   - `paraboloid.py` -- `build_paraboloid()`: trivial test component
 - `evt/` -- self-contained native OpenMDAO formulation of evtolpy (no runtime
   dependency on `evtolpy` or `hangar.evt` physics; the config-schema constants
@@ -165,7 +170,7 @@ surface over MCP through the shared SDK envelope/provenance/auth stack:
 | `evt/Sizing` | `build_evt_sizing` | `EVT_PLOTS` | eVTOL MTOW sizing loop (native OpenMDAO, analytic gradients) |
 | `evt/Mission` | `build_evt_mission` | `EVT_PLOTS` | eVTOL as-configured mission energy (native, no sizing) |
 | `evt/SizingFD` | `build_evt_sizing_fd` | `EVT_PLOTS` | eVTOL sizing via the gradient-free evtolpy black box (FD fallback) |
-| `avy/Sizing` | `build_avy_sizing` | (generic only) | Aviary coupled sizing via subprocess into .venv-avy (self-driving; every run is an optimization) |
+| `avy/Sizing` | `build_avy_sizing` | (generic only) | Aviary coupled sizing + mission, native `AviaryGroup` inside the omd problem (self-optimizing; every run is an optimization -- `mode: optimize`) |
 | `paraboloid/Paraboloid` | `build_paraboloid` | (generic only) | Test component |
 
 ## Plot types
@@ -283,32 +288,112 @@ named subsystem -- internal connections use relative paths and still work.
 | `evt_mode` | str | run.py | evt factory mode: "sizing" (MTOW loop) or "mission" (as-configured) |
 | `multipoint` | bool | run.py | Triggers per-point result extraction |
 | `archetype_meta` | dict | (available) | pyCycle archetype metadata for rich result extraction |
+| `self_optimizing` | bool | materializer, run.py | Factory declared its own DVs/constraints/objective inside the model (Aviary); the driver is configured even when the plan declares no `design_variables`/`objective` |
+| `requires_driver` | bool | run.py | Results are only meaningful under `run_driver` (every Aviary run is an optimization); `mode: analysis` is refused |
+| `driver_defaults` | dict | materializer | `{"type": "SLSQP", "options": {...}}` applied under the plan's `optimizer` section (plan keys win) |
+| `driver_coloring` | bool | materializer | Call `driver.declare_coloring(show_summary=False)` (total coloring) |
+| `model_options` | dict[str,dict] | materializer | OpenMDAO `prob.model_options` entries keyed by path glob relative to the factory's model root; a composite re-keys them under the comp id |
+| `post_setup` | list[callable] | materializer | Callables `f(prob)` run right after `prob.setup()`, before initial values (e.g. dymos initial guesses) |
+| `setup_warning_filters` | list[type] | materializer | Warning classes ignored around `prob.setup()` |
+| `avy_outputs` | dict[str,tuple] | run.py | Aviary: summary key -> (promoted name, units) |
 
 ## Aviary in omd (avy/Sizing)
 
-Subprocess black box: `compute()` writes a JSON spec and runs
-`factories/avy_worker.py` with `.venv-avy`'s interpreter (aviary needs
-numpy>=2; the main venv is capped at numpy<2 by openconcept). The worker
-imports NOTHING from hangar.omd; it is a thin shim over hangar.avy (which
-IS installed in .venv-avy): `load_deck` + `validate_deck_overrides`,
-`build_external_subsystems`, `run_sizing_problem` -- so override
-validation and the run lifecycle are the avy server's own code. The
-interpreter resolves from `$AVY_PYTHON`, else `.venv-avy/bin/python`
-relative to the cwd; the omd Docker image ships the same runtime at
-`/opt/venv-avy` and sets `AVY_PYTHON` to it.
+Native composition (`factories/avy.py`). Aviary's model is an ordinary
+OpenMDAO Group (`AviaryGroup`); upstream's `AviaryProblem` is a thin
+`om.Problem` wrapper whose level-2 API delegates every model-building step
+to that group. The factory runs the same sequence (`load_inputs` ->
+`load_external_subsystems` -> `check_and_preprocess_inputs` ->
+`add_pre_mission_systems` -> `add_phases` -> `add_post_mission_systems` ->
+`link_phases` -> `add_design_variables` -> objective) on a bare
+`AviaryGroup` and adds it to the omd problem as subsystem `aviary` with
+`promotes=["*"]`, so Aviary's promoted names (`aircraft:*`, `mission:*`,
+`traj.*`) ARE the component's namespace (`<comp_id>.aircraft:wing:mass` in
+a composite). Other plan components connect to them directly, with
+analytic derivatives flowing through one driver. The whole workspace runs
+in one venv (numpy 2 / OpenMDAO 3.45 / Aviary 1.0.1; OpenConcept patched
+via `scripts/openconcept-numpy2.patch`), so there is no worker process or
+second interpreter. The single-aisle case reproduces the Lane A goldens
+to ~1e-8 relative in ~3 s.
 
-Config beyond deck/mission/optimizer:
-- `external_subsystems: [{name: oas_wing_mass, config: {...}}]` -- the
-  hangar.avy subsystem registry materializes them inside the worker;
-  `oas_wing_mass` runs upstream's OAS wingbox wing-mass sub-optimization
-  (~40 s) inside the Aviary problem. Names/configs validate in the worker.
-- `override_inputs: {name: {var, units, initial}}` -- each entry becomes
-  an OpenMDAO *input* written into the deck overrides per compute, so
-  another component's output can drive an Aviary deck variable through a
-  plan connection (units convert on the connection; `initial` is
-  mandatory so an unconnected input cannot silently override with 0).
-  This is the loose-coupling seam: see
-  `examples/oas_avy_wing_mass/` (OAS structural mass -> aircraft:wing:mass).
+**Every run is an optimization.** Aviary's own DVs, constraints and
+objective are declared inside the group and collected by omd's driver
+(OpenMDAO re-keys them under the component path), and the mission is a
+dymos collocation problem with no evaluate-only path. Plans with
+`avy/Sizing` run with `mode: optimize`; `mode: analysis` is refused with a
+clear error (`requires_driver`). The plan needs no plan-level
+`design_variables`/`objective` for that (the component is
+self-optimizing); the factory supplies Aviary's SLSQP driver defaults
+(tol 1e-9, `max_iter`, total coloring -- the same driver `run_aviary`
+builds), which the plan's `optimizer:` section can override (e.g.
+`options.timeout_seconds`).
+
+Config keys:
+- `deck` (required) -- aviary-relative CSV path (e.g.
+  `models/aircraft/advanced_single_aisle/advanced_single_aisle_FLOPS.csv`)
+  or absolute.
+- `phase_info_module` -- importable module exposing `phase_info` (default
+  `aviary.models.missions.energy_state_default`; the
+  `hangar.avy.config.missions_*` modules work too).
+- `target_range_nm` -- sets `post_mission.constrain_range`/`target_range`;
+  an operating-point `target_range_nm` overrides it.
+- `overrides` -- `{aviary name: value | [value, units]}` deck overrides,
+  validated by `hangar.avy.validators.validate_deck_overrides`. **This is
+  also the coupling seam**: a deck value for a variable Aviary would
+  otherwise COMPUTE (e.g. `aircraft:wing:mass` from the FLOPS mass
+  build-up) makes it a plain boundary input -- Aviary's own override
+  mechanism -- which a plan `connections:` entry can then drive.
+- `external_subsystems` -- `[{name: ..., config: {...}}]` Aviary
+  SubsystemBuilders from the hangar.avy registry (e.g. `oas_wing_mass`,
+  upstream's OAS wingbox wing-mass sub-optimization, ~40 s), materialized
+  INSIDE the group -- the seam for components that must live inside the
+  mission phases.
+- `optimizer` -- SLSQP only under omd (ScipyOptimizeDriver); use
+  avy-cli / avy-server for IPOPT or SNOPT.
+- `max_iter` -- driver maxiter (default 50).
+- `objective` -- `fuel` (default; `run_aviary`'s regularized
+  fuel + ascent-duration objective) | `fuel_burned` | `mass` | `time` |
+  `none` (leave the objective to the plan, for composite objectives).
+
+Removed keys (the factory rejects them with a pointer): `override_inputs`
+(use `overrides` + `connections`), `avy_python` (Aviary runs in-process),
+`run_timeout_s` (use plan-level `optimizer.options.timeout_seconds`).
+
+Loose-coupling example (`examples/oas_avy_wing_mass/`, OAS structural
+mass -> `aircraft:wing:mass`):
+
+```yaml
+components:
+- id: wingbox
+  type: oas/AerostructPoint
+  config: {surfaces: [...]}
+- id: sizing
+  type: avy/Sizing
+  config:
+    deck: models/aircraft/advanced_single_aisle/advanced_single_aisle_FLOPS.csv
+    overrides:
+      aircraft:wing:mass: [15000.0, lbm]   # deck value -> boundary input
+connections:
+- src: wingbox.wing.structural_mass        # kg
+  tgt: sizing.aircraft:wing:mass           # lbm; OpenMDAO converts
+```
+
+Results: the run summary carries `gross_mass_lbm`, `total_fuel_mass_lbm`,
+`operating_mass_lbm`, `wing_mass_lbm`, `range_nmi`, `final_time_min`
+(metadata `avy_outputs`: short name -> (promoted name, units); the same
+short names resolve through `var_paths` for plan DVs/constraints/
+objectives) and a boolean `converged` taken from the driver result --
+Aviary optimizer non-convergence does not raise, so check it. `converged`
+is a summary field, not an OpenMDAO output.
+
+Generic materializer hooks the factory uses (all documented in
+`factory_metadata.py`; nothing Aviary-specific lives in the materializer):
+`self_optimizing`, `requires_driver`, `driver_defaults`, `driver_coloring`,
+`model_options` (Aviary options travel by OpenMDAO `model_options`,
+path-prefixed under the comp id in composites), `post_setup` (dymos
+initial guesses must be set after `setup()`), `setup_warning_filters`
+(the promotion warnings `AviaryProblem.setup` suppresses). Plot provider:
+generic only.
 
 ## pyCycle in omd
 

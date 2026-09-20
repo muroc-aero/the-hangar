@@ -4,13 +4,13 @@ The engineering problem is IDENTICAL to
 packages/avy/examples/single_aisle_oas_wing/ -- the advanced single aisle
 on upstream's OAS-example mission (fixed profile, 1800 nmi) with the
 FLOPS wing weight replaced by the OAS wingbox sub-optimization -- run
-through the omd lanes: Lane A subprocess-runs the per-tool raw-upstream
-reference in .venv-avy; Lane B feeds the ``external_subsystems`` config
-through the ``avy/Sizing`` subprocess factory (the sub-opt runs inside
-the worker, where openaerostruct lives).
+through the omd lanes: Lane A imports and runs the per-tool raw-upstream
+reference in-process; Lane B feeds the ``external_subsystems`` config
+through the native ``avy/Sizing`` factory (the hangar.avy registry builds
+the sub-opt inside the AviaryGroup, in the omd process).
 
-All lanes need .venv-avy with openaerostruct installed
-(scripts/setup-avy-venv.sh); tests skip when it is absent.
+Aviary and openaerostruct both live in the workspace venv
+(bash scripts/dev-setup.sh); tests skip when aviary is not installed.
 """
 
 DECK = "models/aircraft/advanced_single_aisle/advanced_single_aisle_FLOPS.csv"

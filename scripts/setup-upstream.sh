@@ -16,8 +16,8 @@
 #   - present, at pin    -> left alone
 #   - present, not at pin -> fetch + detached checkout of the pin
 #   - present, dirty     -> warned and skipped (never discards local edits);
-#                           the managed pyCycle patch is reverse-applied
-#                           first so it does not count as dirt
+#                           the managed pyCycle / OpenConcept patches are
+#                           reverse-applied first so they do not count as dirt
 
 set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -36,6 +36,7 @@ for arg in "$@"; do
 done
 
 PYCYCLE_PATCH="$SCRIPT_DIR/pycycle-numpy2.patch"
+OPENCONCEPT_PATCH="$SCRIPT_DIR/openconcept-numpy2.patch"
 EVTOLPY_PATCH="$SCRIPT_DIR/evtolpy-packaging.patch"
 
 # sync_repo <dir-name> <clone-url> <ref>
@@ -93,6 +94,31 @@ pycycle_patch() {
     fi
 }
 
+# OpenConcept pins numpy<2 in setup.py and uses a handful of names numpy 2
+# removed (np.complex_, np.ComplexWarning, np.trapz, math.* on 1-element
+# arrays). openconcept-numpy2.patch fixes those call sites (all valid on
+# numpy 1 too); the pin itself is overridden by the workspace's
+# [tool.uv] override-dependencies. Same unpatch/patch dance as pyCycle.
+openconcept_unpatch() {
+    local dir="$UPSTREAM_DIR/openconcept"
+    [ -d "$dir/.git" ] && [ -f "$OPENCONCEPT_PATCH" ] || return 0
+    if git -C "$dir" apply -R --check "$OPENCONCEPT_PATCH" 2>/dev/null; then
+        git -C "$dir" apply -R "$OPENCONCEPT_PATCH"
+        echo "  Reverse-applied numpy2 patch ahead of sync."
+    fi
+}
+
+openconcept_patch() {
+    local dir="$UPSTREAM_DIR/openconcept"
+    [ -d "$dir/.git" ] && [ -f "$OPENCONCEPT_PATCH" ] || return 0
+    if git -C "$dir" apply --check "$OPENCONCEPT_PATCH" 2>/dev/null; then
+        git -C "$dir" apply "$OPENCONCEPT_PATCH"
+        echo "  Applied numpy 2.x compat patch."
+    else
+        echo "  numpy2 patch already applied or upstream fixed -- skipping."
+    fi
+}
+
 # evtolpy ships no packaging metadata; evtolpy-packaging.patch adds a
 # pyproject.toml so it installs as an editable package (uv sources point at
 # upstream/evtolpy). The added file is untracked, so sync_repo's dirty check
@@ -120,7 +146,9 @@ evtolpy_patch() {
 
 # Required by uv sync ([tool.uv.sources] editable installs)
 sync_repo OpenAeroStruct https://github.com/mdolab/OpenAeroStruct "$OAS_REF"
+openconcept_unpatch
 sync_repo openconcept    https://github.com/mdolab/openconcept    "$OCP_REF"
+openconcept_patch
 pycycle_unpatch
 sync_repo pyCycle        https://github.com/OpenMDAO/pyCycle      "$PYC_REF"
 pycycle_patch

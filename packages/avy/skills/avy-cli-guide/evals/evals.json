@@ -4,13 +4,13 @@
     {
       "id": 1,
       "prompt": "I want to size the advanced single-aisle transport for a 1906 nmi design mission and read back the gross mass and fuel using the Aviary command line tools. Show me a complete working Python script that uses interactive mode to spawn avy-cli, load the template, configure the mission, run the sizing, and extract gross mass and total fuel from the result.",
-      "expected_output": "A working Python script spawning .venv-avy/bin/avy-cli interactive with the JSON-lines protocol, calling load_aircraft_template, configure_mission, run_sizing, checking validation.passed, and extracting gross_mass_lbm and total_fuel_mass_lbm from results.performance.",
+      "expected_output": "A working Python script spawning avy-cli interactive with the JSON-lines protocol, calling load_aircraft_template, configure_mission, run_sizing, checking validation.passed, and extracting gross_mass_lbm and total_fuel_mass_lbm from results.performance.",
       "assertions": [
         {
-          "id": "uses_isolated_venv",
-          "description": "Invokes avy-cli from the isolated .venv-avy (not the main venv)",
+          "id": "uses_avy_cli",
+          "description": "Invokes the avy-cli entry point",
           "type": "output_contains",
-          "value": ".venv-avy"
+          "value": "avy-cli"
         },
         {
           "id": "uses_interactive_mode",
@@ -53,7 +53,7 @@
     {
       "id": 2,
       "prompt": "Using avy-cli one-shot commands, override the wing aspect ratio to 13 on the advanced single-aisle deck and re-run the sizing. Give me the exact shell commands.",
-      "expected_output": "Shell commands using .venv-avy/bin/avy-cli one-shot subcommands: load-aircraft-template, define-aircraft with a JSON overrides string using the exact metadata name aircraft:wing:aspect_ratio, then run-sizing. Global flags like --pretty placed before the subcommand.",
+      "expected_output": "Shell commands using avy-cli one-shot subcommands: load-aircraft-template, define-aircraft with a JSON overrides string using the exact metadata name aircraft:wing:aspect_ratio, then run-sizing. Global flags like --pretty placed before the subcommand.",
       "assertions": [
         {
           "id": "correct_variable_name",

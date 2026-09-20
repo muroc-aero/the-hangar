@@ -57,9 +57,14 @@
       }
     },
     "Aviary": {
-      "command": "bash",
+      "command": "uv",
       "args": [
-        "scripts/avy-server.sh"
+        "run",
+        "--directory",
+        ".",
+        "python",
+        "-m",
+        "hangar.avy.server"
       ],
       "env": {
         "HANGAR_DATA_DIR": "./hangar_data"

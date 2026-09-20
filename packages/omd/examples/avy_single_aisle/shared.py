@@ -1,14 +1,15 @@
 """Shared constants for the omd-level Aviary single-aisle sizing parity case.
 
 Single source of truth across Lane A (the per-tool avy Lane A script,
-executed in .venv-avy), Lane B (the omd plan through the avy/Sizing
-subprocess factory), and Lane C (the omd tool surface). The engineering
-problem is IDENTICAL to packages/avy/examples/single_aisle_sizing/ --
-same deck, same default energy_state mission at 1906 nmi, SLSQP/50 --
-so the goldens are the same numbers.
+imported and run in-process), Lane B (the omd plan through the native
+avy/Sizing factory, mode=optimize), and Lane C (the omd tool surface).
+The engineering problem is IDENTICAL to
+packages/avy/examples/single_aisle_sizing/ -- same deck, same default
+energy_state mission at 1906 nmi, SLSQP/50 -- so the goldens are the
+same numbers.
 
-All lanes need the isolated Aviary venv (scripts/setup-avy-venv.sh);
-tests skip when .venv-avy is absent.
+Aviary lives in the workspace venv (bash scripts/dev-setup.sh); tests
+skip when it is not installed.
 """
 
 DECK = "models/aircraft/advanced_single_aisle/advanced_single_aisle_FLOPS.csv"
@@ -17,7 +18,7 @@ TARGET_RANGE_NM = 1906.0
 OPTIMIZER = "SLSQP"
 MAX_ITER = 50
 
-# B/C run the same subprocess worker Lane A's script mirrors -> round-off.
+# B/C build the same AviaryGroup Lane A's script drives -> round-off.
 TOL_PARITY = dict(rel=1e-6)
 
 # Pinned from Aviary v1.0.1 (same anchors as the per-tool example).

@@ -6,8 +6,8 @@ The OAS wing-mass integration imports from
 surface hangar.avy depends on, so an AVY_REF / OAS_REF bump that moves or
 reshapes it fails loudly here instead of deep inside a sizing run.
 
-Fast (no sub-optimization runs). Skips in the main venv; run for real via
-``.venv-avy/bin/python -m pytest packages/avy/tests/test_avy_oas_contract.py``.
+Fast (no sub-optimization runs). Skips only if aviary/OAS are absent; run via
+``uv run pytest packages/avy/tests/test_avy_oas_contract.py``.
 """
 
 from __future__ import annotations

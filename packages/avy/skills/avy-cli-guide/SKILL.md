@@ -28,23 +28,20 @@ shape and the session lifecycle differ.
 - `provenance.md` -- session tracking, decision logging, DAG export
 - `examples/` -- complete workflow recipes by analysis type
 
-## Prerequisites (READ THIS -- avy is not in the main venv)
-
-Aviary requires numpy>=2 and cannot live in the main workspace venv (the
-openconcept pin caps numpy<2). `avy-cli` therefore runs from the isolated
-`.venv-avy` at the repo root:
+## Prerequisites
 
 ```bash
-# One-time setup (clones upstream/Aviary at the pin if needed):
-bash scripts/setup-avy-venv.sh
+# Install the workspace packages (avy-cli is a console_scripts entry point
+# from packages/avy; aviary is an ordinary dependency installed by the dev
+# setup into the single workspace venv):
+bash scripts/dev-setup.sh
 
-# Invoke the CLI via the isolated venv:
-.venv-avy/bin/avy-cli list-tools
+# Verify:
+avy-cli list-tools
 ```
 
-Plain `avy-cli` / `uv run avy-cli` from the main venv will import, but every
-analysis call will fail with an install-instruction error. Always use the
-`.venv-avy/bin/avy-cli` path (or activate `.venv-avy`).
+If `command not found`, the virtualenv is not activated or the packages were
+not installed. `uv run avy-cli <args>` works without activating the venv.
 
 ## Global flags come BEFORE the subcommand
 
@@ -53,10 +50,10 @@ appear **before** the subcommand name, not after it:
 
 ```bash
 # Correct:
-.venv-avy/bin/avy-cli --pretty run-sizing --aircraft-name ac1 --optimizer SLSQP
+avy-cli --pretty run-sizing --aircraft-name ac1 --optimizer SLSQP
 
 # WRONG -- argparse will reject this:
-.venv-avy/bin/avy-cli run-sizing --pretty --aircraft-name ac1
+avy-cli run-sizing --pretty --aircraft-name ac1
 ```
 
 | Flag | Effect |
@@ -69,13 +66,13 @@ appear **before** the subcommand name, not after it:
 
 Only underscores become hyphens. So `target_range_nm` -> `--target-range-nm`,
 `mission_gross_mass_lbm` -> `--mission-gross-mass-lbm`. When in doubt, run
-`.venv-avy/bin/avy-cli <subcommand> --help`.
+`avy-cli <subcommand> --help`.
 
 Dict-valued parameters (`overrides`, `phase_options`) are passed as JSON
 strings:
 
 ```bash
-.venv-avy/bin/avy-cli define-aircraft \
+avy-cli define-aircraft \
     --overrides '{"aircraft:wing:aspect_ratio": 13.0}'
 ```
 
@@ -90,8 +87,8 @@ strings:
 ## The 60-second sizing run
 
 ```bash
-.venv-avy/bin/avy-cli load-aircraft-template --template advanced_single_aisle
-.venv-avy/bin/avy-cli --pretty run-sizing
+avy-cli load-aircraft-template --template advanced_single_aisle
+avy-cli --pretty run-sizing
 ```
 
 Expect ~20 s of wall-clock for the default 3-phase energy_state mission. The
@@ -123,7 +120,7 @@ response is a versioned envelope; the headline numbers are under
 
 | Symptom | Cause / fix |
 |---------|-------------|
-| `RuntimeError: The 'aviary' package is not installed` | You used the main venv. Run via `.venv-avy/bin/avy-cli` |
+| `RuntimeError: The 'aviary' package is not installed` | Workspace not installed. Run `bash scripts/dev-setup.sh` (or `uv sync`), then `uv run avy-cli` |
 | `validation.passed` false, `optimizer.success` failed | Optimizer did not converge -- raise `--max-iter`, simplify the mission, or check overrides |
 | `Unknown Aviary variable ...` | Typo in an override name -- the error lists close matches |
 | `... uses a '2DOF' deck` | GASP templates are not runnable yet; use a FLOPS/energy_state template |

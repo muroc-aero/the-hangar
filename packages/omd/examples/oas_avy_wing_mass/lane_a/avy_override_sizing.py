@@ -1,12 +1,12 @@
 """Lane A stage 2: raw Aviary sizing with an overridden wing mass.
 
-Runs in .venv-avy (raw upstream aviary only). Takes the wing mass in lbm
-as argv[1], sets it on the deck's AviaryValues -- Aviary's
-override_aviary_vars then renames the FLOPS wing-mass output away and the
-deck value feeds every consumer -- and sizes on the default energy_state
-mission (1906 nmi). Prints ``key: value`` metrics for the orchestrator.
+Raw upstream aviary only. Takes the wing mass in lbm (``run(wing_mass_lbm)``,
+or argv[1] when run as a script), sets it on the deck's AviaryValues --
+Aviary's override_aviary_vars then renames the FLOPS wing-mass output away
+and the deck value feeds every consumer -- and sizes on the default
+energy_state mission (1906 nmi).
 
-    .venv-avy/bin/python avy_override_sizing.py 12634.4
+    uv run python avy_override_sizing.py 12634.4
 """
 
 from __future__ import annotations

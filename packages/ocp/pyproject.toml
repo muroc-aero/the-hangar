@@ -6,8 +6,8 @@ requires-python = ">=3.11"
 dependencies = [
     "hangar-sdk[all]",
     "openconcept>=1.2,<2",
-    "openmdao>=3.35,!=3.40",
-    "numpy>=1.21",
+    "openmdao>=3.43",
+    "numpy>=2,<2.4",
     "scipy>=1.7",
     "matplotlib",
 ]

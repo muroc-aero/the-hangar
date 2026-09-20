@@ -22,6 +22,15 @@ dependencies = [
 [tool.uv.workspace]
 members = ["packages/*"]
 
+[tool.uv]
+# The whole workspace runs on numpy 2 / OpenMDAO >=3.43 (Aviary needs both).
+# OpenConcept's setup.py still declares numpy<2; the code itself runs on
+# numpy 2.0-2.3 once scripts/openconcept-numpy2.patch is applied (done by
+# scripts/setup-upstream.sh), so the metadata pin is overridden here.
+# <2.4 because numpy 2.4 turned the array-to-scalar deprecation into an
+# error (OpenMDAO 3.45 excludes 2.4.0 as well).
+override-dependencies = ["numpy>=2,<2.4"]
+
 [tool.uv.sources]
 hangar-sdk = { workspace = true }
 hangar-oas = { workspace = true }

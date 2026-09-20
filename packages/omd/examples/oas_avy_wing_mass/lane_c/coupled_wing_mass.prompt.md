@@ -13,23 +13,25 @@ Aviary sizing as a deck override on `aircraft:wing:mass`.
 - Component `sizing`, type `avy/Sizing`: deck
   `models/aircraft/advanced_single_aisle/advanced_single_aisle_FLOPS.csv`,
   phase_info_module `aviary.models.missions.energy_state_default`,
-  SLSQP / max_iter 50, and
-  `override_inputs: {wing_mass_override_lbm: {var: aircraft:wing:mass,
-  units: lbm, initial: 15000.0}}`.
+  SLSQP / max_iter 50, and `overrides: {aircraft:wing:mass: [15000.0, lbm]}`
+  (a deck value for a normally-computed variable makes it a boundary
+  input the connection can drive).
 - Connection: `wingbox.wing.structural_mass` ->
-  `sizing.wing_mass_override_lbm` (units convert kg -> lbm on the
+  `sizing.aircraft:wing:mass` (units convert kg -> lbm on the
   connection).
 - Operating point: velocity 231.5, alpha 3.0, Mach_number 0.785,
   re 1.0e6, rho 0.38.
 - Solver: NewtonSolver (maxiter 20, atol 1e-6) + DirectSolver targeted at
   `wingbox.AS_point_0.coupled`.
-- Run mode `analysis`; the sizing subprocess adds ~15 s.
+- Run mode `optimize` (the Aviary sizing is the optimization; the
+  component brings its own design variables and objective). Expect ~10 s.
 
 ## Tools
 
 Only the `mcp__omd__*` tools: `start_session` -> author the plan
 (builder tools or `write_plan`) -> `validate_plan` -> `run_plan` ->
-verify `converged == 1.0` -> `log_decision` -> `export_session_graph`.
+verify the summary's `converged` flag is true -> `log_decision` ->
+`export_session_graph`.
 
 ## Deliverables
 
@@ -42,7 +44,7 @@ Report, as a fenced JSON block:
   "gross_mass_lbm": <number>,
   "total_fuel_mass_lbm": <number>,
   "range_nmi": <number>,
-  "converged": <number>
+  "converged": <bool>
 }
 ```
 
