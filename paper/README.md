@@ -9,7 +9,7 @@ This file is the map of what exists and where it comes from. The step-by-step
 runbook for regenerating the two tables is `paper/tables/README.md` -- start
 there if you just want current numbers.
 
-## Where this stands (2026-09-20)
+## Where this stands (2026-09-21)
 
 What is current, what is stale, and what is unfinished. Update this section
 when you change the answer -- it is the first thing to read when picking the
@@ -49,17 +49,48 @@ clocks, which stop during sleep, so the seed recorded 880 s and the
 as `Lost` seeds with a `rate_limit_event` in the harness stdout tail; the
 plain `scripts/evals run anchor` (no `--force`) resumes exactly those.
 
+**Current, three.** The `gemma4:26b-mlx` rows of `sandboxed_evals` come
+from the local arm run 2026-09-21 (hangar-evals campaign
+`gemma_20260921T064421Z`, `scripts/evals run gemma --force`): 13 cases x
+5 seeds, OpenCode 1.17.5 in the sandbox container, omd over http, 8 h 19 min
+on-device. 0 of 65 graded seeds pass; `Lost` and `Review` 0, so every row is
+a result, not a harness loss. The failure mode is the same in every cell:
+gemma authors plans with invented component types (`aerodynamic_analysis_component`,
+`vortex_lattice_analysis`) or invented design variables (`fuel_mass` on
+`avy/Sizing`), omd's semantic validation rejects `run_plan`, and the model
+either loops on plan edits until the cap or stops on its own after a few
+tool calls. Its closest attempt was `avy_single_aisle` seed 0, which read
+two omd error messages correctly (missing deck; `optimize`, not
+`analysis`) before failing on the third. Valid-call rate 81-97% is the
+MCP-boundary figure; it says the calls were well-formed, not that they did
+anything. This arm supersedes the 2026-08-11 gemma records, which were
+graded under last-run-of-mode and are no longer in the table.
+
+Two harness notes from that run, both fixed in hangar-evals afterwards: the
+dry-run plan printed graded cells as `skip` under `--force` (the run loop
+re-ran them; only the printout was wrong), and a tool that RAISED inside
+omd (`run_plan` given a plan directory instead of `plan.yaml`, FastMCP text
+`Error executing tool run_plan: [Errno 21] Is a directory`) counted as a
+valid call in the OpenCode trace because there was no error envelope to
+read. It is now `TOOL_EXCEPTION`; the arm's stored Valid% predates that.
+
 **Unfinished:**
 
-1. **The local arms predate the current policy.** The newest gemma records are
-   2026-08-11 and the newest qwen ones 2026-06/07, so both were graded under
-   last-run-of-mode and ran on the pre-calibration budgets. They are in the
-   table for reference but are **not comparable with the anchor** until
-   re-run (gemma ~14 h, qwen ~9 h, both on-device and free). Their
-   manifests carry the two Aviary cases too.
+1. **The qwen arm predates the current policy.** The newest qwen records are
+   2026-06/07, graded under last-run-of-mode on the pre-calibration
+   budgets. They are in the table for reference but are **not comparable
+   with the anchor** until re-run (`scripts/evals run qwen`, ~9 h,
+   on-device and free; its manifest carries the two Aviary cases).
 2. **The anchor image pins Claude Code 2.1.212** while the host CLI is
    2.1.270. The arm above ran on 2.1.212; bump `containers/build.sh` and
    `ANCHOR_IMAGE` before the next arm if it should be on the current CLI.
+3. **omd `run_plan` raises on a plan directory.** Four of gemma's six
+   `run_plan` attempts on `avy_single_aisle` seed 4 passed the plan folder,
+   and the server answered with a bare `[Errno 21] Is a directory` instead
+   of a `USER_INPUT_ERROR` envelope naming `plan.yaml`. Resolving
+   `<dir>/plan.yaml` (or a typed error) is a tool-ergonomics fix in
+   `hangar.omd`; it was NOT applied before this arm, so the anchor and gemma
+   both ran against the raising version.
 
 ## What gets produced
 
@@ -162,7 +193,7 @@ re-renders these tables when it finishes:
 ```bash
 cd ../hangar-evals
 op run --env-file=op.env -- scripts/evals run anchor   # 13 cases x 3 seeds, ~4 h
-scripts/evals run gemma                                # on-device, ~14 h, free
+scripts/evals run gemma                                # on-device, ~8.5 h, free
 scripts/evals run anchor --dry-run                     # plan only, no spend
 ```
 
