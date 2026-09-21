@@ -74,13 +74,28 @@ omd (`run_plan` given a plan directory instead of `plan.yaml`, FastMCP text
 valid call in the OpenCode trace because there was no error envelope to
 read. It is now `TOOL_EXCEPTION`; the arm's stored Valid% predates that.
 
+**Why gemma scores 0, found afterwards (2026-09-21 evening).** The anchor's
+first calls on every case read `omd://reference` and `omd://plan-schema`,
+prompted by omd's MCP `instructions`. OpenCode 1.17.5 forwards neither
+(verified in the binary): a local model sees omd's tools and nothing else,
+and `plan_add_component` accepted any type string. Two fixes, neither in
+the arm above: hangar-evals `38bcb17` writes omd's instructions and the two
+resources into the OpenCode workspace as `AGENTS.md` + files before every
+run; the-hangar PR #116 makes every unknown-type error list the registered
+types and rejects unknown types at `plan_add_component`. A one-seed
+mechanism check with both (isolated results dir, not in the tables) passed
+`oas_aero_rect` in 21 turns, first call `read ./omd_reference.md`, first
+component `oas/AeroPoint`; the arm cell was 0/5. So the gemma row is a
+measurement of gemma through OpenCode as it shipped, and the next local
+arm is the first one comparable with the anchor on what the model is shown.
+
 **Unfinished:**
 
-1. **The qwen arm predates the current policy.** The newest qwen records are
-   2026-06/07, graded under last-run-of-mode on the pre-calibration
-   budgets. They are in the table for reference but are **not comparable
-   with the anchor** until re-run (`scripts/evals run qwen`, ~9 h,
-   on-device and free; its manifest carries the two Aviary cases).
+1. **The qwen arm predates the current policy, and the gemma arm predates
+   the surface fix.** Re-run both (`scripts/evals run gemma --force`,
+   `scripts/evals run qwen --force`) once the-hangar #116 is merged; the
+   qwen records are 2026-06/07 and were graded under last-run-of-mode on
+   the pre-calibration budgets. The newest qwen records are
 2. **The anchor image pins Claude Code 2.1.212** while the host CLI is
    2.1.270. The arm above ran on 2.1.212; bump `containers/build.sh` and
    `ANCHOR_IMAGE` before the next arm if it should be on the current CLI.
