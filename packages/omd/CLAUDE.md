@@ -494,3 +494,18 @@ explorer.exe "$(wslpath -w dag.html)"
 # Export standalone Python script
 omd-cli export plan.yaml --output script.py
 ```
+
+## Agent-facing discoverability (2026-09-21)
+
+- `plan_add_component` rejects an unregistered `comp_type` at call time
+  (`UserInputError`), and every unknown-type message -- there and in
+  `validate_plan` / `run_plan` semantic validation -- lists the registered
+  types (`unknown_component_type_message` in `plan_validate.py`). A close
+  match adds "Did you mean"; the list is there regardless, because an
+  invented name has no close match and a bare "unknown" just restarts the
+  guessing (every gemma seed on the 2026-09-21 eval arm).
+- The server's MCP `instructions` block lives in `hangar/omd/instructions.py`
+  (`INSTRUCTIONS`), importable without building the server. hangar-evals
+  reads it plus `tools/resources.py` to hand OpenCode agents the same texts
+  Claude Code gets over MCP (OpenCode 1.17.5 forwards neither instructions
+  nor resources). Edit the text there, not in `server.py`.

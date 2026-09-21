@@ -78,6 +78,19 @@ def test_unknown_component_type_flagged():
     assert "oas/AeroPoint" in type_findings[0].suggestions
 
 
+def test_unknown_component_type_lists_the_registered_types_even_without_a_close_match():
+    """An invented name ('VortexLatticeWing' -- every gemma seed, 2026-09-21)
+    has no close match; the message must still hand over the real list."""
+    plan = _minimal_plan()
+    plan["components"] = [{"id": "c0", "type": "VortexLatticeWing", "config": {}}]
+    registry_types = {"oas/AeroPoint", "oas/AerostructPoint", "paraboloid/Paraboloid"}
+    [finding] = [f for f in validate_plan_semantic(plan, registry_types=registry_types)
+                 if f.path.endswith(".type")]
+    assert finding.suggestions == []
+    assert "Registered types: oas/AeroPoint, oas/AerostructPoint, paraboloid/Paraboloid" in finding.message
+    assert "omd://reference" in finding.message
+
+
 def test_known_component_type_not_flagged():
     plan = _minimal_plan()
     registry_types = {"oas/AeroPoint"}
