@@ -79,7 +79,7 @@ first calls on every case read `omd://reference` and `omd://plan-schema`,
 prompted by omd's MCP `instructions`. OpenCode 1.17.5 forwards neither
 (verified in the binary): a local model sees omd's tools and nothing else,
 and `plan_add_component` accepted any type string. Two fixes, neither in
-the arm above: hangar-evals `38bcb17` writes omd's instructions and the two
+the arm above: hangar-evals #28 writes omd's instructions and the two
 resources into the OpenCode workspace as `AGENTS.md` + files before every
 run; the-hangar PR #116 makes every unknown-type error list the registered
 types and rejects unknown types at `plan_add_component`. A one-seed
