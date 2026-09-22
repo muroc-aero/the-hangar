@@ -99,8 +99,9 @@ those two changes bought; the anchor is unaffected by either.
    and oas_ocp_combined seed, up to 40 retries); (c) `omd://reference`'s
    component-type table lacks `avy/Sizing`, the one registered type
    missing, so 4 of 5 avy_single_aisle seeds chose `ocp/FullMission` with
-   the b738 template as a "proxy". All three are the-hangar #116
-   follow-ups; the next local arm is the first with them.
+   the b738 template as a "proxy". All three are fixed in the-hangar #116
+   (second commit, `8534f55`: typed errors + `avy/Sizing` in the reference
+   with a coverage test); the next local arm is the first with them.
 
 ## What gets produced
 
