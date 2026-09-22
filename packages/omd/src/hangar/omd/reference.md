@@ -80,6 +80,7 @@ returns `alpha_deg` / `CL` / `CD` / `L_over_D` arrays plus `best_L_over_D`.
 | `evt/Sizing` | eVTOL MTOW-closure sizing (native OpenMDAO, analytic complex-step gradients) |
 | `evt/Mission` | eVTOL as-configured mission energy, no sizing loop (native OpenMDAO) |
 | `evt/SizingFD` | eVTOL sizing via the gradient-free evtolpy black box (FD-partial fallback / parity oracle) |
+| `avy/Sizing` | NASA Aviary aircraft sizing + mission optimization from a FLOPS/GASP deck (native `AviaryGroup`; run with `mode: optimize`) |
 | `paraboloid/Paraboloid` | Trivial test component |
 
 OCP components accept `slots` (drag/propulsion/weight providers such as
@@ -134,11 +135,45 @@ config:
 
 - `paraboloid/Paraboloid` takes **no config**; set run inputs (`x`, `y`)
   via `operating_points` (preflight rejects config keys here).
-- `oas/*` config keys are forwarded to the OpenAeroStruct surface dict
+- `oas/*` config is a **`surfaces` list**; every mesh/aero/structural key
+  goes INSIDE a surface entry, never at the component top level:
+
+  ```yaml
+  type: oas/AeroPoint            # or oas/AerostructPoint
+  config:
+    surfaces:
+      - name: wing               # required
+        wing_type: rect
+        num_x: 2
+        num_y: 7                 # required; must be odd
+        span: 10.0
+        root_chord: 1.0
+        symmetry: true
+        # aerostruct only: fem_model_type: tube, E, G, yield_stress, mrho
+  ```
+
+  Per-surface keys are forwarded to the OpenAeroStruct surface dict
   (`span`, `taper`, `sweep`, `dihedral`, `root_chord`, `num_x`, `num_y`,
   `num_twist_cp`, `wing_type`, `symmetry`, `fem_model_type`,
   `wing_weight_ratio`, `use_composite`, ... plus any valid OAS surface
-  key); unknown keys are passed through, not validated.
+  key); unknown keys are passed through with a warning, not validated.
+  Flight conditions (`alpha`, `v`/`u_tas`, `rho`, `Mach_number`, `re`)
+  are `operating_points`, not config.
+- `avy/Sizing` sizes an aircraft with NASA Aviary and **only produces
+  results under `mode: optimize`** (every Aviary run is a dymos collocation
+  optimization; `analysis` is rejected). The plan needs no design variables
+  or objective of its own. Config keys: `deck` (**required**; aviary-relative
+  CSV, e.g. `models/aircraft/advanced_single_aisle/advanced_single_aisle_FLOPS.csv`),
+  `phase_info_module` (Aviary phase_info module path), `target_range_nm`
+  (also settable as an operating point), `optimizer` (`SLSQP` default,
+  `IPOPT`), `max_iter`, `overrides` ({aviary var: value} written into the
+  deck; a computed var here becomes a plan-connectable input, e.g.
+  `aircraft:wing:mass` driven by an OAS wingbox), `external_subsystems`
+  ([{name, config}] from the hangar.avy registry, e.g. `oas_wing_mass`),
+  `engine_deck` ({provider: pyc/hbtf, ...} tabulates a pyCycle sweep as the
+  engine deck). Scalar outputs in the run summary: `gross_mass_lbm`,
+  `total_fuel_mass_lbm`, `range_nmi`, `final_time_min`, `wing_mass_lbm`,
+  `engine_scale_factor`.
 - `pyc/*` config keys are the cycle parameters (`comp_PR`, `comp_eff`,
   `burner_FAR`, `turb_eff`, `nozz_Cv`, `initial_guesses`, ...); extras
   pass through to the cycle builder.

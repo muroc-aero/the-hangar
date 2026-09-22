@@ -42,7 +42,7 @@ async def validate_plan(
     """
     from hangar.omd.plan_schema import load_and_validate
 
-    path = resolve_plan_path(plan_path)
+    path = resolve_plan_path(plan_path, want_file=True)
     plan, errors = await asyncio.to_thread(load_and_validate, path)
     if errors:
         return {"valid": False, "errors": errors}
@@ -157,7 +157,7 @@ async def run_plan(
             f"recording_level must be one of {_RECORDING_LEVELS} (got {recording_level!r})"
         )
 
-    path = resolve_plan_path(plan_path)
+    path = resolve_plan_path(plan_path, want_file=True)
     inputs = {
         "plan_path": str(path),
         "mode": mode,
@@ -254,7 +254,7 @@ async def run_polar(
             f"alpha_end ({alpha_end}) must be greater than alpha_start ({alpha_start})"
         )
 
-    path = resolve_plan_path(plan_path)
+    path = resolve_plan_path(plan_path, want_file=True)
     inputs = {
         "plan_path": str(path),
         "alpha_start": alpha_start,

@@ -619,3 +619,13 @@ omd-cli export plan.yaml --output script.py
   reads it plus `tools/resources.py` to hand OpenCode agents the same texts
   Claude Code gets over MCP (OpenCode 1.17.5 forwards neither instructions
   nor resources). Edit the text there, not in `server.py`.
+- Three more agent-facing gaps closed after the 2026-09-21 gemma arm (each
+  had cost whole eval cells): `run_plan` / `validate_plan` / `run_polar`
+  given a plan *directory* resolve `<dir>/plan.yaml` or raise a typed error
+  naming it (`resolve_plan_path(..., want_file=True)`); OAS factories check
+  the `surfaces` list up front (`require_surfaces` in `factories/oas.py`:
+  `name` and `num_y` per entry, and a hint when mesh keys sit at the
+  component top level) instead of leaking `KeyError('num_y')`; and
+  `reference.md` must list every registered type
+  (`tests/test_reference_coverage.py` fails when a new factory is not
+  documented -- add a row to the type table AND a config-keys bullet).
