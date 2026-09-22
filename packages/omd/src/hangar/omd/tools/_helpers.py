@@ -39,8 +39,16 @@ def workspace_dir() -> Path:
     return ws
 
 
-def resolve_plan_path(plan_path: str, *, must_exist: bool = True) -> Path:
-    """Resolve a plan file/dir path: absolute, cwd-relative, or workspace-relative."""
+def resolve_plan_path(plan_path: str, *, must_exist: bool = True,
+                      want_file: bool = False) -> Path:
+    """Resolve a plan file/dir path: absolute, cwd-relative, or workspace-relative.
+
+    ``want_file``: the caller needs the assembled plan YAML. A directory then
+    resolves to its ``plan.yaml`` when one exists, and otherwise raises a
+    typed error naming it -- agents pass the plan *directory* to run_plan and
+    validate_plan often (every third gemma seed on the 2026-09-21 arm), and
+    the bare ``[Errno 21] Is a directory`` they used to get taught nothing.
+    """
     if not plan_path:
         raise UserInputError("plan_path must be a non-empty string")
     p = Path(plan_path).expanduser()
@@ -50,6 +58,17 @@ def resolve_plan_path(plan_path: str, *, must_exist: bool = True) -> Path:
         candidates = [Path.cwd() / p, workspace_dir() / p]
     for c in candidates:
         if c.exists():
+            if want_file and c.is_dir():
+                assembled = c / "plan.yaml"
+                if assembled.is_file():
+                    return assembled
+                listing = ", ".join(sorted(x.name for x in c.iterdir())) or "(empty)"
+                raise UserInputError(
+                    f"plan_path {plan_path!r} is a directory with no plan.yaml "
+                    f"(contains: {listing}). This tool takes the ASSEMBLED plan "
+                    "file: run assemble_plan on the plan directory first, then "
+                    f"pass '{plan_path.rstrip('/')}/plan.yaml'."
+                )
             return c
     if not must_exist:
         return candidates[-1]

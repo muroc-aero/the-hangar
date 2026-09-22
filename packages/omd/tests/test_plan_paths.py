@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from hangar.omd.plan_paths import (
     element_entity_id,
     resolve_element_path,
@@ -117,3 +119,32 @@ def test_element_entity_id_is_stable():
     assert r is not None
     eid = element_entity_id("plan-p/v1", r)
     assert eid == "plan-p/v1/elem/components[wing]"
+
+
+# ---------------------------------------------------------------------------
+# resolve_plan_path with want_file (2026-09-22): a plan DIRECTORY handed to
+# run_plan / validate_plan used to surface as a bare "Is a directory".
+# ---------------------------------------------------------------------------
+
+def test_want_file_resolves_a_plan_dir_to_its_assembled_yaml(tmp_path, monkeypatch):
+    from hangar.omd.tools._helpers import resolve_plan_path
+
+    d = tmp_path / "study"
+    d.mkdir()
+    (d / "plan.yaml").write_text("metadata: {}\n")
+    monkeypatch.chdir(tmp_path)
+    assert resolve_plan_path("study", want_file=True) == d / "plan.yaml"
+    assert resolve_plan_path("study") == d            # default: dirs pass through
+
+
+def test_want_file_names_plan_yaml_when_the_dir_is_not_assembled(tmp_path, monkeypatch):
+    from hangar.sdk.errors import UserInputError
+
+    from hangar.omd.tools._helpers import resolve_plan_path
+
+    d = tmp_path / "study"
+    (d / "components").mkdir(parents=True)
+    (d / "metadata.yaml").write_text("id: study\n")
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(UserInputError, match=r"assemble_plan.*study/plan\.yaml"):
+        resolve_plan_path("study", want_file=True)
