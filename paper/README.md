@@ -50,62 +50,57 @@ as `Lost` seeds with a `rate_limit_event` in the harness stdout tail; the
 plain `scripts/evals run anchor` (no `--force`) resumes exactly those.
 
 **Current, three.** The `gemma4:26b-mlx` rows of `sandboxed_evals` come
-from the local arm run 2026-09-21 (hangar-evals campaign
-`gemma_20260921T064421Z`, `scripts/evals run gemma --force`): 13 cases x
-5 seeds, OpenCode 1.17.5 in the sandbox container, omd over http, 8 h 19 min
-on-device. 0 of 65 graded seeds pass; `Lost` and `Review` 0, so every row is
-a result, not a harness loss. The failure mode is the same in every cell:
-gemma authors plans with invented component types (`aerodynamic_analysis_component`,
-`vortex_lattice_analysis`) or invented design variables (`fuel_mass` on
-`avy/Sizing`), omd's semantic validation rejects `run_plan`, and the model
-either loops on plan edits until the cap or stops on its own after a few
-tool calls. Its closest attempt was `avy_single_aisle` seed 0, which read
-two omd error messages correctly (missing deck; `optimize`, not
-`analysis`) before failing on the third. Valid-call rate 81-97% is the
-MCP-boundary figure; it says the calls were well-formed, not that they did
-anything. This arm supersedes the 2026-08-11 gemma records, which were
-graded under last-run-of-mode and are no longer in the table.
+from the local arm run 2026-09-21/22 (hangar-evals campaign
+`gemma_20260921T200043Z`, `scripts/evals run gemma --force`): 13 cases x
+5 seeds, OpenCode 1.17.5 in the sandbox container, omd over http, 7 h 49 min
+on-device, against pushed integration branches
+`integration/gemma-surface-20260921` in both repos (the-hangar `d91a3cb` =
+PR #115 + #116; hangar-evals `9f7c9e9` = PR #27 + #28). **13 of 65 graded
+seeds pass; `Lost` and `Review` 0.** Per cell: paraboloid 4/5,
+ocp_hybrid_twin 3/5, ocp_caravan_full 2/5, oas_aero_rect / ocp_caravan_basic
+/ ocp_oas_coupled / evt_native_sizing 1/5, the other six 0/5. Every seed
+now opens by reading the reference and picks a real component type; the
+remaining failures are (a) the model ending its turn mid-authoring with no
+report (ocp_oas_direct median 4 turns, pyc_turbojet 11), (b) three omd
+ergonomics gaps below, and (c) wrong numbers from a wrong setup
+(oas_aero_rect seed 2, CL 0.376 vs 0.452).
 
-Two harness notes from that run, both fixed in hangar-evals afterwards: the
-dry-run plan printed graded cells as `skip` under `--force` (the run loop
-re-ran them; only the printout was wrong), and a tool that RAISED inside
-omd (`run_plan` given a plan directory instead of `plan.yaml`, FastMCP text
-`Error executing tool run_plan: [Errno 21] Is a directory`) counted as a
-valid call in the OpenCode trace because there was no error envelope to
-read. It is now `TOOL_EXCEPTION`; the arm's stored Valid% predates that.
+The same arm run earlier that day WITHOUT the surface fixes
+(`gemma_20260921T064421Z`, 8 h 19 min) scored **0 of 65**: every seed
+invented component types (`VortexLatticeWing`,
+`aerodynamic_analysis_component`), `plan_add_component` accepted them, and
+the model looped or stopped. That arm is history, not in the table.
 
-**Why gemma scores 0, found afterwards (2026-09-21 evening).** The anchor's
-first calls on every case read `omd://reference` and `omd://plan-schema`,
-prompted by omd's MCP `instructions`. OpenCode 1.17.5 forwards neither
-(verified in the binary): a local model sees omd's tools and nothing else,
-and `plan_add_component` accepted any type string. Two fixes, neither in
-the arm above: hangar-evals #28 writes omd's instructions and the two
-resources into the OpenCode workspace as `AGENTS.md` + files before every
-run; the-hangar PR #116 makes every unknown-type error list the registered
-types and rejects unknown types at `plan_add_component`. A one-seed
-mechanism check with both (isolated results dir, not in the tables) passed
-`oas_aero_rect` in 21 turns, first call `read ./omd_reference.md`, first
-component `oas/AeroPoint`; the arm cell was 0/5. So the gemma row is a
-measurement of gemma through OpenCode as it shipped, and the next local
-arm is the first one comparable with the anchor on what the model is shown.
+**Why gemma scored 0 before.** The anchor's first calls on every case read
+`omd://reference` and `omd://plan-schema`, prompted by omd's MCP
+`instructions`. OpenCode 1.17.5 forwards neither (verified in the binary):
+a local model sees omd's tools and nothing else. Two fixes, both in the arm
+above: hangar-evals #28 writes omd's instructions and the two resources
+into the OpenCode workspace as `AGENTS.md` + files before every run;
+the-hangar #116 makes every unknown-type error list the registered types
+and rejects unknown types at `plan_add_component`. 0/65 -> 13/65 is what
+those two changes bought; the anchor is unaffected by either.
 
 **Unfinished:**
 
-1. **The qwen arm predates the current policy, and the gemma arm predates
-   the surface fix.** Re-run both (`scripts/evals run gemma --force`,
-   `scripts/evals run qwen --force`) once the-hangar #116 is merged; the
-   qwen records are 2026-06/07 and were graded under last-run-of-mode on
-   the pre-calibration budgets. The newest qwen records are
+1. **The qwen arm predates the current policy and the surface fix.** Its
+   records are 2026-06/07, graded under last-run-of-mode on the
+   pre-calibration budgets. Re-run with `scripts/evals run qwen --force`
+   (~9 h, on-device) once #115, #116 and #28 are merged.
 2. **The anchor image pins Claude Code 2.1.212** while the host CLI is
-   2.1.270. The arm above ran on 2.1.212; bump `containers/build.sh` and
+   2.1.270. The anchor arm ran on 2.1.212; bump `containers/build.sh` and
    `ANCHOR_IMAGE` before the next arm if it should be on the current CLI.
-3. **omd `run_plan` raises on a plan directory.** Four of gemma's six
-   `run_plan` attempts on `avy_single_aisle` seed 4 passed the plan folder,
-   and the server answered with a bare `[Errno 21] Is a directory` instead
-   of a `USER_INPUT_ERROR` envelope naming `plan.yaml`. Resolving
-   `<dir>/plan.yaml` (or a typed error) is a tool-ergonomics fix in
-   `hangar.omd`; it was NOT applied before this arm, so the anchor and gemma
-   both ran against the raising version.
+3. **Three omd ergonomics gaps the gemma arm hit, none fixed before it
+   ran:** (a) `run_plan` / `validate_plan` given a plan *directory* raise a
+   bare `[Errno 21] Is a directory` instead of a typed error naming
+   `plan.yaml` (the most common way a seed was lost); (b) the OAS factory
+   raises bare `KeyError('num_y')` / `'name'` when mesh keys sit at the
+   component top level with `surfaces: [{id}]` (every oas_aerostruct_rect
+   and oas_ocp_combined seed, up to 40 retries); (c) `omd://reference`'s
+   component-type table lacks `avy/Sizing`, the one registered type
+   missing, so 4 of 5 avy_single_aisle seeds chose `ocp/FullMission` with
+   the b738 template as a "proxy". All three are the-hangar #116
+   follow-ups; the next local arm is the first with them.
 
 ## What gets produced
 
