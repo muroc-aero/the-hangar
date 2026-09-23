@@ -117,22 +117,24 @@ stream and the Ollama request log:
 - **Wrong numbers from a wrong setup:** a run happened and the report named
   it, but the effects differ (ocp_hybrid_twin s0/s3, ocp_oas_direct
   s2/s3, oas_aerostruct_rect s3).
-- **Three Ollama hangs, now marked as harness losses:** oas_ocp_combined
+- **Three silent timeouts, first read as Ollama hangs:** oas_ocp_combined
   s0, pyc_turbojet s4 and avy_three_tool s0 hit the cap (1100 s, 1100 s,
   2700 s) with no completed model request for the last 11, 16 and 43 min
-  and omd idle (no pending `CallToolRequest`, no run dir). Re-running the
-  first of them on 09-23 stalled the same way and was read live: nothing
-  but `opencode run` in the container, a new step opened one second after
-  the last completed request, Ollama had accepted that request (cache hit,
-  prompt processed) and never answered it, `ollama ps` showed the model
-  `Stopping...`, the runner spun at ~70% CPU, and `Request terminated:
-  context canceled` was logged when the client was killed. All four
-  followed a runner `peak memory` of 30.0-32.1 GiB against the 36.9 GiB
-  Metal ceiling on this 48 GB machine: the 0.30.10 MLX leak, contained
-  across seeds by the per-seed unload, still hangs a seed long enough to
-  climb into the ceiling. Not the model, not omd, not the sandbox. The
-  three seeds are `HarnessLoss` rows (hangar-evals `evals mark-lost`), so
-  the plain `scripts/evals run qwen` resumes exactly them (item 4).
+  and omd idle. They were marked as harness losses (an MLX runner hang
+  past 30 GiB), Ollama was upgraded to 0.34.3, and the resume on 09-23
+  19:17 reproduced the whole signature on the first seed at 25 GiB --
+  `ollama ps` `Stopping...`, runner at ~70% CPU, an empty reasoning part,
+  nothing in the access log -- with the GPU at 95-99%, then ended it on
+  its own after 570 s: `step_finish reason=length`, 32 000 output tokens,
+  no tool call. It is the "thinking exhausted the output budget" kind
+  above, silent until it ends (`Stopping...` is the keep-alive expiring
+  under the in-flight request); at ~56 tok/s a 32k step takes ~10 min, and
+  the 0.30.10 seeds, slower under the leak, ran into their caps first.
+  Model failures, so the marks were undone (hangar-evals `92ccbb6`,
+  `mark-lost --undo`), the re-run was stopped after that one seed (it
+  would have been a re-roll), and the three rows are the arm's timed-out
+  FAILs. The one seed that did re-run also failed (`NO RUN`, 621 s); its
+  row is in the file, superseded.
 - **One omd path-resolution defect** (pyc_turbojet s0, item 5): the agent
   called `assemble_plan(output="turbojet_sizing/plan.yaml")`, which wrote
   next to the server's cwd instead of the workspace, and `validate_plan` /
@@ -178,17 +180,15 @@ transition in 7.5 h). (c) The local `qwen3.6:35b-mlx` tag has
    (second commit, `8534f55`: typed errors + `avy/Sizing` in the reference
    with a coverage test); the qwen arm above is the first with them, and
    none of its 33 failures is one of these three.
-4. **Three qwen seeds are harness losses waiting on an Ollama fix.** The
-   diagnosis is in the failure list above; hangar-evals (PR #28, `4496f1b`)
-   now copies the container's OpenCode store and process list out on a
-   timeout, writes a timeout note, and has `evals mark-lost`, which the
-   three seeds carry. Re-running them on the same Ollama 0.30.10 hangs the
-   same way (tried 09-23 09:01, stopped). Before the resume: upgrade Ollama
-   (brew has 0.34.2; record the version, the manifest does) or raise the
-   Metal wired limit (`sudo sysctl iogpu.wired_limit_mb`), then
-   `scripts/evals run qwen --only oas_ocp_combined,pyc_turbojet,avy_three_tool`
-   and `scripts/evals table`. The cell numbers above count those three
-   seeds as failures until then (29+3 = 32/65 is what the table shows).
+4. **No qwen seed is a harness loss.** The three silent timeouts were
+   re-read on 09-23 (failure list above) and are model failures; the
+   `HarnessLoss` marks are undone and the cell numbers above stand as the
+   arm recorded them. What the episode left behind: hangar-evals (PR #28)
+   copies the container's OpenCode store and process list out on a
+   timeout, writes a timeout note that says to check the GPU before
+   calling a silent seed a hang, and has `evals mark-lost` / `--undo` for
+   the day a seed really is lost. Ollama is now 0.34.3 (MLX 0.32.1); the
+   next local arm records that in its manifest.
 5. **omd resolves relative plan paths against the server cwd before the
    workspace, and `assemble_plan`'s `output` only against the cwd**
    (`tools/_helpers.py resolve_plan_path`, `tools/execution.py
