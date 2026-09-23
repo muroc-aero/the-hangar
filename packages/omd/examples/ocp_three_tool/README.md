@@ -1,5 +1,14 @@
 # B738 Mission with OAS Drag + pyCycle HBTF Propulsion
 
+> **Deactivated 2026-09-20.** The parity tests for this case carry a skip
+> mark and `paper/run_lanes.py` leaves it out. On the numpy-2 / OpenMDAO
+> 3.45 stack Lane A alone takes about 97 min wall (mostly idle CPU) and
+> its fuel burn moved from the July record of 2449.70 kg to 2855.08 kg,
+> while the pyCycle deck generation itself is fine (~5 s per point, all
+> points converging). PR #88 (`fix/ocp-three-tool-convergence`) reworks
+> exactly this case; re-enable it there. The three-tool demo that runs
+> today is `examples/avy_three_tool/` (Aviary + OAS + pyCycle).
+
 First three-tool composition example. Fills both the drag and propulsion
 slots in a B738 basic mission, replacing the default parabolic polar
 drag with OAS VLM aerodynamics and the default CFM56 with a pyCycle

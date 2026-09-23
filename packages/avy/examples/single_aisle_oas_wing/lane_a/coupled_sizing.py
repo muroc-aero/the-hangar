@@ -7,8 +7,8 @@ verbatim). Only the mission phase_info is imported from
 ``hangar.avy.config.missions_oas_wing`` -- the single in-repo copy of the
 dict that upstream ships inline in a script that runs on import.
 
-Run standalone (inside .venv-avy):
-    .venv-avy/bin/python packages/avy/examples/single_aisle_oas_wing/lane_a/coupled_sizing.py
+Run standalone (from the workspace venv):
+    uv run python packages/avy/examples/single_aisle_oas_wing/lane_a/coupled_sizing.py
 """
 
 from __future__ import annotations

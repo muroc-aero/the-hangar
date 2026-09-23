@@ -1,22 +1,23 @@
 """Shared constants for the loose-coupled OAS -> Aviary wing-mass case (B2).
 
 The multitool composition the tight-coupled cases cannot show: an OAS
-aerostructural wing (main venv, numpy<2) computes a structural wing mass
-that omd feeds -- across the venv boundary -- into an Aviary sizing
-(subprocess into .venv-avy, numpy 2) as a deck override on
-``aircraft:wing:mass``, through the ``avy/Sizing`` factory's
-``override_inputs`` mechanism. One-way coupling; OpenMDAO converts the
-kg -> lbm units on the plan connection.
+aerostructural wing computes a structural wing mass that a plan
+connection feeds straight into an Aviary sizing's ``aircraft:wing:mass``
+-- one OpenMDAO problem, one driver. A deck value for that variable in
+the native ``avy/Sizing`` factory's ``overrides`` config makes it a
+boundary input (Aviary's own override mechanism) that the connection
+drives. One-way coupling; OpenMDAO converts the kg -> lbm units on the
+plan connection.
 
 Physical honesty: the wing here is a single-aisle-*scaled* rectangular
 tube-spar surface (the certified ``oas_aerostruct_rect`` formulation with
 transport-scale numbers), NOT the aircraft's real planform -- this case
-certifies the cross-venv composition plumbing; the physically-grounded
+certifies the composition plumbing; the physically-grounded
 wing-mass study is ``avy_oas_wing`` / the per-tool
 ``single_aisle_oas_wing`` (upstream's own wingbox integration).
 
-Lane A is compositional (no single upstream script does this): raw OAS in
-the main venv -> hand the mass to a raw-Aviary override run in .venv-avy.
+Lane A is compositional (no single upstream script does this): raw OAS ->
+hand the mass to a raw-Aviary override run, both in this process.
 """
 
 # ── OAS side (single-aisle-scaled rect tube wing) ────────────────────────
@@ -50,7 +51,6 @@ FLIGHT = {
 DECK = "models/aircraft/advanced_single_aisle/advanced_single_aisle_FLOPS.csv"
 PHASE_INFO_MODULE = "aviary.models.missions.energy_state_default"  # 1906 nmi
 OVERRIDE_VAR = "aircraft:wing:mass"
-OVERRIDE_INPUT = "wing_mass_override_lbm"
 OPTIMIZER = "SLSQP"
 MAX_ITER = 50
 

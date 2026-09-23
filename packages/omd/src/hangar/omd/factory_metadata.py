@@ -161,6 +161,37 @@ class FactoryMetadata(TypedDict, total=False):
     declared_slots: dict
     """OCP: default provider per slot."""
 
+    # --- Generic composition hooks (honored by the materializer / run.py) ----
+    self_optimizing: bool
+    """The factory declared its own DVs/constraints/objective inside the
+    model (e.g. Aviary's collocation problem). The materializer configures
+    the driver even when the plan declares no design_variables/objective."""
+
+    requires_driver: bool
+    """The model only produces meaningful results under run_driver (every
+    Aviary run is an optimization). run.py refuses mode=analysis."""
+
+    driver_defaults: dict
+    """``{"type": "SLSQP", "options": {...}}`` applied under the plan's
+    ``optimizer`` section (plan keys win)."""
+
+    driver_coloring: bool
+    """Call ``driver.declare_coloring(show_summary=False)`` (total coloring)."""
+
+    model_options: dict[str, dict]
+    """OpenMDAO ``prob.model_options`` entries keyed by path glob relative to
+    the factory's model root; a composite re-keys them under the comp id."""
+
+    post_setup: list
+    """Callables ``f(prob)`` run right after ``prob.setup()`` (before
+    initial values) -- e.g. dymos initial guesses."""
+
+    setup_warning_filters: list
+    """Warning classes ignored around ``prob.setup()``."""
+
+    avy_outputs: dict[str, tuple[str, str]]
+    """Aviary: summary key -> (promoted name, units)."""
+
     # --- Materializer-injected (not set by factories) -------------------------
     recorder_path: str
     """Path to the SqliteRecorder .sql file."""

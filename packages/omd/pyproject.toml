@@ -6,7 +6,11 @@ requires-python = ">=3.11"
 dependencies = [
     "hangar-sdk[all]",
     "hangar-results-reader",
-    "openmdao>=3.35,!=3.40",
+    # avy/Sizing is a native factory over hangar.avy (deck loading, phase_info,
+    # external-subsystem registry) and Aviary itself.
+    "hangar-avy",
+    "openmdao>=3.43",
+    "numpy>=2,<2.4",
     "openaerostruct>=2.12,<3",
     "click>=8.0",
     "jsonschema>=4.0",
@@ -31,6 +35,7 @@ packages = ["src/hangar"]
 [tool.uv.sources]
 hangar-sdk = { workspace = true }
 hangar-results-reader = { workspace = true }
+hangar-avy = { workspace = true }
 openaerostruct = { path = "../../upstream/OpenAeroStruct", editable = true }
 
 [tool.pytest.ini_options]

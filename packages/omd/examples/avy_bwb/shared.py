@@ -2,11 +2,11 @@
 
 Identical engineering problem to packages/avy/examples/bwb_sizing/ (the
 upstream BWB benchmark deck on the fixed-profile M0.85 / 7750 nmi mission,
-SLSQP) through the omd avy/Sizing subprocess factory. The mission comes
-from hangar.avy.config.missions_bwb_fixed -- importable in the worker
-because hangar-avy is installed in .venv-avy.
+SLSQP) through the native omd avy/Sizing factory (mode=optimize). The
+mission comes from hangar.avy.config.missions_bwb_fixed, importable in
+the workspace venv alongside Aviary.
 
-Tests skip when .venv-avy is absent (scripts/setup-avy-venv.sh).
+Tests skip when aviary is not installed (bash scripts/dev-setup.sh).
 """
 
 DECK = "models/aircraft/blended_wing_body/bwb_simple_FLOPS.csv"

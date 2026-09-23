@@ -6,8 +6,8 @@ additionally anchored to the PUBLISHED upstream SNOPT benchmark values at
 2% -- the fixed profile should land close but slightly heavier than the
 profile-optimized SNOPT solution.
 
-Needs the aviary package -- run inside .venv-avy:
-    .venv-avy/bin/python -m pytest packages/avy/examples/bwb_sizing/tests/ -v --rootdir=.
+Needs the aviary package (installed by `bash scripts/dev-setup.sh`):
+    uv run pytest packages/avy/examples/bwb_sizing/tests/ -v --rootdir=.
 """
 
 import json

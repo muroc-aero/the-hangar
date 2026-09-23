@@ -2,11 +2,12 @@
 
 No single upstream script does this composition, so the oracle is built
 from the two certified raw pieces: (1) a raw OpenAeroStruct aerostructural
-analysis in THIS venv (the ``oas_aerostruct_rect`` Lane A formulation with
-the transport-scale surface from ``shared``), (2) its structural mass
-handed -- kg converted to lbm here, exactly the conversion the OpenMDAO
-connection performs in Lane B -- to a raw-Aviary override sizing run in
-.venv-avy (``avy_override_sizing.py``).
+analysis (the ``oas_aerostruct_rect`` Lane A formulation with the
+transport-scale surface from ``shared``), (2) its structural mass handed
+-- kg converted to lbm here, exactly the conversion the OpenMDAO
+connection performs in Lane B -- to a raw-Aviary override sizing run
+(``avy_override_sizing.py``, same process: Aviary lives in the workspace
+venv).
 
 Run standalone (main venv):
     uv run python packages/omd/examples/oas_avy_wing_mass/lane_a/coupled_wing_mass.py
@@ -14,18 +15,15 @@ Run standalone (main venv):
 
 from __future__ import annotations
 
-import subprocess
 import sys
 from pathlib import Path
 
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from shared import FLIGHT, WING  # noqa: E402
-
-_REPO_ROOT = Path(__file__).resolve().parents[5]
-_AVY_PYTHON = _REPO_ROOT / ".venv-avy" / "bin" / "python"
-_AVY_SCRIPT = Path(__file__).with_name("avy_override_sizing.py")
+from avy_override_sizing import run as run_avy_override  # noqa: E402
 
 LBM_PER_KG = 1.0 / 0.45359237
 
@@ -114,31 +112,9 @@ def run_oas() -> float:
 
 def run() -> dict:
     structural_mass_kg = run_oas()
-
-    if not _AVY_PYTHON.exists():
-        raise RuntimeError(
-            f"{_AVY_PYTHON} not found -- run `bash scripts/setup-avy-venv.sh`."
-        )
     wing_mass_lbm = structural_mass_kg * LBM_PER_KG
-    proc = subprocess.run(
-        [str(_AVY_PYTHON), str(_AVY_SCRIPT), str(wing_mass_lbm)],
-        capture_output=True,
-        text=True,
-        timeout=900,
-        cwd=_REPO_ROOT,
-    )
-    if proc.returncode != 0:
-        tail = "\n".join(proc.stderr.strip().splitlines()[-15:])
-        raise RuntimeError(f"Lane A aviary stage failed:\n{tail}")
-
     metrics: dict[str, float] = {"structural_mass_kg": structural_mass_kg}
-    for line in proc.stdout.splitlines():
-        if ":" in line:
-            key, _, value = line.partition(":")
-            try:
-                metrics[key.strip()] = float(value)
-            except ValueError:
-                continue
+    metrics.update(run_avy_override(wing_mass_lbm))
     return metrics
 
 

@@ -10,8 +10,9 @@ omd plan pipeline.
 - Mission: `phase_info_module=aviary.models.missions.energy_state_default`,
   `target_range_nm=1906.0`
 - Optimizer: `optimizer=SLSQP`, `max_iter=50`
-- Run with `mode=analysis` -- the component is self-driving (every Aviary
-  run is an embedded optimization).
+- Run with `mode=optimize` -- every Aviary run is an optimization (the
+  component brings its own design variables and objective; the plan needs
+  none of its own).
 
 ## Tools
 
@@ -21,7 +22,7 @@ The `mcp__omd__*` tools: `plan_init` -> `plan_add_component` ->
 
 ## Deliverables
 
-Verify `converged == 1.0` in the summary (Aviary optimizer non-convergence
+Verify `converged` is true in the summary (Aviary optimizer non-convergence
 does not raise), then report as a fenced JSON block:
 
 ```json

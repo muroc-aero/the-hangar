@@ -3,8 +3,8 @@
 Deliberately minimal: upstream aviary only, no hangar imports beyond
 ``shared``. This is the oracle the wrapper lanes are judged against.
 
-Run standalone (inside .venv-avy):
-    .venv-avy/bin/python packages/avy/examples/single_aisle_sizing/lane_a/sizing.py
+Run standalone (from the workspace venv):
+    uv run python packages/avy/examples/single_aisle_sizing/lane_a/sizing.py
 """
 
 from __future__ import annotations

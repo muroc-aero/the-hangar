@@ -6,8 +6,8 @@ agree to round-off. Lane A is additionally pinned to GOLDEN anchors so an
 upstream physics regression on a pin bump is caught independently of
 lane-to-lane agreement.
 
-Needs the aviary package -- run inside .venv-avy:
-    .venv-avy/bin/python -m pytest packages/avy/examples/single_aisle_sizing/tests/ -v --rootdir=.
+Needs the aviary package (installed by `bash scripts/dev-setup.sh`):
+    uv run pytest packages/avy/examples/single_aisle_sizing/tests/ -v --rootdir=.
 """
 
 import json

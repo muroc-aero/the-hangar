@@ -31,10 +31,10 @@ Sibling examples run the same lanes on other airframes:
 `../bwb_sizing/` (the upstream BWB benchmark, cross-anchored to its
 published SNOPT values).
 
-Run (inside the isolated Aviary venv; see `scripts/setup-avy-venv.sh`):
+Run (needs aviary, installed into the workspace venv by `bash scripts/dev-setup.sh`):
 
 ```bash
-.venv-avy/bin/python -m pytest packages/avy/examples/single_aisle_sizing/tests/ -v --rootdir=.
+uv run pytest packages/avy/examples/single_aisle_sizing/tests/ -v --rootdir=.
 ```
 
 Each lane run takes ~15-20 s; the full suite is ~4 min.

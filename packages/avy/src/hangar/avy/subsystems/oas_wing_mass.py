@@ -25,7 +25,8 @@ planform (``user_mesh()``); this subsystem is only physically meaningful
 on that aircraft until the mesh is deck-driven. See ``SUPPORTED_DECKS``.
 
 Everything that imports aviary/openaerostruct lives inside functions --
-the module stays importable in the main workspace venv.
+the module stays importable in environments without them (e.g. other
+tools' Docker images).
 """
 
 from __future__ import annotations
@@ -225,9 +226,9 @@ def require_oas_subsystem():
     except ImportError as exc:
         raise RuntimeError(
             "The OAS wing-mass subsystem needs 'openaerostruct' and "
-            "'ambiance' in the Aviary venv. Re-run `bash "
-            "scripts/setup-avy-venv.sh` (they were added to it alongside "
-            "aviary), or rebuild the hangar-avy Docker image."
+            "'ambiance' (declared dependencies of hangar-avy). Re-run "
+            "`bash scripts/dev-setup.sh` (or `uv sync`), or rebuild the "
+            "hangar-avy Docker image."
         ) from exc
 
 
@@ -243,8 +244,8 @@ def _nested_driver_knobs(tol, max_iter):
     drivers whose ``run()`` *starts* inside it: the outer Aviary driver is
     already executing when the component's compute fires, so only the
     nested sub-opt driver is touched. Scoped strictly to the enclosing
-    run -- the runner holds the process lock, and the omd worker is a
-    single-threaded subprocess.
+    run -- the runner holds the process lock, and the native omd
+    `avy/Sizing` factory runs in the same single-threaded process.
     """
     import openmdao.api as om
 
@@ -323,7 +324,11 @@ def run_wing_mass_sub_opt(config: dict | None = None, aviary_values=None) -> flo
     import aviary.api as av
     import openmdao.api as om
 
-    prob = om.Problem()
+    # reports=False: with reports on, OpenMDAO >= 3.35 writes
+    # <script>_out/reports/ into the cwd for this nested problem -- the
+    # repo root when omd runs Aviary natively (the avy server hides it
+    # behind its per-run scratch chdir).
+    prob = om.Problem(reports=False)
     prob.model.add_subsystem(
         "wing_mass",
         builder.build_pre_mission(aviary_values or av.AviaryValues()),

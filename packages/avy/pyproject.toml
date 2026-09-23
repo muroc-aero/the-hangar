@@ -3,15 +3,16 @@ name = "hangar-avy"
 version = "0.1.0"
 description = "NASA Aviary MCP server for agentic aircraft sizing and mission optimization"
 requires-python = ">=3.11"
-# NOTE: aviary is deliberately NOT a declared dependency. Aviary >=1.0.1
-# requires openmdao>=3.43, which requires numpy>=2, while the openconcept
-# pin caps numpy<2 -- the two cannot share the workspace venv/lock. The
-# Aviary runtime lives in an isolated venv (scripts/setup-avy-venv.sh) and
-# in this package's own Docker image; hangar.avy imports aviary lazily and
-# raises a clear install-instruction error when it is missing.
 dependencies = [
     "hangar-sdk[all]",
-    "numpy>=1.21",
+    # Aviary v1.0.1 (pinned by AVY_REF in scripts/upstream-pins.env, installed
+    # editable from upstream/Aviary). openaerostruct + ambiance are what the
+    # oas_wing_mass external subsystem needs (upstream's OAS integration).
+    "aviary>=1.0.1",
+    "openaerostruct>=2.12,<3",
+    "ambiance",
+    "openmdao>=3.43",
+    "numpy>=2,<2.4",
     "matplotlib",
 ]
 
@@ -31,8 +32,9 @@ packages = ["src/hangar"]
 
 [tool.uv.sources]
 hangar-sdk = { workspace = true }
-# aviary itself is installed from ../../upstream/Aviary into the isolated
-# .venv-avy by scripts/setup-avy-venv.sh (see dependency note above).
+# For development: use local upstream clones (scripts/setup-upstream.sh)
+aviary = { path = "../../upstream/Aviary", editable = true }
+openaerostruct = { path = "../../upstream/OpenAeroStruct", editable = true }
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

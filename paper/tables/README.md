@@ -39,8 +39,8 @@ scripts/evals run paper --dry-run   # preflight + per-case plan + time estimate
 ## One arm at a time
 
 ```bash
-op run --env-file=op.env -- scripts/evals run anchor   # 11 cases x 3 seeds, ~5 h
-scripts/evals run gemma                                # on-device, ~14 h, free
+op run --env-file=op.env -- scripts/evals run anchor   # 13 cases x 3 seeds, ~4 h
+scripts/evals run gemma                                # on-device, ~8.5 h, free
 scripts/evals run anchor --only ocp_caravan_full,paraboloid
 ```
 

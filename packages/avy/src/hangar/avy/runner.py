@@ -7,7 +7,9 @@ upstream problem has two process-global hazards for a long-lived server:
   ``_clear_problem_names()`` must be called before each run;
 - reports, recorder files, and off-design ``*_out`` directories land in the
   *current working directory*, so each run executes inside a managed
-  per-run scratch directory under the artifact area.
+  per-run scratch directory under the artifact area (the tools pass one;
+  a direct library call without one gets a fresh temp dir, never the
+  launch cwd).
 
 ``os.chdir`` is process-global, so runs are serialized behind a lock. All
 aviary imports are lazy (see the dependency note in pyproject.toml).
@@ -24,6 +26,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import tempfile
 import threading
 from pathlib import Path
 
@@ -51,9 +54,9 @@ def require_aviary():
     except ImportError as exc:
         raise RuntimeError(
             "The 'aviary' package is not installed in this environment. "
-            "Aviary requires openmdao>=3.43 (numpy>=2) and cannot share the "
-            "main hangar venv; run `bash scripts/setup-avy-venv.sh` and use "
-            ".venv-avy (avy-server / avy-cli run from it), or use the "
+            "It is a dependency of hangar-avy in the workspace venv: run "
+            "`bash scripts/dev-setup.sh` (or `uv sync`) and use "
+            "`uv run avy-server` / `uv run avy-cli`, or use the "
             "hangar-avy Docker image."
         ) from exc
     return aviary
@@ -87,9 +90,15 @@ def _scratch_run(scratch_dir: str | Path | None):
     """
     from openmdao.core.problem import _clear_problem_names
 
-    scratch = Path(scratch_dir) if scratch_dir else _LAUNCH_CWD
-    if not scratch.is_absolute():
-        scratch = _LAUNCH_CWD / scratch
+    if scratch_dir:
+        scratch = Path(scratch_dir)
+        if not scratch.is_absolute():
+            scratch = _LAUNCH_CWD / scratch
+    else:
+        # No managed scratch (library use outside the tools): a temp dir,
+        # so Aviary's reports and OpenMDAO's *_out dirs never land in the
+        # caller's cwd (typically the repo root).
+        scratch = Path(tempfile.mkdtemp(prefix="avy_run_"))
 
     with _RUN_LOCK:
         old_cwd = os.getcwd()

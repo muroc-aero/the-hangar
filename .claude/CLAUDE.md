@@ -50,7 +50,7 @@ See `packages/omd/CLAUDE.md` for detailed omd architecture.
 - `run.py` -- plan execution pipeline (load, materialize, execute, record, N2)
 - `materializer.py` -- converts plan YAML to OpenMDAO Problem with DVs/constraints/objective
 - `registry.py` -- factory + plot provider registry
-- `factories/` -- component builders (oas.py, oas_aero.py, paraboloid.py, avy.py subprocess black box into .venv-avy)
+- `factories/` -- component builders (oas.py, oas_aero.py, paraboloid.py, avy.py native Aviary sizing (AviaryGroup inside the omd problem))
 - `plotting/` -- factory-aware plot generation matching oas-cli style
 - `db.py` -- SQLite analysis DB (provenance, run cases, metadata)
 - `recorder.py` -- OpenMDAO CaseReader data import
@@ -59,9 +59,9 @@ See `packages/omd/CLAUDE.md` for detailed omd architecture.
 ### packages/ocp/ -- OpenConcept mission analysis server
 ### packages/pyc/ -- pyCycle gas turbine analysis server
 ### packages/avy/ -- NASA Aviary sizing/mission server
-See `packages/avy/CLAUDE.md`. Runs from the isolated `.venv-avy`
-(`scripts/setup-avy-venv.sh`) because Aviary needs numpy>=2 while the
-openconcept pin caps numpy<2.
+See `packages/avy/CLAUDE.md`. Aviary is an ordinary dependency in the
+single workspace venv (numpy 2 / OpenMDAO 3.45); OpenConcept runs there
+via the managed `scripts/openconcept-numpy2.patch`.
 
 - `skills/` -- cross-tool process skills (design study, trade study, convergence, multi-tool)
 - `upstream/` -- local clones of upstream tool repos (read-only reference, git-ignored)
@@ -142,6 +142,15 @@ uv run pytest packages/omd/tests/
 # Example parity suites run per-directory (each sets up its own sys.path)
 uv run pytest packages/oas/examples/rectangular_wing/tests/
 ```
+
+OpenMDAO >= 3.35 writes `<problem-name>_out/` (reports, coloring files)
+into the cwd, named after the launching script (`pytest_out/`,
+`__main__2_out/`). Under pytest the hangar-sdk `pytest11` plugin
+(`hangar.sdk.pytest_openmdao`) redirects that to pytest's temp area for
+every rootdir; outside pytest, omd puts it under `<data>/omd/work/<run_id>/`
+and the avy runner under its per-run scratch dir. A stray `*_out/` in the
+repo means a Problem was built with reports on and no work dir -- fix the
+call site (`om.Problem(reports=False)`), don't just delete the folder.
 
 ## Skills
 

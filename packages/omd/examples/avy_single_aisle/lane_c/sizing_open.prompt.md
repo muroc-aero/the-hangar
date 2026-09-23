@@ -6,10 +6,10 @@ nautical-mile design mission, and report the sized takeoff gross mass,
 total mission fuel, achieved range, and mission duration.
 
 Engineering context: the analysis couples aircraft sizing with a
-climb/cruise/descent trajectory optimization -- a single run solves both,
-so an analysis-mode plan run is sufficient. The run takes tens of seconds.
-Before trusting any number, confirm the embedded optimization actually
-converged; a non-converged run still returns values.
+climb/cruise/descent trajectory optimization -- a single optimization run
+solves both, and the component supplies its own design variables and
+objective. The run takes seconds. Before trusting any number, confirm the
+optimization actually converged; a non-converged run still returns values.
 
 Report as a fenced JSON block:
 

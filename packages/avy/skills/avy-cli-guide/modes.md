@@ -1,8 +1,8 @@
 # CLI Modes
 
 `avy-cli` supports three execution modes. All use the same tool registry and
-response envelope format. Always invoke via the isolated venv:
-`.venv-avy/bin/avy-cli` (see SKILL.md prerequisites).
+response envelope format. Invoke as `avy-cli` (or `uv run avy-cli`; see
+SKILL.md prerequisites).
 
 ## Mode 1 -- Interactive (JSON-lines subprocess)
 
@@ -10,7 +10,7 @@ Spawn a single long-lived process. Write JSON commands to stdin, read JSON
 responses from stdout -- one object per line.
 
 ```bash
-.venv-avy/bin/avy-cli interactive
+avy-cli interactive
 ```
 
 ### Protocol
@@ -33,7 +33,7 @@ Receive one JSON object per line:
 import subprocess, json
 
 proc = subprocess.Popen(
-    [".venv-avy/bin/avy-cli", "interactive"],
+    ["avy-cli", "interactive"],
     stdin=subprocess.PIPE, stdout=subprocess.PIPE,
     text=True, bufsize=1,
 )
@@ -67,9 +67,9 @@ Each tool is a subcommand; state persists across invocations via a
 workspace file, so a load-then-run sequence works across processes.
 
 ```bash
-.venv-avy/bin/avy-cli load-aircraft-template --template advanced_single_aisle
-.venv-avy/bin/avy-cli define-aircraft --overrides '{"aircraft:wing:aspect_ratio": 13.0}'
-.venv-avy/bin/avy-cli --pretty run-sizing
+avy-cli load-aircraft-template --template advanced_single_aisle
+avy-cli define-aircraft --overrides '{"aircraft:wing:aspect_ratio": 13.0}'
+avy-cli --pretty run-sizing
 ```
 
 Remember: global flags (`--pretty`, `--workspace`, `--save-to`) come BEFORE
@@ -85,7 +85,7 @@ the subcommand. Dict parameters are JSON strings.
 Author a JSON list of `{tool, args}` steps; run them in one process:
 
 ```bash
-.venv-avy/bin/avy-cli run-script workflow.json
+avy-cli run-script workflow.json
 ```
 
 `workflow.json`:
