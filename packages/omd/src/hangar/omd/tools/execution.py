@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import time
-from pathlib import Path
 from typing import Annotated
 
 from hangar.sdk.envelope.response import make_envelope, make_error_envelope
@@ -12,7 +11,12 @@ from hangar.sdk.errors import UserInputError
 from hangar.sdk.telemetry import make_telemetry
 from hangar.sdk.validation.checks import ValidationFinding, findings_to_dict
 
-from hangar.omd.tools._helpers import resolve_plan_dir, resolve_plan_path, view_urls
+from hangar.omd.tools._helpers import (
+    resolve_plan_dir,
+    resolve_plan_path,
+    view_urls,
+    workspace_write_target,
+)
 
 _RUN_MODES = ("analysis", "optimize")
 _RECORDING_LEVELS = ("minimal", "driver", "solver", "full")
@@ -57,7 +61,7 @@ async def validate_plan(
 
 async def assemble_plan(
     plan_dir: Annotated[str, "Plan directory with modular YAML files (workspace-relative or absolute)"],
-    output: Annotated[str | None, "Output path for the assembled plan (default: <plan_dir>/plan.yaml)"] = None,
+    output: Annotated[str | None, "Output path for the assembled plan (default: <plan_dir>/plan.yaml; relative paths land in the omd workspace, like write_plan)"] = None,
 ) -> dict:
     """Assemble a modular plan directory into a canonical, versioned plan.yaml.
 
@@ -67,7 +71,9 @@ async def assemble_plan(
     from hangar.omd.assemble import assemble_plan as _assemble
 
     src = resolve_plan_dir(plan_dir)
-    out = Path(output).expanduser() if output else None
+    # Same rule as write_plan: a relative output stays in the workspace,
+    # where validate_plan / run_plan will look for it first.
+    out = workspace_write_target(output) if output else None
     result = await asyncio.to_thread(_assemble, src, output=out)
     if result.get("output_path") is not None:
         result["output_path"] = str(result["output_path"])

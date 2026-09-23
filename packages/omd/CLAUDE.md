@@ -519,3 +519,15 @@ omd-cli export plan.yaml --output script.py
   `reference.md` must list every registered type
   (`tests/test_reference_coverage.py` fails when a new factory is not
   documented -- add a row to the type table AND a config-keys bullet).
+- Relative plan paths resolve **workspace first, server cwd second**
+  (`resolve_plan_path` / `resolve_plan_dir` in `tools/_helpers.py`), and
+  every tool that writes -- `write_plan`, the `plan_*` builders, and
+  `assemble_plan`'s `output` -- writes only into the workspace
+  (`workspace_write_target`). On the http transport the cwd and the
+  workspace differ; the old cwd-first order let an `assemble_plan` output
+  next to the cwd shadow the workspace copy the agent kept rewriting
+  (2026-09-22 qwen arm, pyc_turbojet seed 0: three `write_plan` rewrites,
+  same validation error each time). "Not found" messages for relative
+  paths name the next tool call (`assemble_plan(plan_dir=...)`,
+  `plan_init`, `read_plan('.')`) and never list host paths -- a sandboxed
+  agent cannot use them and goes hunting with `find` instead.
