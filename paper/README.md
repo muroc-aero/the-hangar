@@ -9,7 +9,7 @@ This file is the map of what exists and where it comes from. The step-by-step
 runbook for regenerating the two tables is `paper/tables/README.md` -- start
 there if you just want current numbers.
 
-## Where this stands (2026-09-21)
+## Where this stands (2026-09-23)
 
 What is current, what is stale, and what is unfinished. Update this section
 when you change the answer -- it is the first thing to read when picking the
@@ -81,12 +81,82 @@ the-hangar #116 makes every unknown-type error list the registered types
 and rejects unknown types at `plan_add_component`. 0/65 -> 13/65 is what
 those two changes bought; the anchor is unaffected by either.
 
+**Current, four.** The `qwen3.6:35b-mlx` rows come from the local arm run
+2026-09-22/23 (hangar-evals campaign `qwen_20260922T210813Z`,
+`scripts/evals run qwen --force --only <12 cases>`, 23:08-06:35 CEST, 7 h
+27 min; the `paraboloid` cell is from the same day's first launch
+`qwen_20260922T072426Z`, stopped after that cell), against the pushed
+integration branches (the-hangar `8ba69b2` = #115 + both #116 commits;
+hangar-evals `4e4ce35` = #27 + #28). This is the first local arm with all
+three omd gaps of item 3 below fixed, so the gemma rows above (at `d91a3cb`,
+before the second #116 commit) and the qwen rows are NOT on the same omd.
+**32 of 65 graded seeds pass; `Lost` 0, `Review` 1.** Per cell:
+oas_aero_rect / ocp_caravan_full / evt_native_sizing 5/5, ocp_caravan_basic
+/ avy_single_aisle 4/5, paraboloid / ocp_oas_coupled 3/5, ocp_hybrid_twin
+2/5, oas_ocp_combined 1/5, oas_aerostruct_rect / ocp_oas_direct /
+pyc_turbojet / avy_three_tool 0/5. Passing seeds match Lane A to the printed
+digits (avy_single_aisle gross mass 116423 lbm, fuel 13814, range 1906 nmi).
+The `Review` seed is avy_single_aisle seed 0: all four metrics match but the
+agent's own report says it failed; it stays flagged for `evals review`.
+
+The 33 failures sort into five kinds, by reading each seed's OpenCode event
+stream and the Ollama request log:
+
+- **Ended its turn mid-authoring** (the same stop gemma showed): the model
+  writes "Let me now add more requirements and try to validate:" and the
+  step finishes with reason `stop`, no tool call, no report. Most `NO RUN`
+  seeds with 6-25 turns (every avy_three_tool seed after s0, pyc_turbojet
+  s1-s3, oas_aerostruct_rect s1/s4, ocp_hybrid_twin s1, ocp_caravan_basic
+  s3, avy_single_aisle s2).
+- **Thinking exhausted the output budget:** one step emits 32 000 output
+  tokens of reasoning, OpenCode ends the step with reason `length`, and the
+  session ends with no tool call (oas_aerostruct_rect s0, ocp_oas_coupled
+  s2, ocp_oas_direct s1/s4; 2-4 turns, 22-37k output tokens). Two more
+  seeds spent the 1100 s cap the same way but had already produced the
+  right numbers (oas_aero_rect s2, evt_native_sizing s4: graded PASS).
+- **Wrong numbers from a wrong setup:** a run happened and the report named
+  it, but the effects differ (ocp_hybrid_twin s0/s3, ocp_oas_direct
+  s2/s3, oas_aerostruct_rect s3).
+- **Three harness stalls, counted as failures for now:** oas_ocp_combined
+  s0, pyc_turbojet s4 and avy_three_tool s0 hit the cap (1100 s, 1100 s,
+  2700 s) with Ollama idle -- its last `/v1/chat/completions` returned
+  11, 16 and 43 min before the kill -- and omd idle (no pending
+  `CallToolRequest`, no run dir). The last three model replies before each
+  stall have no event in `opencode_events.jsonl` (OpenCode's stdout was
+  still buffered when the process group was killed), so the blocking call
+  is not identifiable after the fact: a sandbox tool (bash/glob/webfetch),
+  not the model and not omd. Under the re-run policy these three seeds are
+  harness losses, not results; they re-run once hangar-evals persists the
+  container's OpenCode database and stderr (item 4).
+- **One omd path-resolution defect** (pyc_turbojet s0, item 5): the agent
+  called `assemble_plan(output="turbojet_sizing/plan.yaml")`, which wrote
+  next to the server's cwd instead of the workspace, and `validate_plan` /
+  `read_plan` then resolved that cwd copy first, so the agent's three
+  `write_plan` rewrites (which removed the offending `shared_vars`) were
+  never the file being validated. It rewrote, validated, and got the same
+  error three times, then gave up.
+
+Operational notes from this arm, all in hangar-evals' README and
+`eval-arm-sleep-and-rate-limits`: (a) Ollama 0.30.10's MLX runner grows
+~0.5 GiB per request and never shrinks (20 -> 36 GB inside one seed, swap
+full); the driver now unloads the model after every seed (`keep_alive: 0`),
+which is why a whole arm ran without the one-turn seeds the first launch
+showed. (b) `caffeinate -i` does not stop lid-closed / Deep Idle sleep: a
+first relaunch (`qwen_20260922T090900Z`, not in the table) ran 7 h in
+15-minute DarkWake slivers, seeds recorded minutes while taking hours, and
+was stopped; this arm waited for a full `Wake` in `pmset -g log` and ran
+under `caffeinate -i -s -w <runner pid>` with a pmset watch (no sleep
+transition in 7.5 h). (c) The local `qwen3.6:35b-mlx` tag has
+`PARAMETER num_ctx 131072` baked in (digest `ef9ec5d0a73a`); the plist
+`OLLAMA_CONTEXT_LENGTH` was not being applied.
+
 **Unfinished:**
 
-1. **The qwen arm predates the current policy and the surface fix.** Its
-   records are 2026-06/07, graded under last-run-of-mode on the
-   pre-calibration budgets. Re-run with `scripts/evals run qwen --force`
-   (~9 h, on-device) once #115, #116 and #28 are merged.
+1. **The gemma rows predate the second #116 commit** (`8534f55`: typed
+   plan-directory / OAS-surface errors, `avy/Sizing` in the reference), the
+   qwen rows include it. Re-run gemma (`scripts/evals run gemma --force`,
+   ~8 h) on the same SHAs as the qwen arm before putting the two local rows
+   side by side.
 2. **The anchor image pins Claude Code 2.1.212** while the host CLI is
    2.1.270. The anchor arm ran on 2.1.212; bump `containers/build.sh` and
    `ANCHOR_IMAGE` before the next arm if it should be on the current CLI.
@@ -101,7 +171,25 @@ those two changes bought; the anchor is unaffected by either.
    missing, so 4 of 5 avy_single_aisle seeds chose `ocp/FullMission` with
    the b738 template as a "proxy". All three are fixed in the-hangar #116
    (second commit, `8534f55`: typed errors + `avy/Sizing` in the reference
-   with a coverage test); the next local arm is the first with them.
+   with a coverage test); the qwen arm above is the first with them, and
+   none of its 33 failures is one of these three.
+4. **Three qwen seeds stalled inside the OpenCode container** (see the
+   failure list above) and are graded as failures because the harness
+   cannot tell a hung sandbox tool from a slow model. hangar-evals needs to
+   bind-mount the container's `~/.local/share/opencode` (SQLite session
+   store) into the run's data root, keep the harness stderr tail in the
+   record, and mark a timed-out seed whose last model request predates the
+   kill by minutes as a harness loss so the resume re-runs it. Then re-run
+   those three seeds.
+5. **omd resolves relative plan paths against the server cwd before the
+   workspace, and `assemble_plan`'s `output` only against the cwd**
+   (`tools/_helpers.py resolve_plan_path`, `tools/execution.py
+   assemble_plan`); `write_plan` writes only into the workspace. On the http
+   transport the two differ, and pyc_turbojet seed 0 lost its cell to it.
+   Fix: workspace first for reads, `workspace_write_target` for the
+   assemble output; and the "Plan path not found" message should stop
+   listing absolute host paths (seed 1 spent six turns running `find`
+   over `/Users` inside the sandbox because of them).
 
 ## What gets produced
 
