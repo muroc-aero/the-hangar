@@ -517,6 +517,26 @@ def validate_optimization_config(plan: dict) -> list[ValidationFinding]:
     return findings
 
 
+def component_type_suggestions(ctype: str, registry_types: set[str] | list[str]) -> list[str]:
+    """Closest registered types to a misspelling (``oas/AeroPointt``)."""
+    return difflib.get_close_matches(ctype, sorted(registry_types), n=3, cutoff=0.5)
+
+
+def unknown_component_type_message(ctype: str, registry_types: set[str] | list[str]) -> str:
+    """The one message every unknown-type rejection carries.
+
+    It ALWAYS lists the registered types. A close-match hint only helps a
+    typo; an agent that invented a name (``VortexLatticeWing``,
+    ``aerodynamic_analysis_component`` -- every gemma seed on the 2026-09-21
+    arm) is nowhere near a real one, and a bare "unknown" sends it guessing
+    again. The list is the answer; the reference has each type's config keys.
+    """
+    known = ", ".join(sorted(registry_types)) or "(none registered)"
+    return (f"Unknown component type '{ctype}'. Registered types: {known}. "
+            "Each type's config keys are in the omd parameter reference "
+            "(omd://reference).")
+
+
 def validate_plan_semantic(plan: dict, registry_types: set[str] | None = None) -> list[ValidationFinding]:
     """Run all semantic checks (component types known + var paths resolve)."""
     findings: list[ValidationFinding] = []
@@ -527,13 +547,10 @@ def validate_plan_semantic(plan: dict, registry_types: set[str] | None = None) -
             if not isinstance(ctype, str):
                 continue
             if ctype not in registry_types:
-                suggestions = difflib.get_close_matches(
-                    ctype, sorted(registry_types), n=3, cutoff=0.5,
-                )
                 findings.append(ValidationFinding(
                     path=f"components[{i}].type",
-                    message=f"Unknown component type '{ctype}'.",
-                    suggestions=suggestions,
+                    message=unknown_component_type_message(ctype, registry_types),
+                    suggestions=component_type_suggestions(ctype, registry_types),
                 ))
 
     findings += validate_var_paths(plan)
@@ -555,6 +572,8 @@ def format_findings(findings: list[ValidationFinding]) -> str:
 
 
 __all__ = [
+    "component_type_suggestions",
+    "unknown_component_type_message",
     "validate_component_config",
     "validate_factory_contracts",
     "validate_optimization_config",

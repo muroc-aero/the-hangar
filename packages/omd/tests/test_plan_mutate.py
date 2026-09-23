@@ -94,6 +94,22 @@ def test_add_component_writes_bare_mapping(plan_dir: Path):
     assert "config" in data
 
 
+def test_add_component_rejects_an_unregistered_type_at_call_time(plan_dir: Path):
+    """Before 2026-09-21 any string was accepted here and only validate_plan
+    (three tools later) said 'unknown'; the agent had built on it by then."""
+    with pytest.raises(UserInputError) as exc:
+        pm.add_component(plan_dir, comp_id="w", comp_type="VortexLatticeWing", config={})
+    msg = str(exc.value)
+    assert "Unknown component type 'VortexLatticeWing'" in msg
+    assert "oas/AeroPoint" in msg and "paraboloid/Paraboloid" in msg
+    assert not (plan_dir / "components" / "w.yaml").exists()
+
+
+def test_add_component_typo_gets_a_did_you_mean(plan_dir: Path):
+    with pytest.raises(UserInputError, match=r"Did you mean: oas/AeroPoint"):
+        pm.add_component(plan_dir, comp_id="w", comp_type="oas/AeroPointt", config={})
+
+
 def test_add_component_duplicate_id_raises(plan_dir: Path):
     _add_wing(plan_dir)
     with pytest.raises(UserInputError, match="already exists"):

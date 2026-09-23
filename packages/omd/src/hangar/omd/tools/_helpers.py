@@ -39,37 +39,101 @@ def workspace_dir() -> Path:
     return ws
 
 
-def resolve_plan_path(plan_path: str, *, must_exist: bool = True) -> Path:
-    """Resolve a plan file/dir path: absolute, cwd-relative, or workspace-relative."""
+def _relative_not_found(plan_path: str, ws_candidate: Path) -> str:
+    """'Not found' for a workspace-relative path, without host paths.
+
+    Agents on the http transport cannot use the server's absolute paths;
+    listing them sent qwen (2026-09-22 arm, pyc_turbojet seed 1) hunting
+    the sandbox with ``find /Users`` for six turns. Name the next tool call
+    instead: the commonest case is ``<dir>/plan.yaml`` asked for before
+    ``assemble_plan`` has written it.
+    """
+    parent = ws_candidate.parent
+    if ws_candidate.name == "plan.yaml" and parent != workspace_dir() and parent.is_dir():
+        rel = str(Path(plan_path).parent)
+        return (
+            f"Plan path not found: {plan_path!r}. The plan directory {rel!r} exists "
+            f"in the workspace but has not been assembled: call "
+            f"assemble_plan(plan_dir={rel!r}) first, then pass {plan_path!r}."
+        )
+    return (
+        f"Plan path not found: {plan_path!r}. Relative paths resolve inside the "
+        "omd plan workspace (plan_init and write_plan put files there); "
+        "read_plan('.') lists it."
+    )
+
+
+def resolve_plan_path(plan_path: str, *, must_exist: bool = True,
+                      want_file: bool = False) -> Path:
+    """Resolve a plan file/dir path: absolute, workspace-relative, or cwd-relative.
+
+    The workspace is tried first. ``write_plan`` and the ``plan_*`` builders
+    only ever write there, so a same-named file next to the server's cwd
+    (an ``assemble_plan`` ``output`` used to land there) must not shadow
+    the one the agent is editing -- on the 2026-09-22 qwen arm a seed
+    rewrote its plan three times and ``validate_plan`` kept reading the
+    stale cwd copy. cwd stays as the fallback for CLI-style use.
+
+    ``want_file``: the caller needs the assembled plan YAML. A directory then
+    resolves to its ``plan.yaml`` when one exists, and otherwise raises a
+    typed error naming it -- agents pass the plan *directory* to run_plan and
+    validate_plan often (every third gemma seed on the 2026-09-21 arm), and
+    the bare ``[Errno 21] Is a directory`` they used to get taught nothing.
+    """
     if not plan_path:
         raise UserInputError("plan_path must be a non-empty string")
     p = Path(plan_path).expanduser()
     if p.is_absolute():
         candidates = [p]
     else:
-        candidates = [Path.cwd() / p, workspace_dir() / p]
+        candidates = [workspace_dir() / p, Path.cwd() / p]
     for c in candidates:
         if c.exists():
+            if want_file and c.is_dir():
+                assembled = c / "plan.yaml"
+                if assembled.is_file():
+                    return assembled
+                listing = ", ".join(sorted(x.name for x in c.iterdir())) or "(empty)"
+                raise UserInputError(
+                    f"plan_path {plan_path!r} is a directory with no plan.yaml "
+                    f"(contains: {listing}). This tool takes the ASSEMBLED plan "
+                    "file: run assemble_plan on the plan directory first, then "
+                    f"pass '{plan_path.rstrip('/')}/plan.yaml'."
+                )
             return c
     if not must_exist:
-        return candidates[-1]
-    tried = ", ".join(str(c) for c in candidates)
-    raise UserInputError(f"Plan path not found: {plan_path!r} (tried: {tried})")
+        return candidates[0]
+    if p.is_absolute():
+        raise UserInputError(f"Plan path not found: {plan_path!r}")
+    raise UserInputError(_relative_not_found(plan_path, candidates[0]))
 
 
 def resolve_plan_dir(plan_dir: str, *, create: bool = False) -> Path:
-    """Resolve a modular plan directory; relative names live in the workspace."""
+    """Resolve a modular plan directory; relative names live in the workspace.
+
+    Workspace first, cwd as the fallback (same order as ``resolve_plan_path``
+    and for the same reason).
+    """
     if not plan_dir:
         raise UserInputError("plan_dir must be a non-empty string")
     p = Path(plan_dir).expanduser()
-    if not p.is_absolute():
-        cwd_candidate = Path.cwd() / p
-        if cwd_candidate.exists():
-            return cwd_candidate
-        p = workspace_dir() / p
-    if not p.exists() and not create:
-        raise UserInputError(f"Plan directory not found: {plan_dir!r} (resolved to {p})")
-    return p
+    if p.is_absolute():
+        if not p.exists() and not create:
+            raise UserInputError(f"Plan directory not found: {plan_dir!r}")
+        return p
+    ws_candidate = workspace_dir() / p
+    if ws_candidate.exists():
+        return ws_candidate
+    cwd_candidate = Path.cwd() / p
+    if cwd_candidate.exists():
+        return cwd_candidate
+    if not create:
+        raise UserInputError(
+            f"Plan directory not found: {plan_dir!r}. Relative names resolve "
+            "inside the omd plan workspace; plan_init creates one and "
+            "read_plan('.') lists what is there."
+        )
+    return ws_candidate
 
 
 def workspace_write_target(rel_path: str) -> Path:
