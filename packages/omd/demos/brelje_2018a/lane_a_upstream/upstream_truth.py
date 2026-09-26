@@ -314,7 +314,7 @@ def _fill_outputs(prob, row: dict, design_range: float, spec_energy: float,
 
 
 def run_start(design_range: float, spec_energy: float, objective: str,
-              start: str) -> dict:
+              start: str, init: dict[str, float] | None = None) -> dict:
     """Run one MDO from one start; never raises."""
     from openmdao.api import ScipyOptimizeDriver
     from openconcept.examples.HybridTwin import set_values
@@ -330,8 +330,12 @@ def run_start(design_range: float, spec_energy: float, objective: str,
         prob.driver = ScipyOptimizeDriver()  # upstream: SLSQP, tol 1e-6, maxiter 200
         prob.setup(check=False)
         set_values(prob, NUM_NODES, design_range, spec_energy)
-        for name, val in START_PRESETS[start].items():
-            prob.set_val(name, val, units=_PRESET_UNITS.get(name))
+        # a named preset, or an explicit warm start (DV -> value in
+        # DESIGN_DVS units) for polish passes
+        start_vals = init if init is not None else START_PRESETS[start]
+        units = {**DESIGN_DVS, **_PRESET_UNITS}
+        for name, val in start_vals.items():
+            prob.set_val(name, val, units=units.get(name))
 
         sink = io.StringIO()
         with contextlib.redirect_stdout(sink):
@@ -533,6 +537,114 @@ def cmd_grid(args) -> int:
     return 0
 
 
+# sweep-CSV column -> DV (units as DESIGN_DVS), for warm starts
+_WARM_COLS = {
+    "MTOW_kg": "ac|weights|MTOW",
+    "S_ref_m2": "ac|geom|wing|S_ref",
+    "engine_rating_hp": "ac|propulsion|engine|rating",
+    "motor_rating_hp": "ac|propulsion|motor|rating",
+    "generator_rating_hp": "ac|propulsion|generator|rating",
+    "W_battery_kg": "ac|weights|W_battery",
+    "W_fuel_max_kg": "ac|weights|W_fuel_max",
+    "cruise_hybridization": "cruise.hybridization",
+    "climb_hybridization": "climb.hybridization",
+    "descent_hybridization": "descent.hybridization",
+}
+
+
+def _warm_from_row(row: dict) -> dict[str, float]:
+    out = {}
+    for col, dv in _WARM_COLS.items():
+        try:
+            v = float(row.get(col, ""))
+        except (TypeError, ValueError):
+            continue
+        if np.isfinite(v):
+            out[dv] = v
+    return out
+
+
+def _polish_jobs(objective: str, grid: str, ref_csvs: list[Path],
+                 rel: float) -> list[tuple]:
+    """Warm-start jobs for cells where truth is infeasible or another
+    source reached a better objective (by more than ``rel``).
+
+    Starts: the better source's design (ref CSVs, e.g. the omd sweep),
+    each feasible 4-neighbour's truth design, and the ``low`` preset if
+    it was never tried. Truth stays upstream-only -- a foreign design is
+    just a starting point; the reported optimum is upstream's own."""
+    stem = f"{_fig(objective)}_{grid}"
+    best_path = OUT_DIR / f"{stem}.csv"
+    starts_path = OUT_DIR / f"{stem}_starts.csv"
+    with open(best_path) as f:
+        best = {(float(r["design_range_nm"]), float(r["spec_energy_whkg"])): _coerce(r)
+                for r in csv.DictReader(f)}
+    tried = _read_done(starts_path)
+    refs: dict[tuple[float, float], list[tuple[str, dict]]] = {}
+    for path in ref_csvs:
+        with open(path) as f:
+            for r in csv.DictReader(f):
+                if str(r.get("converged", r.get("feasible", ""))).lower() != "true":
+                    continue
+                k = (float(r["design_range_nm"]), float(r["spec_energy_whkg"]))
+                refs.setdefault(k, []).append((path.stem, r))
+    rs = sorted({k[0] for k in best})
+    es = sorted({k[1] for k in best})
+    jobs = []
+    for k, row in best.items():
+        obj = row["objective_value"]
+        bad = not row["feasible"] or not np.isfinite(obj)
+        better = []
+        for name, r in refs.get(k, []):
+            try:
+                ov = float(r.get("objective_value") or r.get("mixed_objective_kg")
+                           or r.get("doc_per_nmi"))
+            except (TypeError, ValueError):
+                continue
+            if bad or ov < obj - rel * max(abs(obj), 1e-9):
+                better.append((name, r))
+        if not (bad or better):
+            continue
+        cand = [(f"warm:{name}", _warm_from_row(r)) for name, r in better]
+        i, j = rs.index(k[0]), es.index(k[1])
+        for di, dj in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+            if 0 <= i + di < len(rs) and 0 <= j + dj < len(es):
+                n = best.get((rs[i + di], es[j + dj]))
+                if n and n["feasible"]:
+                    cand.append((f"warm:nb{rs[i + di]:g}-{es[j + dj]:g}", _warm_from_row(n)))
+        if (k[0], k[1], "low") not in tried:
+            cand.append(("low", None))
+        for name, init in cand:
+            if (k[0], k[1], name) not in tried:
+                jobs.append((k[0], k[1], objective, name, init))
+    return jobs
+
+
+def cmd_polish(args) -> int:
+    refs = [Path(p) for p in args.ref]
+    jobs = _polish_jobs(args.objective, args.grid, refs, args.rel)
+    stem = f"{_fig(args.objective)}_{args.grid}"
+    starts_path = OUT_DIR / f"{stem}_starts.csv"
+    print(f"[upstream-truth] polish {stem}: {len(jobs)} warm start(s) over "
+          f"{len({(j[0], j[1]) for j in jobs})} cell(s)", flush=True)
+    if args.dry_run or not jobs:
+        for j in jobs:
+            print(f"  r={j[0]:g} e={j[1]:g} {j[3]}")
+        return 0
+    t0 = time.time()
+    ctx = mp.get_context("spawn")
+    with ctx.Pool(args.workers, maxtasksperchild=1) as pool:
+        for i, row in enumerate(pool.imap_unordered(_worker, jobs), 1):
+            _append(starts_path, [row])
+            print(f"  [{i}/{len(jobs)}] r={row['design_range_nm']:.0f} "
+                  f"e={row['spec_energy_whkg']:.0f} {row['start_name']:<18} "
+                  f"feas={row['feasible']} obj={row['objective_value']:.5g} "
+                  f"elapsed={time.time() - t0:.0f}s", flush=True)
+    n = rebuild_best(starts_path, OUT_DIR / f"{stem}.csv")
+    print(f"[upstream-truth] {n} cells rebuilt")
+    return 0
+
+
 def cmd_cell(args) -> int:
     rows = [run_start(args.range, args.spec_energy, args.objective, s)
             for s in args.starts.split(",")]
@@ -568,7 +680,19 @@ def main() -> int:
     r = sub.add_parser("rebuild", help="re-derive the best-per-cell CSV from the starts log")
     r.add_argument("--objective", choices=["fuel", "cost"], required=True)
     r.add_argument("--grid", choices=sorted(GRIDS), default="paper")
+    pl = sub.add_parser("polish", help="warm-start cells where truth is infeasible "
+                                       "or another source found a better optimum")
+    pl.add_argument("--objective", choices=["fuel", "cost"], required=True)
+    pl.add_argument("--grid", choices=sorted(GRIDS), default="paper")
+    pl.add_argument("--ref", action="append", default=[],
+                    help="sweep-style CSV of other designs (e.g. results/fig5_grid.csv)")
+    pl.add_argument("--rel", type=float, default=1e-3,
+                    help="relative objective improvement that triggers a polish")
+    pl.add_argument("--workers", type=int, default=4)
+    pl.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
+    if args.cmd == "polish":
+        return cmd_polish(args)
     if args.cmd == "cell":
         return cmd_cell(args)
     if args.cmd == "rebuild":
