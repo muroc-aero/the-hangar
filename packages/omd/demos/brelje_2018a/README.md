@@ -63,6 +63,29 @@ that panel is not the paper's quantity; the truth lane records both
 
 See `figures/comparison_fig{5,6}.png` for the full side-by-side render.
 
+### Truth vs paper, full 21x12 grid (2026-09-26)
+
+Upstream truth (`results/lane_a_upstream/fig{5,6}_paper.csv`) against
+the digitized figures (`results/stats/summary.md` has everything):
+
+| | Fig 5 (min fuel+MTOW/100) | Fig 6 (min DOC) |
+|---|---|---|
+| truth cells feasible | 252/252 | 252/252 |
+| multistart cells where all starts agree | 194/196 | 194/215 |
+| regime (fuel / hybrid / electric) agreement with paper | 98.8 % | 93.7 % |
+| MTOW, median / max rel. error vs paper | 0.16 % / 11 % | 0.78 % / 40 % |
+| DOC per nmi, median / max rel. error | 3.5 % / 7.6 % | 3.2 % / 9.6 % |
+| fuel mileage within band / 2 % | 90 % | 79 % |
+| electric percent (energy share) median error | 3.4 % | 3.8 % |
+
+The large maxima sit on the regime boundaries, where one step in range
+or energy flips the design between basins; the paper and truth place
+that step one cell apart in a few rows. DOC runs about 3 % from the
+paper everywhere, which bounds how well the reconstructed Sec. IV.D cost
+coefficients reproduce the authors' cost model. The omd sweep matches
+truth on every cell it solved on the paper's problem (Fig 5, 125/132;
+one cell 0.74 % worse). One agent pilot cell matches truth to 5e-7.
+
 ## Reproduction statistics (paper vs truth vs scripted vs agent)
 
 Three pieces turn "does it match the paper?" into numbers:

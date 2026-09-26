@@ -37,21 +37,21 @@ Agent arms across seeds (mean [min, max]):
 
 ## Figure 6 (min trip DOC)
 
-Truth lane: 174/175 cells feasible; 135/149 multi-start cells had every feasible start land on the same optimum.
+Truth lane: 252/252 cells feasible; 194/215 multi-start cells had every feasible start land on the same optimum.
 
 `lane_b`: 132 cell(s) reported converged but re-score infeasible in the upstream model; they count as not covered.
 
 | candidate | reference | coverage | obj pass | obj med |rel| | obj max |rel| | matched opt | worse opt | regime agree |
 |---|---|---|---|---|---|---|---|---|
-| truth | paper | 174/175 | -- | -- | -- | -- | -- | 91.38% |
-| lane_b | truth | 0/131 | -- | -- | -- | -- | -- | -- |
+| truth | paper | 252/252 | -- | -- | -- | -- | -- | 93.65% |
+| lane_b | truth | 0/132 | -- | -- | -- | -- | -- | -- |
 | lane_b | paper | 0/132 | -- | -- | -- | -- | -- | -- |
 
 Per-metric pass rate / median |rel err| / max |rel err|:
 
 | candidate vs reference | MTOW_lb | fuel_mileage_lb_per_nmi | electric_percent | doc_per_nmi |
 |---|---|---|---|---|
-| truth vs paper | 49.43% / 1.17% / 40.32% | 79.89% / 2.64% / 95.23% | 62.64% / 3.24% / 635.06% | 60.34% / 3.36% / 9.58% |
+| truth vs paper | 54.76% / 0.78% / 40.32% | 78.57% / 2.03% / 95.23% | 62.70% / 3.76% / 635.06% | 62.70% / 3.19% / 9.58% |
 | lane_b vs truth | -- | -- | -- | -- |
 | lane_b vs paper | -- | -- | -- | -- |
 
