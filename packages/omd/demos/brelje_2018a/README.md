@@ -14,25 +14,107 @@ minimizes trip direct operating cost (DOC).
 
 ## Status
 
-- **Grid:** 11x12 = 132 cells per figure (paper-correct axes)
+- **Grid:** the omd sweep (`results/fig{5,6}_grid.csv`) is 11x12 = 132
+  cells per figure. The paper's own grid is **21x12** (25 nmi range
+  steps; read off the pcolormesh cell edges in the figure crops); the
+  upstream truth lane and the digitized paper both use it, and the 11x12
+  cells are a subset.
 - **Convergence:** fig5 132/132, fig6 132/132 -- **264/264 (100 %)**
 - **Physics fidelity:** matches upstream `HybridTwinTestCase` published
   values to 1e-5 (see `validation/check_omd_physics.py`)
-- **Numerical fidelity vs paper Table 4:** mixed_objective within
-  <2 % at all three published reference cells; MTOW within 0.01-1.6 %.
+- **MDO fidelity vs upstream:** the omd optimum equals OpenConcept's own
+  HybridTwin MDO (`lane_a_upstream/`) to <1e-6 at the 500 nmi reference
+  cells:
 
-| paper Table 4 cell | objective omd vs paper | MTOW omd vs paper |
+| 500 nmi cell | objective: omd grid = upstream truth | MTOW: truth / paper Fig 5 (digitized) |
 |---|---|---|
-| 500 nmi, 250 Wh/kg | 382.4 / 387.2 (1.24 %) | 8912.8 / 8913.3 (0.01 %) |
-| 500 nmi, 500 Wh/kg | 292.9 / 287.1 (1.97 %) | 12564.6 / 12566.3 (0.01 %) |
-| 500 nmi, 750 Wh/kg | 56.7 / 56.2 (0.85 %)   | 12505.4 / 12305.8 (1.60 %) |
+| 250 Wh/kg | 387.20 kg | 8913 / 8914 lb |
+| 450 Wh/kg | 324.89 kg | 12566 / 12574 lb |
+| 500 Wh/kg | 287.08 kg | 12566 / 12574 lb |
+| 750 Wh/kg | 56.24 kg  | 12306 / 12491 lb |
 
-The remaining differences (free DVs at higher spec_energy) sit on
-flat objective ridges where multiple feasible designs share the same
-cost; the optimizer picks different points on the same ridge
-depending on initial conditions.
+The paper has no numeric table for these cells: the figures are the
+publication's only numbers. An earlier version of this README and
+`lane_c/cells.yaml` quoted "paper Table 4" values (382.4 / 292.9 /
+56.7 kg); they match neither the figures nor the upstream model and have
+been replaced (see `cells.yaml`). The paper-vs-model comparison is now
+per cell, over the whole grid: `stats/collect_stats.py`.
+
+**The paper's "degree of hybridization (electric percent)" panel is the
+battery share of motor electrical energy, not cruise hybridization.**
+At 500 nmi the paper shows 3.5 / 45.1 / 52.4 / 99.5 % at 250 / 450 / 500 /
+750 Wh/kg; the upstream energy fraction is 3.1 / 46.7 / 54.2 / 99.9 %,
+while cruise hybridization is 0.1 / 50.6 / 59.2 / 99.9 %. The omd sweep
+CSV and `pipeline/plotting.py` plot `100 x cruise_hybridization`, so
+that panel is not the paper's quantity; the truth lane records both
+(`electric_energy_frac`, `cruise_hybridization`).
 
 See `figures/comparison_fig{5,6}.png` for the full side-by-side render.
+
+## Reproduction statistics (paper vs truth vs scripted vs agent)
+
+Three pieces turn "does it match the paper?" into numbers:
+
+1. **Paper reference** -- `paper_ref/digitize_paper_figs.py` inverts each
+   panel of the figure crops through its own colorbar into per-cell
+   values (`paper_ref/fig{5,6}_paper_digitized.csv`, 21x12). Pcolormesh
+   panels (MTOW, electric percent, Fig 5 DOC, Fig 6 fuel mileage) read
+   back exactly up to colour quantisation; contourf panels (Fig 5 fuel
+   mileage, Fig 6 DOC) read back as a band, and the band half-width is
+   carried as the uncertainty.
+2. **Truth lane (Lane A, upstream)** -- `lane_a_upstream/upstream_truth.py`
+   runs the MDO on OpenConcept's own `HybridTwin` model and solver
+   settings, with the DV / constraint block transcribed verbatim from
+   `HybridTwin.py`. No hangar code is involved. It adds the paper's Sec. IV.D
+   cost model as an output-only subsystem (upstream has none), and a
+   multistart (the upstream start plus the `high` bracket). It also
+   re-scores externally produced designs (`rescore_design`), which is
+   how agent runs are graded.
+3. **Statistics** -- `stats/collect_stats.py` joins paper, truth, the
+   scripted omd sweep (`lane_b`), and any number of agent-driven runs,
+   and reports per figure and metric: coverage, pass rate at tolerance,
+   median / p90 / max relative error, signed bias, the objective's
+   optimality gap vs truth (matched / worse / better optimum), and
+   regime (fuel / hybrid / electric basin) agreement. Output is
+   `results/stats/{summary.md,summary.json,per_cell.csv,err_fig{5,6}.png}`.
+
+Agent-driven execution across the full case set is
+`stats/agent_campaign.py`: one blind agent per cell (omd MCP tools only,
+isolated data root) briefed with `lane_c/hybrid_mdo_cell_open.prompt.md`.
+The agent's named run is read back from its analysis DB and re-scored in
+the upstream model, so a cell is graded by what the design actually does
+in the truth model, not by the agent's report. A full-figure agent study
+(`study/fig{5,6}_study.prompt.md`) plugs into the same statistics
+through its `cases.csv`.
+
+```bash
+DEMO=packages/omd/demos/brelje_2018a
+
+# paper reference (seconds)
+uv run python $DEMO/paper_ref/digitize_paper_figs.py --check
+
+# truth: one cell, or the paper grid (resumable; ~1 start/min on 4 cores)
+uv run python $DEMO/lane_a_upstream/upstream_truth.py cell --range 500 --spec-energy 450
+uv run python $DEMO/lane_a_upstream/upstream_truth.py grid --objective fuel \
+    --grid paper --subset demo --workers 4 --resume      # the 11x12 cells first
+uv run python $DEMO/lane_a_upstream/upstream_truth.py grid --objective cost \
+    --grid paper --workers 4 --resume
+
+# agent campaign: one blind agent per cell, N seeds (needs claude-agent-sdk)
+uv run python $DEMO/stats/agent_campaign.py run --arm opus --grid demo --dry-run
+uv run --with claude-agent-sdk python $DEMO/stats/agent_campaign.py run \
+    --arm opus --model <model> --seeds 3 --grid demo --workers 2
+uv run python $DEMO/stats/agent_campaign.py status --arm opus
+# grade a run made elsewhere (e.g. an interactive session) into an arm
+uv run python $DEMO/stats/agent_campaign.py grade --arm session --figure 5 \
+    --range 500 --spec-energy 450 --run-id <run_id>
+
+# statistics over everything present
+uv run python $DEMO/stats/collect_stats.py \
+    --agent opus=$DEMO/results/agent_campaign/opus/seed0/fig5 \
+    --agent study=hangar_data/studies/brelje-2018a-fig5
+uv run python $DEMO/stats/agent_campaign.py collect opus     # all seeds of an arm
+```
 
 ## Layout
 
@@ -52,15 +134,27 @@ packages/omd/demos/brelje_2018a/
   validation/
     check_omd_physics.py               -- omd factory vs upstream HybridTwinTestCase
 
-  lane_a/                              -- programmatic, single-cell
+  lane_a/                              -- programmatic, single-cell (hangar OCP factory)
     hybrid_mdo.py
+
+  lane_a_upstream/                     -- truth: OpenConcept HybridTwin, unmodified
+    upstream_truth.py                  -- cell / grid / rescore
+
+  paper_ref/                           -- the paper as numbers
+    digitize_paper_figs.py             -- figure crops -> per-cell values
+    fig{5,6}_paper_digitized.csv       -- 21x12, with band half-widths
+
+  stats/                               -- reproduction statistics
+    collect_stats.py                   -- paper vs truth vs lane_b vs agent arms
+    agent_campaign.py                  -- one blind agent per cell, effect-graded
 
   lane_b/                              -- omd plan, single-cell
     fuel_mdo/plan.yaml                 -- Fig 5 plan
     cost_mdo/plan.yaml                 -- Fig 6 plan
 
   lane_c/                              -- agent-driven, single-cell
-    hybrid_mdo.prompt.md               -- agent brief
+    hybrid_mdo.prompt.md               -- agent brief (500 nmi / 450 Wh/kg)
+    hybrid_mdo_cell_open.prompt.md     -- open per-cell brief (agent_campaign.py)
     cells.yaml                         -- one-by-one comparison cells
     compare_to_lane_b.py               -- baseline / check harness
 
@@ -77,6 +171,9 @@ packages/omd/demos/brelje_2018a/
 
   results/
     fig{5,6}_grid.csv                  -- per-cell sweep results (11x12)
+    lane_a_upstream/fig{5,6}_paper.csv -- upstream truth, best start per cell
+    lane_a_upstream/fig{5,6}_paper_starts.csv -- every start (start sensitivity)
+    stats/                             -- collect_stats.py output
     paper_grid_<ts>.log                -- run log
     retry_stuck_<ts>.log               -- final retry log
 ```
@@ -133,7 +230,9 @@ inputs to it.
 
 ### Modular steps
 
-The wrapper above just chains these:
+The wrapper above just chains these. The `pipeline/` scripts import
+pandas, which is not a workspace dependency; add `--with pandas` to
+`uv run` if it is not installed.
 
 ```bash
 DEMO=packages/omd/demos/brelje_2018a
@@ -206,9 +305,10 @@ uv run python $DEMO/lane_c/compare_to_lane_b.py \
     --result lane_c_run.json
 ```
 
-`cells.yaml` ships with three Brelje Table 4 reference cells (the
-"hard" 250 Wh/kg cell, the mid-energy 500 cell, the all-electric 750
-cell) plus three omd-sweep cells: an easy mid-grid cell, a hard
+`cells.yaml` ships with three 500 nmi reference cells whose expected
+values come from the upstream truth lane (the "hard" 250 Wh/kg cell,
+the mid-energy 500 cell, the all-electric 750 cell) plus three omd-sweep
+cells: an easy mid-grid cell, a hard
 boundary cell ((700, 450) -- recovered by `retry_stuck_cells.py`),
 and a cost-objective cell.
 

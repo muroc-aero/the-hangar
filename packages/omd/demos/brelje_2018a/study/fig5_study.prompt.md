@@ -68,15 +68,17 @@ cold multistart and need a warm start from a converged neighbor.
 
 ## Anchors (to check you are in the right basin)
 
-Paper Table 4 publishes three reference cells at 500 nmi. Spot-check
-your converged cells against them (a few percent is fine; the all-
-electric high-energy cell sits on a flatter ridge, so allow more):
+Three reference cells at 500 nmi, from OpenConcept's own HybridTwin MDO
+(the upstream truth lane, `lane_a_upstream/`), with the MTOW the paper's
+Fig 5 shows at the same cells. Spot-check your converged cells against
+them (a few percent is fine; the all-electric high-energy cell sits on a
+flatter ridge, so allow more):
 
-| range, spec energy | mixed objective (kg) | MTOW |
+| range, spec energy | mixed objective (kg) | MTOW (truth / paper fig) |
 |---|---|---|
-| 500 nmi, 250 Wh/kg | ~382 | ~8900 lb |
-| 500 nmi, 500 Wh/kg | ~293 | ~12600 lb |
-| 500 nmi, 750 Wh/kg | ~57  | ~12500 lb |
+| 500 nmi, 250 Wh/kg | ~387 | ~8910 lb / ~8910 lb |
+| 500 nmi, 500 Wh/kg | ~287 | ~12570 lb / ~12570 lb |
+| 500 nmi, 750 Wh/kg | ~56  | ~12310 lb / ~12490 lb |
 
 ## How to work
 

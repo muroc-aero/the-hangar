@@ -106,6 +106,14 @@ def build_mdo_problem(
         metadata["mission_type"],
     )
 
+    # Paper hybrid-variant overrides (HybridTwin.py set_values; same as
+    # the lane_b plans' initial_values). Without them this lane solves the
+    # stock-C90GT problem: a ~25 % lighter airframe and a different basin
+    # (e.g. 233 kg vs the paper problem's 324.9 kg at 500 nmi / 450 Wh/kg).
+    prob["analysis.cruise.acmodel.OEW.const.structural_fudge"] = 2.0
+    prob.set_val("ac|propulsion|propeller|diameter", 2.2, units="m")
+    prob.set_val("ac|propulsion|engine|rating", 1117.2, units="hp")
+
     return prob
 
 

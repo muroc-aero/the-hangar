@@ -7,8 +7,10 @@ Two modes:
 
   1. baseline  -- print expected values for the cell.  Use this to
                   brief the Lane C agent before it runs.
-                  If `source: paper-table-4`, the expected values
-                  come from cells.yaml directly.
+                  If `source: upstream-truth`, the expected values
+                  come from results/lane_a_upstream/ (OpenConcept's
+                  own HybridTwin MDO); an explicit `expect:` block in
+                  cells.yaml overrides either source.
                   If `source: omd-sweep`, they come from
                   results/fig{5,6}_grid.csv at the matching cell.
 
@@ -36,7 +38,6 @@ import json
 import sys
 from pathlib import Path
 
-import pandas as pd
 import yaml
 
 LANE_C_DIR = Path(__file__).resolve().parent
@@ -74,6 +75,7 @@ def _load_cell(cell_id: str) -> dict:
 
 def _expected_from_sweep(cell: dict) -> dict:
     """Pull the expected values from the latest converged sweep CSV."""
+    import pandas as pd
     fig = "fig5" if cell["objective"] == "fuel" else "fig6"
     csv_path = RESULTS_DIR / f"{fig}_grid.csv"
     if not csv_path.exists():
@@ -109,10 +111,52 @@ def _expected_from_sweep(cell: dict) -> dict:
     return expected
 
 
+def _expected_from_truth(cell: dict) -> dict:
+    """Expected values from the upstream truth lane (lane_a_upstream/).
+
+    Reads the paper-grid CSV, then the anchors CSV, whichever has the
+    cell with a feasible optimum."""
+    import csv
+    fig = "fig5" if cell["objective"] == "fuel" else "fig6"
+    tried = []
+    for grid in ("paper", "anchors", "demo"):
+        path = RESULTS_DIR / "lane_a_upstream" / f"{fig}_{grid}.csv"
+        tried.append(path.name)
+        if not path.exists():
+            continue
+        with open(path) as f:
+            for r in csv.DictReader(f):
+                if (float(r["design_range_nm"]) == cell["range_nm"]
+                        and float(r["spec_energy_whkg"]) == cell["spec_e"]
+                        and r["feasible"].lower() == "true"):
+                    fuel = cell["objective"] == "fuel"
+                    out = {
+                        "mixed_objective": float(r["mixed_objective_kg"] if fuel
+                                                 else r["doc_per_nmi"]),
+                        "MTOW_lb": float(r["MTOW_lb"]),
+                        "MTOW_kg": float(r["MTOW_kg"]),
+                        "fuel_lb": float(r["fuel_burn_lb"]),
+                        "fuel_kg": float(r["fuel_burn_kg"]),
+                        "W_battery_kg": float(r["W_battery_kg"]),
+                        "W_battery_lb": float(r["W_battery_lb"]),
+                        "Sref_m2": float(r["S_ref_m2"]),
+                        "Sref_ft2": float(r["S_ref_ft2"]),
+                        "cruise_h": float(r["cruise_hybridization"]),
+                    }
+                    if not fuel:
+                        out["doc_per_nmi"] = float(r["doc_per_nmi"])
+                    return out
+    raise SystemExit(
+        f"cell ({cell['range_nm']}, {cell['spec_e']}) has no feasible truth row in "
+        f"{tried}. Run lane_a_upstream/upstream_truth.py grid (or cell) first.")
+
+
 def _expected_for(cell: dict) -> dict:
     """Resolve the expected values for `cell` according to its `source`."""
-    if cell["source"] == "paper-table-4":
+    if cell.get("expect"):
         return dict(cell["expect"])
+    if cell["source"] == "upstream-truth":
+        return _expected_from_truth(cell)
     if cell["source"] == "omd-sweep":
         return _expected_from_sweep(cell)
     raise SystemExit(f"unknown source for cell {cell['id']}: {cell['source']!r}")

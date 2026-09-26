@@ -42,7 +42,10 @@ aircraft with `mission_range_NM=500` and `battery_specific_energy=450`.
 Run with `omd-cli run <plan.yaml> --mode optimize`.  Expect the
 optimizer to converge at MTOW on its upper bound (5700 kg), BFL and
 Vstall active at their upper bounds, and cruise hybridization around
-70%.  The converged `mixed_objective` should be near 233 kg.
+51%.  The converged `mixed_objective` should be near 324.9 kg (upstream
+HybridTwin MDO, `lane_a_upstream/`; the paper's structural-fudge and
+propeller overrides must be applied, or the MDO solves the lighter
+stock-C90GT problem and lands near 233 kg instead).
 
 For Fig 6, set `include_cost_model: true` on the mission component
 config, change the objective to `doc_per_nmi`, and rerun.

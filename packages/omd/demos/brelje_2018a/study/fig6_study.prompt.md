@@ -54,7 +54,7 @@ multistart is the baseline.
 
 ## Anchors
 
-The paper does not tabulate Fig 6 cells the way Table 4 does for Fig 5.
+The paper publishes Fig 6 only as a figure, no table.
 Sanity-check instead by comparison: at a given cell, the min-DOC design
 should never burn less fuel than the min-fuel design, and at low battery
 specific energy (where electrification is expensive) the two figures
