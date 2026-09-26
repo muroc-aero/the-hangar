@@ -129,6 +129,10 @@ def _regime(pct: float) -> str | None:
 
 Cell = tuple[float, float]  # (design_range_nm, spec_energy_whkg)
 
+# --named-only: ignore campaign cells graded from the best run in the
+# agent's DB rather than the run the agent named (agent_campaign.py).
+NAMED_ONLY = False
+
 
 @dataclass
 class Source:
@@ -361,6 +365,8 @@ def load_agent(name: str, seed: str, path: Path, fig: str) -> Source:
             except json.JSONDecodeError:
                 continue
             r.setdefault("case_id", p.stem)
+            if NAMED_ONLY and r.get("grading") == "best_in_db":
+                continue
             rows.append((r, _truthy(r.get("converged", True))))
         src.meta["n_rows"] = len(rows)
     else:
@@ -721,7 +727,11 @@ def main() -> int:
     ap.add_argument("--truth-grid", default="paper", choices=["paper", "demo", "anchors"])
     ap.add_argument("--out", type=Path, default=RESULTS / "stats")
     ap.add_argument("--no-plots", action="store_true")
+    ap.add_argument("--named-only", action="store_true",
+                    help="drop agent cells not graded on the run the agent named")
     args = ap.parse_args()
+    global NAMED_ONLY
+    NAMED_ONLY = args.named_only
     figs = ["5", "6"] if args.figure == "all" else [args.figure]
     agent_fig = dict(s.split("=", 1) for s in args.agent_fig)
     summary = run(figs, _parse_agents(args.agent), agent_fig, args.out,

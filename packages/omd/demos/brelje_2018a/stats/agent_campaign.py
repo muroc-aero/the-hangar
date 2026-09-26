@@ -170,6 +170,41 @@ def grade_run(fig: str, r: float, e: float, run_id: str,
     return {"dvs": dvs, "omd_objective": omd_obj, "rescored": rescored}
 
 
+def list_runs(data_root: Path) -> list[str]:
+    """Every run recorded in an isolated omd data root, oldest first."""
+    import sqlite3
+    db = data_root / "analysis.db"
+    if not db.exists():
+        return []
+    con = sqlite3.connect(db)
+    try:
+        rows = con.execute(
+            "SELECT entity_id FROM entities WHERE entity_type = 'run_record' "
+            "ORDER BY created_at").fetchall()
+    except sqlite3.Error:
+        return []
+    finally:
+        con.close()
+    return [r[0] for r in rows]
+
+
+def grade_best_in_db(fig: str, r: float, e: float, data_root: Path):
+    """Fallback when the agent named no run (turn cap, crash, no report):
+    grade every run in its data root, keep the best feasible one."""
+    best = None
+    for run_id in list_runs(data_root):
+        try:
+            g = grade_run(fig, r, e, run_id, _omd_env(data_root))
+        except Exception:  # noqa: BLE001 -- e.g. an analysis-only run
+            continue
+        rs = g["rescored"]
+        if not rs.get("feasible"):
+            continue
+        if best is None or rs["objective_value"] < best[1]["rescored"]["objective_value"]:
+            best = (run_id, g)
+    return best
+
+
 def _clean(v):
     if isinstance(v, float) and v != v:
         return None
@@ -216,8 +251,47 @@ def build_record(fig: str, r: float, e: float, *, run_id: str | None,
 # run
 # ---------------------------------------------------------------------------
 
+async def run_agent(prompt: str, data_root: Path, model: str | None,
+                    max_turns: int, verbose: bool) -> tuple[str, float | None, int | None]:
+    """eval_lane_c.run_agent without ``bypassPermissions`` (which the CLI
+    refuses under root, e.g. in containers): the omd MCP tools are
+    pre-approved and everything else is disallowed, so no permission
+    prompt can arise."""
+    from claude_agent_sdk import (AssistantMessage, ClaudeAgentOptions, ResultMessage,
+                                  TextBlock, query)
+    env = _omd_env(data_root)
+    options = ClaudeAgentOptions(
+        cwd=str(data_root),
+        model=model,
+        max_turns=max_turns,
+        mcp_servers={"omd": {
+            "type": "stdio", "command": sys.executable,
+            "args": ["-m", "hangar.omd.server"],
+            "env": {k: env[k] for k in ("OMD_DATA_ROOT", "OMD_DB_PATH",
+                                        "OMD_PLAN_STORE", "OMD_RECORDINGS_DIR")},
+        }},
+        allowed_tools=["mcp__omd"],
+        disallowed_tools=["Bash", "Read", "Write", "Edit", "Glob", "Grep", "WebFetch",
+                          "WebSearch", "Task", "NotebookEdit", "Agent"],
+    )
+    final_text, cost, turns = "", None, None
+    async for message in query(prompt=prompt, options=options):
+        if isinstance(message, AssistantMessage):
+            for block in message.content:
+                if isinstance(block, TextBlock):
+                    final_text = block.text
+                    if verbose:
+                        print(f"  [agent] {block.text[:200]}", flush=True)
+        elif isinstance(message, ResultMessage):
+            if message.result:
+                final_text = message.result
+            cost = message.total_cost_usd
+            turns = getattr(message, "num_turns", None)
+    return final_text, cost, turns
+
+
 async def _run_cell(fig, r, e, out_path: Path, args, sem: asyncio.Semaphore) -> dict:
-    from eval_lane_c import extract_report, run_agent
+    from eval_lane_c import extract_report
     async with sem:
         t0 = time.time()
         with tempfile.TemporaryDirectory(prefix="brelje-agent-") as tmp:
@@ -225,9 +299,9 @@ async def _run_cell(fig, r, e, out_path: Path, args, sem: asyncio.Semaphore) -> 
             meta = {"arm": args.arm, "model": args.model, "status": "lost"}
             report = grade = run_id = None
             try:
-                text, cost = await run_agent(render_prompt(fig, r, e), data_root,
-                                             args.model, args.max_turns, args.verbose)
-                meta["cost_usd"] = cost
+                text, cost, turns = await run_agent(render_prompt(fig, r, e), data_root,
+                                                    args.model, args.max_turns, args.verbose)
+                meta.update(cost_usd=cost, turns=turns)
                 try:
                     report = extract_report(text)
                 except ValueError:
@@ -242,6 +316,16 @@ async def _run_cell(fig, r, e, out_path: Path, args, sem: asyncio.Semaphore) -> 
                         meta["status"] = "graded"
             except Exception as exc:  # noqa: BLE001 -- a lost cell is data
                 meta["error"] = f"{type(exc).__name__}: {exc}"[:500]
+            meta["grading"] = "named_run" if grade else None
+            if grade is None:
+                # The named-run policy found nothing to grade; still record
+                # what the agent's runs achieved, flagged so collect_stats
+                # can separate it (--named-only drops these cells).
+                found = await asyncio.to_thread(grade_best_in_db, fig, r, e, data_root)
+                if found:
+                    run_id, grade = found
+                    meta["grading"] = "best_in_db"
+            meta["n_runs"] = len(list_runs(data_root))
             meta["wall_time_s"] = time.time() - t0
         rec = build_record(fig, r, e, run_id=run_id, grade=grade, report=report, meta=meta)
         out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -328,6 +412,9 @@ def cmd_status(args) -> int:
         mism = [r for r in recs if (r.get("report_rel_err") or 0) > 0.01]
         cost = sum(r.get("cost_usd") or 0 for r in recs)
         wall = sum(r.get("wall_time_s") or 0 for r in recs) / 3600
+        fallback = sum(r.get("grading") == "best_in_db" for r in recs)
+        if fallback:
+            print(f"  ({seed}: {fallback} cell(s) graded best_in_db, no named run)")
         print(f"{seed:<8} {len(recs):>5} {st.count('graded'):>6} "
               f"{sum(bool(r.get('converged')) for r in recs):>5} {st.count('lost'):>5} "
               f"{st.count('no_report'):>5} {st.count('no_run_named'):>5} {len(mism):>6} "
@@ -361,7 +448,7 @@ def main() -> int:
     r.add_argument("--grid", choices=["paper", "demo", "anchors"], default="demo")
     r.add_argument("--cells", nargs="*", metavar="R,E", help="restrict to these cells")
     r.add_argument("--workers", type=int, default=2)
-    r.add_argument("--max-turns", type=int, default=60)
+    r.add_argument("--max-turns", type=int, default=150)
     r.add_argument("--est-cell-minutes", type=float, default=8.0)
     r.add_argument("--force", action="store_true", help="re-run cells that have a record")
     r.add_argument("--dry-run", action="store_true")
