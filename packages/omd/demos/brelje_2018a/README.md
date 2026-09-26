@@ -99,6 +99,11 @@ uv run python $DEMO/lane_a_upstream/upstream_truth.py grid --objective fuel \
     --grid paper --subset demo --workers 4 --resume      # the 11x12 cells first
 uv run python $DEMO/lane_a_upstream/upstream_truth.py grid --objective cost \
     --grid paper --workers 4 --resume
+# polish: warm-start cells where truth is infeasible or another source
+# (the omd sweep, a neighbour) reached a better optimum; upstream still
+# owns the answer -- foreign designs are only starting points
+uv run python $DEMO/lane_a_upstream/upstream_truth.py polish --objective fuel \
+    --ref $DEMO/results/fig5_grid.csv
 
 # agent campaign: one blind agent per cell, N seeds (needs claude-agent-sdk)
 uv run python $DEMO/stats/agent_campaign.py run --arm opus --grid demo --dry-run
