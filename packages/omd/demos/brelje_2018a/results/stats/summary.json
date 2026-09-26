@@ -480,90 +480,6 @@
     "6": {
       "comparisons": [
         {
-          "candidate": "truth",
-          "reference": "paper",
-          "fig": "6",
-          "n_reference": 252,
-          "n_candidate": 68,
-          "n_candidate_ok": 68,
-          "n_attempted": 68,
-          "n_common_ok": 68,
-          "metrics": {
-            "fuel_mileage_lb_per_nmi": {
-              "n": 68,
-              "pass_rate": 0.07352941176470588,
-              "median_abs_rel": 0.8868259478507604,
-              "p90_abs_rel": 52.520906293531795,
-              "max_abs_rel": 86.86295921203455,
-              "mean_rel": 14.857601037129548,
-              "median_abs_err": 0.4380758907533603,
-              "max_abs_err": 1.244919931426879
-            },
-            "doc_per_nmi": {
-              "n": 68,
-              "pass_rate": 0.0,
-              "median_abs_rel": 0.2997105443476765,
-              "p90_abs_rel": 0.9374243363605502,
-              "max_abs_rel": 1.29882405498887,
-              "mean_rel": 0.44647879343200125,
-              "median_abs_err": 0.1295631580220004,
-              "max_abs_err": 0.3721364705873011
-            },
-            "electric_percent": {
-              "n": 68,
-              "pass_rate": 0.029411764705882353,
-              "median_abs_rel": 0.6261182714585452,
-              "p90_abs_rel": 1.698607881627184,
-              "max_abs_rel": 4.792488075910134,
-              "mean_rel": 0.2981024081689334,
-              "median_abs_err": 24.7915147364318,
-              "max_abs_err": 70.51306771446072
-            },
-            "MTOW_lb": {
-              "n": 68,
-              "pass_rate": 0.0,
-              "median_abs_rel": 0.15543850202804543,
-              "p90_abs_rel": 0.21013211233743448,
-              "max_abs_rel": 0.4207520748288791,
-              "mean_rel": 0.04666525719432993,
-              "median_abs_err": 1371.1044105244546,
-              "max_abs_err": 3721.4919372599998
-            }
-          },
-          "coverage": 1.0,
-          "regime_agreement": {
-            "n": 68,
-            "rate": 0.39705882352941174,
-            "basis": [
-              "electric_percent"
-            ]
-          },
-          "candidate_meta": {
-            "path": [
-              "/home/user/the-hangar/packages/omd/demos/brelje_2018a/results/lane_a_upstream/fig6_paper.csv"
-            ],
-            "starts_agree": 0,
-            "cells_multi_start": 66
-          }
-        },
-        {
-          "candidate": "lane_b",
-          "reference": "truth",
-          "fig": "6",
-          "n_reference": 68,
-          "n_candidate": 132,
-          "n_candidate_ok": 0,
-          "n_attempted": 68,
-          "n_common_ok": 0,
-          "metrics": {},
-          "coverage": 0.0,
-          "candidate_meta": {
-            "path": "/home/user/the-hangar/packages/omd/demos/brelje_2018a/results/fig6_grid.csv",
-            "rescored": "/home/user/the-hangar/packages/omd/demos/brelje_2018a/results/rescored/fig6_grid.csv",
-            "converged_but_infeasible_in_truth": 132
-          }
-        },
-        {
           "candidate": "lane_b",
           "reference": "paper",
           "fig": "6",
@@ -581,12 +497,6 @@
           }
         }
       ],
-      "truth_quality": {
-        "n_cells": 68,
-        "n_ok": 68,
-        "starts_agree": 0,
-        "cells_multi_start": 66
-      },
       "arms": []
     }
   }
