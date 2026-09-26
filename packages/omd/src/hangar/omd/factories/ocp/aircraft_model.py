@@ -100,11 +100,50 @@ def _make_aircraft_model_class(
                 prop_comp, prop_prom_in, prop_prom_out = prop_provider_fn(
                     nn, flight_phase, propulsion_slot.get("config", {}),
                 )
-                self.add_subsystem(
-                    "propmodel", prop_comp,
-                    promotes_inputs=prop_prom_in,
-                    promotes_outputs=prop_prom_out,
-                )
+                # Propulsion slot providers model a SINGLE engine/propulsor
+                # (the deck is generated at a per-engine design thrust). For a
+                # multi-engine architecture the total thrust and fuel flow must
+                # be scaled by the engine count -- mirroring the CFM56 doubler
+                # below. Without this the aircraft is thrust-deficient and no
+                # steady-flight solution exists (the throttle balance saturates
+                # and the mission solver cannot converge).
+                if num_engines > 1:
+                    remapped_out = []
+                    for nm in prop_prom_out:
+                        if nm == "thrust":
+                            remapped_out.append(("thrust", "thrust_per_engine"))
+                        elif nm == "fuel_flow":
+                            remapped_out.append(("fuel_flow", "fuel_flow_per_engine"))
+                        else:
+                            remapped_out.append(nm)
+                    self.add_subsystem(
+                        "propmodel", prop_comp,
+                        promotes_inputs=prop_prom_in,
+                        promotes_outputs=remapped_out,
+                    )
+                    engine_scaler = om.ExecComp(
+                        [
+                            f"thrust = {num_engines}*thrust_in",
+                            f"fuel_flow = {num_engines}*fuel_flow_in",
+                        ],
+                        thrust_in={"val": np.ones((nn,)), "units": "kN"},
+                        thrust={"val": np.ones((nn,)), "units": "kN"},
+                        fuel_flow_in={"val": np.ones((nn,)), "units": "kg/s"},
+                        fuel_flow={"val": np.ones((nn,)), "units": "kg/s"},
+                        has_diag_partials=True,
+                    )
+                    self.add_subsystem(
+                        "engine_scaler", engine_scaler,
+                        promotes_outputs=["thrust", "fuel_flow"],
+                    )
+                    self.connect("thrust_per_engine", "engine_scaler.thrust_in")
+                    self.connect("fuel_flow_per_engine", "engine_scaler.fuel_flow_in")
+                else:
+                    self.add_subsystem(
+                        "propmodel", prop_comp,
+                        promotes_inputs=prop_prom_in,
+                        promotes_outputs=prop_prom_out,
+                    )
             elif is_cfm56:
                 self.add_subsystem(
                     "propmodel",

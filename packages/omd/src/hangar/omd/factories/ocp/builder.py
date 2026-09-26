@@ -333,18 +333,33 @@ def _build_mission_problem(
             use_aitken=settings.get("use_aitken", True),
         )
     else:
-        prob.model.nonlinear_solver = om.NewtonSolver(
-            iprint=0,
+        newton = om.NewtonSolver(
+            iprint=int(settings.get("iprint", 0)),
             solve_subsystems=settings["solve_subsystems"],
         )
+        newton.options["maxiter"] = settings["maxiter"]
+        newton.options["atol"] = settings["atol"]
+        newton.options["rtol"] = settings["rtol"]
+        if "max_sub_solves" in settings:
+            newton.options["max_sub_solves"] = int(settings["max_sub_solves"])
+        # Linesearch: BoundsEnforceLS only clips to bounds; ArmijoGoldsteinLS
+        # backtracks on a merit function, which tames Newton divergence from
+        # ill-conditioned surrogate partials (drag/prop metamodels).
+        ls_type = settings.get("linesearch", "bounds")
+        if ls_type == "armijo":
+            ls = om.ArmijoGoldsteinLS(bound_enforcement="scalar")
+            ls.options["maxiter"] = int(settings.get("ls_maxiter", 10))
+            ls.options["rho"] = float(settings.get("ls_rho", 0.5))
+            ls.options["c"] = float(settings.get("ls_c", 0.1))
+            ls.options["iprint"] = int(settings.get("ls_iprint", 0))
+            newton.linesearch = ls
+        elif ls_type != "none":
+            newton.linesearch = om.BoundsEnforceLS(
+                bound_enforcement="scalar",
+                print_bound_enforce=False,
+            )
+        prob.model.nonlinear_solver = newton
         prob.model.linear_solver = om.DirectSolver()
-        prob.model.nonlinear_solver.options["maxiter"] = settings["maxiter"]
-        prob.model.nonlinear_solver.options["atol"] = settings["atol"]
-        prob.model.nonlinear_solver.options["rtol"] = settings["rtol"]
-        prob.model.nonlinear_solver.linesearch = om.BoundsEnforceLS(
-            bound_enforcement="scalar",
-            print_bound_enforce=False,
-        )
 
     params = {**DEFAULT_MISSION_PARAMS, **mission_params}
 
