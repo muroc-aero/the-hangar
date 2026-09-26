@@ -1,0 +1,450 @@
+{
+  "sources": [
+    "paper",
+    "truth",
+    "lane_b",
+    "pilot"
+  ],
+  "figures": {
+    "5": {
+      "comparisons": [
+        {
+          "candidate": "truth",
+          "reference": "paper",
+          "fig": "5",
+          "n_reference": 252,
+          "n_candidate": 37,
+          "n_candidate_ok": 37,
+          "n_attempted": 37,
+          "n_common_ok": 37,
+          "metrics": {
+            "fuel_mileage_lb_per_nmi": {
+              "n": 37,
+              "pass_rate": 0.9459459459459459,
+              "median_abs_rel": 0.1830749236657907,
+              "p90_abs_rel": 0.9759712808974608,
+              "max_abs_rel": 0.9780330419311853,
+              "mean_rel": -0.4775870865000825,
+              "median_abs_err": 0.05262633358077748,
+              "max_abs_err": 0.07091933300371212
+            },
+            "doc_per_nmi": {
+              "n": 37,
+              "pass_rate": 0.13513513513513514,
+              "median_abs_rel": 0.03761779575036178,
+              "p90_abs_rel": 0.04625372525208478,
+              "max_abs_rel": 0.056997704350151286,
+              "mean_rel": -0.03653457209616582,
+              "median_abs_err": 0.01618195661407551,
+              "max_abs_err": 0.03608241720677863
+            },
+            "electric_percent": {
+              "n": 37,
+              "pass_rate": 0.7297297297297297,
+              "median_abs_rel": 0.017225700609656763,
+              "p90_abs_rel": 0.07500838450032302,
+              "max_abs_rel": 0.8462602496943267,
+              "mean_rel": 0.07316332976316776,
+              "median_abs_err": 0.9628654090593969,
+              "max_abs_err": 4.465971754492619
+            },
+            "MTOW_lb": {
+              "n": 37,
+              "pass_rate": 0.4864864864864865,
+              "median_abs_rel": 0.011353342088412294,
+              "p90_abs_rel": 0.02806583374227226,
+              "max_abs_rel": 0.039583854614950204,
+              "mean_rel": -0.005214954080899539,
+              "median_abs_err": 120.33211052884872,
+              "max_abs_err": 398.20703242682794
+            }
+          },
+          "coverage": 1.0,
+          "regime_agreement": {
+            "n": 37,
+            "rate": 0.972972972972973,
+            "basis": [
+              "electric_percent"
+            ]
+          },
+          "candidate_meta": {
+            "path": [
+              "/home/user/the-hangar/packages/omd/demos/brelje_2018a/results/lane_a_upstream/fig5_paper.csv",
+              "/home/user/the-hangar/packages/omd/demos/brelje_2018a/results/lane_a_upstream/fig5_anchors.csv"
+            ],
+            "starts_agree": 34,
+            "cells_multi_start": 34
+          }
+        },
+        {
+          "candidate": "lane_b",
+          "reference": "truth",
+          "fig": "5",
+          "n_reference": 37,
+          "n_candidate": 132,
+          "n_candidate_ok": 132,
+          "n_attempted": 37,
+          "n_common_ok": 37,
+          "metrics": {
+            "objective": {
+              "n": 37,
+              "pass_rate": 1.0,
+              "median_abs_rel": 7.927134448350544e-10,
+              "p90_abs_rel": 9.925704032795656e-09,
+              "max_abs_rel": 0.007413962189054283,
+              "mean_rel": 0.00020037659404129586,
+              "median_abs_err": 1.3963796163807274e-07,
+              "max_abs_err": 0.32175960624604727
+            },
+            "MTOW_lb": {
+              "n": 37,
+              "pass_rate": 1.0,
+              "median_abs_rel": 1.1892284756555612e-06,
+              "p90_abs_rel": 1.189446964094006e-06,
+              "max_abs_rel": 0.007413902612505723,
+              "mean_rel": 0.0001992192070508345,
+              "median_abs_err": 0.014595282336813398,
+              "max_abs_err": 70.64962552055658
+            },
+            "fuel_mileage_lb_per_nmi": {
+              "n": 37,
+              "pass_rate": 1.0,
+              "median_abs_rel": 1.1893145574393579e-06,
+              "p90_abs_rel": 1.2118213976743627e-06,
+              "max_abs_rel": 0.0071311924594636335,
+              "mean_rel": 0.00019157384011718692,
+              "median_abs_err": 3.3879766064837114e-07,
+              "max_abs_err": 9.1587468102432e-06
+            },
+            "W_battery_kg": {
+              "n": 37,
+              "pass_rate": 1.0,
+              "median_abs_rel": 1.434884957823381e-10,
+              "p90_abs_rel": 5.1067225704808e-09,
+              "max_abs_rel": 0.007101886882961812,
+              "mean_rel": 0.00018159954430498838,
+              "median_abs_err": 1.903226802824065e-07,
+              "max_abs_err": 6.741263938988482
+            },
+            "S_ref_m2": {
+              "n": 37,
+              "pass_rate": 1.0,
+              "median_abs_rel": 1.8194504156515735e-11,
+              "p90_abs_rel": 1.2252523698175919e-09,
+              "max_abs_rel": 0.007415100659231179,
+              "mean_rel": 0.0002004086981730666,
+              "median_abs_err": 5.088658383556321e-10,
+              "max_abs_err": 0.19138953732704778
+            },
+            "cruise_hybridization": {
+              "n": 37,
+              "pass_rate": 1.0,
+              "median_abs_rel": 7.106877696095255e-10,
+              "p90_abs_rel": 3.679740646814886e-08,
+              "max_abs_rel": 3.733972960273289e-06,
+              "mean_rel": -1.0365260563949658e-07,
+              "median_abs_err": 3.233443512939971e-10,
+              "max_abs_err": 5.327818519695882e-09
+            }
+          },
+          "coverage": 1.0,
+          "optimality_gap": {
+            "n": 37,
+            "median": -5.22172722904441e-12,
+            "max": 0.007413962189054283,
+            "frac_worse_than_ref": 0.02702702702702703,
+            "frac_better_than_ref": 0.0,
+            "frac_matched": 0.972972972972973
+          },
+          "regime_agreement": {
+            "n": 37,
+            "rate": 1.0,
+            "basis": [
+              "cruise_hybridization"
+            ]
+          },
+          "candidate_meta": {
+            "path": "/home/user/the-hangar/packages/omd/demos/brelje_2018a/results/fig5_grid.csv"
+          }
+        },
+        {
+          "candidate": "lane_b",
+          "reference": "paper",
+          "fig": "5",
+          "n_reference": 252,
+          "n_candidate": 132,
+          "n_candidate_ok": 132,
+          "n_attempted": 132,
+          "n_common_ok": 132,
+          "metrics": {
+            "fuel_mileage_lb_per_nmi": {
+              "n": 132,
+              "pass_rate": 0.8636363636363636,
+              "median_abs_rel": 0.03543961032677797,
+              "p90_abs_rel": 0.9720480816239604,
+              "max_abs_rel": 0.9780330679345111,
+              "mean_rel": -0.21795463142279403,
+              "median_abs_err": 0.04316837797689921,
+              "max_abs_err": 0.5015480248015268
+            },
+            "MTOW_lb": {
+              "n": 132,
+              "pass_rate": 0.6666666666666666,
+              "median_abs_rel": 0.0011723331792862746,
+              "p90_abs_rel": 0.03035976329455129,
+              "max_abs_rel": 0.2612330050240784,
+              "mean_rel": -0.004931477108300098,
+              "median_abs_err": 11.43393421426481,
+              "max_abs_err": 2602.8031139999985
+            }
+          },
+          "coverage": 1.0,
+          "candidate_meta": {
+            "path": "/home/user/the-hangar/packages/omd/demos/brelje_2018a/results/fig5_grid.csv"
+          }
+        },
+        {
+          "candidate": "pilot",
+          "reference": "truth",
+          "fig": "5",
+          "n_reference": 37,
+          "n_candidate": 1,
+          "n_candidate_ok": 1,
+          "n_attempted": 1,
+          "n_common_ok": 1,
+          "metrics": {
+            "objective": {
+              "n": 1,
+              "pass_rate": 1.0,
+              "median_abs_rel": 4.880229012592839e-07,
+              "p90_abs_rel": 4.880229012592839e-07,
+              "max_abs_rel": 4.880229012592839e-07,
+              "mean_rel": 4.880229012592839e-07,
+              "median_abs_err": 0.00018896328731443646,
+              "max_abs_err": 0.00018896328731443646
+            },
+            "MTOW_lb": {
+              "n": 1,
+              "pass_rate": 1.0,
+              "median_abs_rel": 6.814302621830941e-07,
+              "p90_abs_rel": 6.814302621830941e-07,
+              "max_abs_rel": 6.814302621830941e-07,
+              "mean_rel": 6.814302621830941e-07,
+              "median_abs_err": 0.00607381160807563,
+              "max_abs_err": 0.00607381160807563
+            },
+            "fuel_mileage_lb_per_nmi": {
+              "n": 1,
+              "pass_rate": 1.0,
+              "median_abs_rel": 4.654734884344499e-07,
+              "p90_abs_rel": 4.654734884344499e-07,
+              "max_abs_rel": 4.654734884344499e-07,
+              "mean_rel": 4.654734884344499e-07,
+              "median_abs_err": 7.117092437614048e-07,
+              "max_abs_err": 7.117092437614048e-07
+            },
+            "W_battery_kg": {
+              "n": 1,
+              "pass_rate": 1.0,
+              "median_abs_rel": 5.178177732769031e-06,
+              "p90_abs_rel": 5.178177732769031e-06,
+              "max_abs_rel": 5.178177732769031e-06,
+              "mean_rel": 5.178177732769031e-06,
+              "median_abs_err": 0.0007166669375635593,
+              "max_abs_err": 0.0007166669375635593
+            },
+            "S_ref_m2": {
+              "n": 1,
+              "pass_rate": 1.0,
+              "median_abs_rel": 6.814383959238371e-07,
+              "p90_abs_rel": 6.814383959238371e-07,
+              "max_abs_rel": 6.814383959238371e-07,
+              "mean_rel": 6.814383959238371e-07,
+              "median_abs_err": 1.645146793904928e-05,
+              "max_abs_err": 1.645146793904928e-05
+            },
+            "cruise_hybridization": {
+              "n": 1,
+              "pass_rate": 1.0,
+              "median_abs_rel": 3.7339729548522986e-06,
+              "p90_abs_rel": 3.7339729548522986e-06,
+              "max_abs_rel": 3.7339729548522986e-06,
+              "mean_rel": -3.7339729548522986e-06,
+              "median_abs_err": 3.733986897458408e-09,
+              "max_abs_err": 3.733986897458408e-09
+            },
+            "electric_percent": {
+              "n": 1,
+              "pass_rate": 1.0,
+              "median_abs_rel": 6.93379215275012e-06,
+              "p90_abs_rel": 6.93379215275012e-06,
+              "max_abs_rel": 6.93379215275012e-06,
+              "mean_rel": 6.93379215275012e-06,
+              "median_abs_err": 2.1248855338384942e-05,
+              "max_abs_err": 2.1248855338384942e-05
+            },
+            "doc_per_nmi": {
+              "n": 1,
+              "pass_rate": 1.0,
+              "median_abs_rel": 4.961991903229562e-07,
+              "p90_abs_rel": 4.961991903229562e-07,
+              "max_abs_rel": 4.961991903229562e-07,
+              "mean_rel": 4.961991903229562e-07,
+              "median_abs_err": 3.4650242197731274e-07,
+              "max_abs_err": 3.4650242197731274e-07
+            }
+          },
+          "coverage": 1.0,
+          "optimality_gap": {
+            "n": 1,
+            "median": 4.880229012592839e-07,
+            "max": 4.880229012592839e-07,
+            "frac_worse_than_ref": 0.0,
+            "frac_better_than_ref": 0.0,
+            "frac_matched": 1.0
+          },
+          "regime_agreement": {
+            "n": 1,
+            "rate": 1.0,
+            "basis": [
+              "electric_percent"
+            ]
+          },
+          "candidate_meta": {
+            "path": "packages/omd/demos/brelje_2018a/results/agent_campaign/pilot/seed0/fig5",
+            "n_rows": 1
+          }
+        },
+        {
+          "candidate": "pilot",
+          "reference": "paper",
+          "fig": "5",
+          "n_reference": 252,
+          "n_candidate": 1,
+          "n_candidate_ok": 1,
+          "n_attempted": 1,
+          "n_common_ok": 1,
+          "metrics": {
+            "fuel_mileage_lb_per_nmi": {
+              "n": 1,
+              "pass_rate": 1.0,
+              "median_abs_rel": 0.014483462718383387,
+              "p90_abs_rel": 0.014483462718383387,
+              "max_abs_rel": 0.014483462718383387,
+              "mean_rel": -0.014483462718383387,
+              "median_abs_err": 0.022470686870615708,
+              "max_abs_err": 0.022470686870615708
+            },
+            "doc_per_nmi": {
+              "n": 1,
+              "pass_rate": 1.0,
+              "median_abs_rel": 0.004173792547696194,
+              "p90_abs_rel": 0.004173792547696194,
+              "max_abs_rel": 0.004173792547696194,
+              "mean_rel": 0.004173792547696194,
+              "median_abs_err": 0.002902501249385958,
+              "max_abs_err": 0.002902501249385958
+            },
+            "electric_percent": {
+              "n": 1,
+              "pass_rate": 1.0,
+              "median_abs_rel": 0.13258403015579262,
+              "p90_abs_rel": 0.13258403015579262,
+              "max_abs_rel": 0.13258403015579262,
+              "mean_rel": -0.13258403015579262,
+              "median_abs_err": 0.4684157987716011,
+              "max_abs_err": 0.4684157987716011
+            },
+            "MTOW_lb": {
+              "n": 1,
+              "pass_rate": 1.0,
+              "median_abs_rel": 6.468806087562648e-05,
+              "p90_abs_rel": 6.468806087562648e-05,
+              "max_abs_rel": 6.468806087562648e-05,
+              "mean_rel": -6.468806087562648e-05,
+              "median_abs_err": 0.5766236141735135,
+              "max_abs_err": 0.5766236141735135
+            }
+          },
+          "coverage": 1.0,
+          "regime_agreement": {
+            "n": 1,
+            "rate": 1.0,
+            "basis": [
+              "electric_percent"
+            ]
+          },
+          "candidate_meta": {
+            "path": "packages/omd/demos/brelje_2018a/results/agent_campaign/pilot/seed0/fig5",
+            "n_rows": 1
+          }
+        }
+      ],
+      "truth_quality": {
+        "n_cells": 37,
+        "n_ok": 37,
+        "starts_agree": 34,
+        "cells_multi_start": 34
+      },
+      "arms": [
+        {
+          "arm": "pilot",
+          "reference": "truth",
+          "aggregate": {
+            "coverage": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n_seeds": 1
+            },
+            "objective_pass_rate": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n_seeds": 1
+            },
+            "objective_median_abs_rel": {
+              "mean": 4.880229012592839e-07,
+              "min": 4.880229012592839e-07,
+              "max": 4.880229012592839e-07,
+              "n_seeds": 1
+            },
+            "frac_matched_optimum": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n_seeds": 1
+            },
+            "regime_agreement": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n_seeds": 1
+            }
+          }
+        },
+        {
+          "arm": "pilot",
+          "reference": "paper",
+          "aggregate": {
+            "coverage": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n_seeds": 1
+            },
+            "objective_pass_rate": null,
+            "objective_median_abs_rel": null,
+            "frac_matched_optimum": null,
+            "regime_agreement": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n_seeds": 1
+            }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -227,16 +227,24 @@ def _sweep_row_metrics(r: dict, fig: str) -> dict:
 
 
 def load_truth(fig: str, grid: str = "paper") -> Source | None:
-    path = RESULTS / "lane_a_upstream" / f"fig{fig}_{grid}.csv"
-    if not path.exists():
+    """Truth cells from the requested grid file, topped up with any cell
+    only the other truth files have (e.g. the anchors pilot while the
+    paper grid is still running)."""
+    order = [grid] + [g for g in ("paper", "demo", "anchors") if g != grid]
+    paths = [RESULTS / "lane_a_upstream" / f"fig{fig}_{g}.csv" for g in order]
+    paths = [p for p in paths if p.exists()]
+    if not paths:
         return None
-    src = Source("truth", "truth", fig, meta={"path": str(path)})
+    src = Source("truth", "truth", fig, meta={"path": [str(p) for p in paths]})
     starts = defaultdict(list)
-    for r in _read_csv(path):
-        k = _key(r["design_range_nm"], r["spec_energy_whkg"])
-        src.cells[k] = _sweep_row_metrics(r, fig)
-        src.ok[k] = _truthy(r.get("feasible")) and src.cells[k]["objective"] is not None
-        starts[k] = r.get("starts_tried", "")
+    for path in paths:
+        for r in _read_csv(path):
+            k = _key(r["design_range_nm"], r["spec_energy_whkg"])
+            if k in src.cells:
+                continue
+            src.cells[k] = _sweep_row_metrics(r, fig)
+            src.ok[k] = _truthy(r.get("feasible")) and src.cells[k]["objective"] is not None
+            starts[k] = r.get("starts_tried", "")
     # start agreement: how often did every feasible start land on the
     # same optimum? (a truth-quality statistic in its own right)
     agree = 0
