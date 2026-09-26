@@ -1,0 +1,20 @@
+[build-system]
+requires = ["maturin>=1.7,<2"]
+build-backend = "maturin"
+
+[project]
+name = "hangar-kernels"
+version = "0.1.0"
+description = "Native Rust hot kernels for hangar MDAO components (proof of concept)"
+requires-python = ">=3.11"
+dependencies = ["numpy>=1.24"]
+
+[project.optional-dependencies]
+# Needed only to run the OpenMDAO drop-in parity test.
+test = ["openmdao>=3.35", "pytest>=7"]
+
+[tool.maturin]
+# Pure Rust extension module: importable as `hangar_kernels`. Kept out of the
+# `hangar.*` namespace on purpose -- a compiled module can't host the PEP 420
+# namespace without an __init__.py shim, which the repo forbids under src/hangar/.
+module-name = "hangar_kernels"
