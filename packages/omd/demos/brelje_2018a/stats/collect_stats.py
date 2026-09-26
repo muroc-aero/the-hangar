@@ -269,6 +269,25 @@ def load_lane_b(fig: str) -> Source | None:
         k = _key(r["design_range_nm"], r["spec_energy_whkg"])
         src.cells[k] = _sweep_row_metrics(r, fig)
         src.ok[k] = _truthy(r.get("converged")) and src.cells[k]["objective"] is not None
+    # If stats/rescore_sweep.py has re-scored these designs in the upstream
+    # model, a cell only counts if its design is feasible there too, and
+    # the paper's electric percent comes from the rescore.
+    rescored = RESULTS / "rescored" / path.name
+    if rescored.exists():
+        n_bad = 0
+        for r in _read_csv(rescored):
+            k = _key(r["design_range_nm"], r["spec_energy_whkg"])
+            if k not in src.cells:
+                continue
+            if not _truthy(r.get("feasible")):
+                if src.ok.get(k):
+                    n_bad += 1
+                src.ok[k] = False
+            ef = _f(r.get("electric_energy_frac"))
+            if ef is not None:
+                src.cells[k]["electric_percent"] = 100.0 * ef
+        src.meta["rescored"] = str(rescored)
+        src.meta["converged_but_infeasible_in_truth"] = n_bad
     return src
 
 
@@ -555,6 +574,13 @@ def write_markdown(summary: dict, path: Path) -> None:
                      f"{tq['starts_agree']}/{tq['cells_multi_start']} multi-start cells "
                      "had every feasible start land on the same optimum.")
             L.append("")
+        for c in blocks["comparisons"]:
+            n_bad = (c.get("candidate_meta") or {}).get("converged_but_infeasible_in_truth")
+            if n_bad and c["reference"] == "truth":
+                L.append(f"`{c['candidate']}`: {n_bad} cell(s) reported converged but "
+                         "re-score infeasible in the upstream model; they count as "
+                         "not covered.")
+                L.append("")
         L.append("| candidate | reference | coverage | obj pass | obj med |rel| | "
                  "obj max |rel| | matched opt | worse opt | regime agree |")
         L.append("|---|---|---|---|---|---|---|---|---|")

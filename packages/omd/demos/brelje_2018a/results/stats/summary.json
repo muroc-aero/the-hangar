@@ -13,56 +13,56 @@
           "reference": "paper",
           "fig": "5",
           "n_reference": 252,
-          "n_candidate": 37,
-          "n_candidate_ok": 37,
-          "n_attempted": 37,
-          "n_common_ok": 37,
+          "n_candidate": 132,
+          "n_candidate_ok": 132,
+          "n_attempted": 132,
+          "n_common_ok": 132,
           "metrics": {
             "fuel_mileage_lb_per_nmi": {
-              "n": 37,
-              "pass_rate": 0.9459459459459459,
-              "median_abs_rel": 0.1830749236657907,
-              "p90_abs_rel": 0.9759712808974608,
+              "n": 132,
+              "pass_rate": 0.9090909090909091,
+              "median_abs_rel": 0.03228924642501051,
+              "p90_abs_rel": 0.9714172105936093,
               "max_abs_rel": 0.9780330419311853,
-              "mean_rel": -0.4775870865000825,
-              "median_abs_err": 0.05262633358077748,
-              "max_abs_err": 0.07091933300371212
+              "mean_rel": -0.20834374001352587,
+              "median_abs_err": 0.04040065753263178,
+              "max_abs_err": 0.0961833362243949
             },
             "doc_per_nmi": {
-              "n": 37,
-              "pass_rate": 0.13513513513513514,
-              "median_abs_rel": 0.03761779575036178,
-              "p90_abs_rel": 0.04625372525208478,
-              "max_abs_rel": 0.056997704350151286,
-              "mean_rel": -0.03653457209616582,
-              "median_abs_err": 0.01618195661407551,
-              "max_abs_err": 0.03608241720677863
+              "n": 132,
+              "pass_rate": 0.24242424242424243,
+              "median_abs_rel": 0.03455924604911298,
+              "p90_abs_rel": 0.04948916384530757,
+              "max_abs_rel": 0.0762616358999958,
+              "mean_rel": -0.0320464243391755,
+              "median_abs_err": 0.01780196935480466,
+              "max_abs_err": 0.04280991811499779
             },
             "electric_percent": {
-              "n": 37,
-              "pass_rate": 0.7297297297297297,
-              "median_abs_rel": 0.017225700609656763,
-              "p90_abs_rel": 0.07500838450032302,
+              "n": 132,
+              "pass_rate": 0.5984848484848485,
+              "median_abs_rel": 0.03384890219664663,
+              "p90_abs_rel": 0.2855236456081218,
               "max_abs_rel": 0.8462602496943267,
-              "mean_rel": 0.07316332976316776,
-              "median_abs_err": 0.9628654090593969,
-              "max_abs_err": 4.465971754492619
+              "mean_rel": 0.04647343361966944,
+              "median_abs_err": 1.3801825983405838,
+              "max_abs_err": 9.014388940754646
             },
             "MTOW_lb": {
-              "n": 37,
-              "pass_rate": 0.4864864864864865,
-              "median_abs_rel": 0.011353342088412294,
-              "p90_abs_rel": 0.02806583374227226,
-              "max_abs_rel": 0.039583854614950204,
-              "mean_rel": -0.005214954080899539,
-              "median_abs_err": 120.33211052884872,
-              "max_abs_err": 398.20703242682794
+              "n": 132,
+              "pass_rate": 0.6742424242424242,
+              "median_abs_rel": 0.0011711504585359812,
+              "p90_abs_rel": 0.018977388572533276,
+              "max_abs_rel": 0.11039693177737145,
+              "mean_rel": -0.005118547557671846,
+              "median_abs_err": 11.420959394231431,
+              "max_abs_err": 1249.3607712600005
             }
           },
           "coverage": 1.0,
           "regime_agreement": {
-            "n": 37,
-            "rate": 0.972972972972973,
+            "n": 132,
+            "rate": 0.9848484848484849,
             "basis": [
               "electric_percent"
             ]
@@ -72,99 +72,111 @@
               "/home/user/the-hangar/packages/omd/demos/brelje_2018a/results/lane_a_upstream/fig5_paper.csv",
               "/home/user/the-hangar/packages/omd/demos/brelje_2018a/results/lane_a_upstream/fig5_anchors.csv"
             ],
-            "starts_agree": 34,
-            "cells_multi_start": 34
+            "starts_agree": 109,
+            "cells_multi_start": 109
           }
         },
         {
           "candidate": "lane_b",
           "reference": "truth",
           "fig": "5",
-          "n_reference": 37,
+          "n_reference": 132,
           "n_candidate": 132,
-          "n_candidate_ok": 132,
-          "n_attempted": 37,
-          "n_common_ok": 37,
+          "n_candidate_ok": 125,
+          "n_attempted": 132,
+          "n_common_ok": 125,
           "metrics": {
             "objective": {
-              "n": 37,
+              "n": 125,
               "pass_rate": 1.0,
-              "median_abs_rel": 7.927134448350544e-10,
-              "p90_abs_rel": 9.925704032795656e-09,
+              "median_abs_rel": 3.1393834039798056e-09,
+              "p90_abs_rel": 3.349974440719997e-08,
               "max_abs_rel": 0.007413962189054283,
-              "mean_rel": 0.00020037659404129586,
-              "median_abs_err": 1.3963796163807274e-07,
+              "mean_rel": 5.823816917943667e-05,
+              "median_abs_err": 1.133206524173147e-06,
               "max_abs_err": 0.32175960624604727
             },
             "MTOW_lb": {
-              "n": 37,
-              "pass_rate": 1.0,
+              "n": 125,
+              "pass_rate": 0.992,
               "median_abs_rel": 1.1892284756555612e-06,
-              "p90_abs_rel": 1.189446964094006e-06,
-              "max_abs_rel": 0.007413902612505723,
-              "mean_rel": 0.0001992192070508345,
-              "median_abs_err": 0.014595282336813398,
-              "max_abs_err": 70.64962552055658
+              "p90_abs_rel": 1.1898354024574492e-06,
+              "max_abs_rel": 0.048726578609138795,
+              "mean_rel": 0.00044795529508333444,
+              "median_abs_err": 0.014944216338335536,
+              "max_abs_err": 482.4046210269298
             },
             "fuel_mileage_lb_per_nmi": {
-              "n": 37,
+              "n": 125,
               "pass_rate": 1.0,
-              "median_abs_rel": 1.1893145574393579e-06,
-              "p90_abs_rel": 1.2118213976743627e-06,
+              "median_abs_rel": 1.189288901360106e-06,
+              "p90_abs_rel": 1.2180958609397183e-06,
               "max_abs_rel": 0.0071311924594636335,
-              "mean_rel": 0.00019157384011718692,
-              "median_abs_err": 3.3879766064837114e-07,
-              "max_abs_err": 9.1587468102432e-06
+              "mean_rel": 1.1808409672789552e-05,
+              "median_abs_err": 1.3777999481323633e-06,
+              "max_abs_err": 0.008264899867902686
             },
             "W_battery_kg": {
-              "n": 37,
-              "pass_rate": 1.0,
-              "median_abs_rel": 1.434884957823381e-10,
-              "p90_abs_rel": 5.1067225704808e-09,
-              "max_abs_rel": 0.007101886882961812,
-              "mean_rel": 0.00018159954430498838,
-              "median_abs_err": 1.903226802824065e-07,
-              "max_abs_err": 6.741263938988482
+              "n": 125,
+              "pass_rate": 0.992,
+              "median_abs_rel": 4.946241286929865e-10,
+              "p90_abs_rel": 6.741229298675901e-08,
+              "max_abs_rel": 0.3594095457232611,
+              "mean_rel": 0.00292905314433383,
+              "median_abs_err": 3.947309323848458e-07,
+              "max_abs_err": 147.58807865260775
             },
             "S_ref_m2": {
-              "n": 37,
-              "pass_rate": 1.0,
-              "median_abs_rel": 1.8194504156515735e-11,
-              "p90_abs_rel": 1.2252523698175919e-09,
-              "max_abs_rel": 0.007415100659231179,
-              "mean_rel": 0.0002004086981730666,
-              "median_abs_err": 5.088658383556321e-10,
-              "max_abs_err": 0.19138953732704778
+              "n": 125,
+              "pass_rate": 0.992,
+              "median_abs_rel": 3.3181443069753124e-11,
+              "p90_abs_rel": 5.511366703574242e-09,
+              "max_abs_rel": 0.04872782578920954,
+              "mean_rel": 0.0004491450875609173,
+              "median_abs_err": 1.1293863622086064e-09,
+              "max_abs_err": 1.3066543828372552
             },
             "cruise_hybridization": {
-              "n": 37,
-              "pass_rate": 1.0,
-              "median_abs_rel": 7.106877696095255e-10,
-              "p90_abs_rel": 3.679740646814886e-08,
-              "max_abs_rel": 3.733972960273289e-06,
-              "mean_rel": -1.0365260563949658e-07,
-              "median_abs_err": 3.233443512939971e-10,
-              "max_abs_err": 5.327818519695882e-09
+              "n": 125,
+              "pass_rate": 0.992,
+              "median_abs_rel": 7.53854875611295e-09,
+              "p90_abs_rel": 1.7230295465028984e-06,
+              "max_abs_rel": 0.48973427307394873,
+              "mean_rel": 0.003917922743185778,
+              "median_abs_err": 1.871858219208017e-09,
+              "max_abs_err": 0.05220785232476689
+            },
+            "electric_percent": {
+              "n": 125,
+              "pass_rate": 0.992,
+              "median_abs_rel": 8.268117526424049e-09,
+              "p90_abs_rel": 1.3400829767188176e-07,
+              "max_abs_rel": 0.30757234739396916,
+              "mean_rel": 0.0024605995238958455,
+              "median_abs_err": 1.9673911566542301e-07,
+              "max_abs_err": 4.348039377629016
             }
           },
-          "coverage": 1.0,
+          "coverage": 0.946969696969697,
           "optimality_gap": {
-            "n": 37,
+            "n": 125,
             "median": -5.22172722904441e-12,
             "max": 0.007413962189054283,
-            "frac_worse_than_ref": 0.02702702702702703,
+            "frac_worse_than_ref": 0.008,
             "frac_better_than_ref": 0.0,
-            "frac_matched": 0.972972972972973
+            "frac_matched": 0.992
           },
           "regime_agreement": {
-            "n": 37,
+            "n": 125,
             "rate": 1.0,
             "basis": [
-              "cruise_hybridization"
+              "electric_percent"
             ]
           },
           "candidate_meta": {
-            "path": "/home/user/the-hangar/packages/omd/demos/brelje_2018a/results/fig5_grid.csv"
+            "path": "/home/user/the-hangar/packages/omd/demos/brelje_2018a/results/fig5_grid.csv",
+            "rescored": "/home/user/the-hangar/packages/omd/demos/brelje_2018a/results/rescored/fig5_grid.csv",
+            "converged_but_infeasible_in_truth": 7
           }
         },
         {
@@ -173,41 +185,60 @@
           "fig": "5",
           "n_reference": 252,
           "n_candidate": 132,
-          "n_candidate_ok": 132,
+          "n_candidate_ok": 125,
           "n_attempted": 132,
-          "n_common_ok": 132,
+          "n_common_ok": 125,
           "metrics": {
             "fuel_mileage_lb_per_nmi": {
-              "n": 132,
-              "pass_rate": 0.8636363636363636,
-              "median_abs_rel": 0.03543961032677797,
-              "p90_abs_rel": 0.9720480816239604,
+              "n": 125,
+              "pass_rate": 0.904,
+              "median_abs_rel": 0.032584939368052755,
+              "p90_abs_rel": 0.9718589159938774,
               "max_abs_rel": 0.9780330679345111,
-              "mean_rel": -0.21795463142279403,
-              "median_abs_err": 0.04316837797689921,
-              "max_abs_err": 0.5015480248015268
+              "mean_rel": -0.21240411130007192,
+              "median_abs_err": 0.041255840491990936,
+              "max_abs_err": 0.09618536252565058
+            },
+            "electric_percent": {
+              "n": 125,
+              "pass_rate": 0.6,
+              "median_abs_rel": 0.033005626707404596,
+              "p90_abs_rel": 0.20548819046168695,
+              "max_abs_rel": 0.8462602388650543,
+              "mean_rel": 0.05300770111183497,
+              "median_abs_err": 1.3999232022762351,
+              "max_abs_err": 9.014389078301416
             },
             "MTOW_lb": {
-              "n": 132,
-              "pass_rate": 0.6666666666666666,
-              "median_abs_rel": 0.0011723331792862746,
-              "p90_abs_rel": 0.03035976329455129,
-              "max_abs_rel": 0.2612330050240784,
-              "mean_rel": -0.004931477108300098,
-              "median_abs_err": 11.43393421426481,
-              "max_abs_err": 2602.8031139999985
+              "n": 125,
+              "pass_rate": 0.688,
+              "median_abs_rel": 0.0005913850348274947,
+              "p90_abs_rel": 0.018552365789916304,
+              "max_abs_rel": 0.11039561126171833,
+              "mean_rel": -0.004151142671682366,
+              "median_abs_err": 7.435939151169805,
+              "max_abs_err": 1249.345826999972
             }
           },
-          "coverage": 1.0,
+          "coverage": 0.946969696969697,
+          "regime_agreement": {
+            "n": 125,
+            "rate": 0.984,
+            "basis": [
+              "electric_percent"
+            ]
+          },
           "candidate_meta": {
-            "path": "/home/user/the-hangar/packages/omd/demos/brelje_2018a/results/fig5_grid.csv"
+            "path": "/home/user/the-hangar/packages/omd/demos/brelje_2018a/results/fig5_grid.csv",
+            "rescored": "/home/user/the-hangar/packages/omd/demos/brelje_2018a/results/rescored/fig5_grid.csv",
+            "converged_but_infeasible_in_truth": 7
           }
         },
         {
           "candidate": "pilot",
           "reference": "truth",
           "fig": "5",
-          "n_reference": 37,
+          "n_reference": 132,
           "n_candidate": 1,
           "n_candidate_ok": 1,
           "n_attempted": 1,
@@ -381,10 +412,10 @@
         }
       ],
       "truth_quality": {
-        "n_cells": 37,
-        "n_ok": 37,
-        "starts_agree": 34,
-        "cells_multi_start": 34
+        "n_cells": 132,
+        "n_ok": 132,
+        "starts_agree": 109,
+        "cells_multi_start": 109
       },
       "arms": [
         {
@@ -445,6 +476,118 @@
           }
         }
       ]
+    },
+    "6": {
+      "comparisons": [
+        {
+          "candidate": "truth",
+          "reference": "paper",
+          "fig": "6",
+          "n_reference": 252,
+          "n_candidate": 68,
+          "n_candidate_ok": 68,
+          "n_attempted": 68,
+          "n_common_ok": 68,
+          "metrics": {
+            "fuel_mileage_lb_per_nmi": {
+              "n": 68,
+              "pass_rate": 0.07352941176470588,
+              "median_abs_rel": 0.8868259478507604,
+              "p90_abs_rel": 52.520906293531795,
+              "max_abs_rel": 86.86295921203455,
+              "mean_rel": 14.857601037129548,
+              "median_abs_err": 0.4380758907533603,
+              "max_abs_err": 1.244919931426879
+            },
+            "doc_per_nmi": {
+              "n": 68,
+              "pass_rate": 0.0,
+              "median_abs_rel": 0.2997105443476765,
+              "p90_abs_rel": 0.9374243363605502,
+              "max_abs_rel": 1.29882405498887,
+              "mean_rel": 0.44647879343200125,
+              "median_abs_err": 0.1295631580220004,
+              "max_abs_err": 0.3721364705873011
+            },
+            "electric_percent": {
+              "n": 68,
+              "pass_rate": 0.029411764705882353,
+              "median_abs_rel": 0.6261182714585452,
+              "p90_abs_rel": 1.698607881627184,
+              "max_abs_rel": 4.792488075910134,
+              "mean_rel": 0.2981024081689334,
+              "median_abs_err": 24.7915147364318,
+              "max_abs_err": 70.51306771446072
+            },
+            "MTOW_lb": {
+              "n": 68,
+              "pass_rate": 0.0,
+              "median_abs_rel": 0.15543850202804543,
+              "p90_abs_rel": 0.21013211233743448,
+              "max_abs_rel": 0.4207520748288791,
+              "mean_rel": 0.04666525719432993,
+              "median_abs_err": 1371.1044105244546,
+              "max_abs_err": 3721.4919372599998
+            }
+          },
+          "coverage": 1.0,
+          "regime_agreement": {
+            "n": 68,
+            "rate": 0.39705882352941174,
+            "basis": [
+              "electric_percent"
+            ]
+          },
+          "candidate_meta": {
+            "path": [
+              "/home/user/the-hangar/packages/omd/demos/brelje_2018a/results/lane_a_upstream/fig6_paper.csv"
+            ],
+            "starts_agree": 0,
+            "cells_multi_start": 66
+          }
+        },
+        {
+          "candidate": "lane_b",
+          "reference": "truth",
+          "fig": "6",
+          "n_reference": 68,
+          "n_candidate": 132,
+          "n_candidate_ok": 0,
+          "n_attempted": 68,
+          "n_common_ok": 0,
+          "metrics": {},
+          "coverage": 0.0,
+          "candidate_meta": {
+            "path": "/home/user/the-hangar/packages/omd/demos/brelje_2018a/results/fig6_grid.csv",
+            "rescored": "/home/user/the-hangar/packages/omd/demos/brelje_2018a/results/rescored/fig6_grid.csv",
+            "converged_but_infeasible_in_truth": 132
+          }
+        },
+        {
+          "candidate": "lane_b",
+          "reference": "paper",
+          "fig": "6",
+          "n_reference": 252,
+          "n_candidate": 132,
+          "n_candidate_ok": 0,
+          "n_attempted": 132,
+          "n_common_ok": 0,
+          "metrics": {},
+          "coverage": 0.0,
+          "candidate_meta": {
+            "path": "/home/user/the-hangar/packages/omd/demos/brelje_2018a/results/fig6_grid.csv",
+            "rescored": "/home/user/the-hangar/packages/omd/demos/brelje_2018a/results/rescored/fig6_grid.csv",
+            "converged_but_infeasible_in_truth": 132
+          }
+        }
+      ],
+      "truth_quality": {
+        "n_cells": 68,
+        "n_ok": 68,
+        "starts_agree": 0,
+        "cells_multi_start": 66
+      },
+      "arms": []
     }
   }
 }

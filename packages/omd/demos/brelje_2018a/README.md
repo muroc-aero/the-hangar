@@ -19,7 +19,19 @@ minimizes trip direct operating cost (DOC).
   steps; read off the pcolormesh cell edges in the figure crops); the
   upstream truth lane and the digitized paper both use it, and the 11x12
   cells are a subset.
-- **Convergence:** fig5 132/132, fig6 132/132 -- **264/264 (100 %)**
+- **Convergence -- corrected 2026-09-26.** The committed grids report
+  264/264 converged, but re-scoring every design in the upstream model
+  (`stats/rescore_sweep.py` -> `results/rescored/`) shows that only
+  **125/132 fig5 and 0/132 fig6 cells solve the paper's problem**. The
+  other 139 cells came from `pipeline/retry_failed.py` /
+  `retry_stuck_cells.py`, which build through `lane_a/hybrid_mdo.py`.
+  That file lacked the paper overrides (structural fudge 2.0, 2.2 m
+  prop) until this date. So those cells optimized the stock C90GT: an
+  MTOW margin of -2 to -956 lb and ~4070 ft BFL when evaluated with the
+  paper airframe. Every fig6 cell has a `retry-warm-start` run_id. The
+  lane A fix makes future retries correct; the fig6 grid needs a re-run
+  (`run_paper_grid.sh`). `stats/collect_stats.py` counts these cells as
+  not covered.
 - **Physics fidelity:** matches upstream `HybridTwinTestCase` published
   values to 1e-5 (see `validation/check_omd_physics.py`)
 - **MDO fidelity vs upstream:** the omd optimum equals OpenConcept's own
@@ -70,6 +82,15 @@ Three pieces turn "does it match the paper?" into numbers:
    multistart (the upstream start plus the `high` bracket). It also
    re-scores externally produced designs (`rescore_design`), which is
    how agent runs are graded.
+   Fig 6 needs objective scaling the upstream script never had to
+   choose. Unscaled, DOC/nmi (~0.7) stops SLSQP a few iterations in and
+   no two starts agree; with `ref=0.01` all starts agree. At 500 nmi /
+   450 Wh/kg the result is DOC 0.660, MTOW 8819 lb and 7.9 % electric,
+   against the paper's ~0.663 / 8817 lb / 6.4 %. Fig 6 cells also start
+   from the Fig 5 truth optimum. `polish` re-runs any cell where truth
+   is infeasible or another source found a better optimum, warm-started
+   from that design and the neighbours. Upstream's own optimum is always
+   the one recorded.
 3. **Statistics** -- `stats/collect_stats.py` joins paper, truth, the
    scripted omd sweep (`lane_b`), and any number of agent-driven runs,
    and reports per figure and metric: coverage, pass rate at tolerance,

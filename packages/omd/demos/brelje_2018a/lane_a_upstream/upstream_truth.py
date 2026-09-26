@@ -111,6 +111,8 @@ COLUMNS = [
     "n_iter", "wall_time_s", "error",
 ]
 
+COST_OBJECTIVE_REF = 0.01  # see add_mdo_problem
+
 FUEL_LHV_MJ_PER_KG = 43.0  # Jet-A, for the energy-fraction diagnostic only
 
 
@@ -230,7 +232,12 @@ def add_mdo_problem(prob, objective: str) -> None:
     if objective == "fuel":
         m.add_objective("mixed_objective")
     elif objective == "cost":
-        m.add_objective("doc_per_nmi")
+        # DOC/nmi is O(0.5); unscaled, SLSQP's 1e-6 tolerance stops it a
+        # few iterations in, far from the optimum, with every start landing
+        # somewhere different. ref=0.01 puts it at O(50), the same order
+        # as the fuel objective. (Upstream has no cost objective, so this
+        # scaling is ours, like the cost model itself.)
+        m.add_objective("doc_per_nmi", ref=COST_OBJECTIVE_REF)
     else:
         raise ValueError(f"unknown objective {objective!r}")
 
@@ -506,9 +513,28 @@ def cmd_grid(args) -> int:
         raise SystemExit(f"{starts_path} exists; pass --resume to continue it "
                          "or delete it for a fresh run")
     done = _read_done(starts_path)
-    jobs = [(float(r), float(e), args.objective, s)
-            for r in ranges for e in energies for s in starts
-            if (float(r), float(e), s) not in done]
+    # "fig5" is a warm start from the fuel truth's optimum at the same
+    # cell (cost objective only); the other names are START_PRESETS.
+    fig5_best = {}
+    if "fig5" in starts:
+        f5 = OUT_DIR / f"fig5_{args.grid}.csv"
+        if f5.exists():
+            with open(f5) as f:
+                fig5_best = {(float(r["design_range_nm"]), float(r["spec_energy_whkg"])): r
+                             for r in csv.DictReader(f) if r["feasible"].lower() == "true"}
+    jobs = []
+    for r in ranges:
+        for e in energies:
+            for s in starts:
+                if (float(r), float(e), s) in done:
+                    continue
+                if s == "fig5":
+                    row = fig5_best.get((float(r), float(e)))
+                    if row is None:
+                        continue
+                    jobs.append((float(r), float(e), args.objective, s, _warm_from_row(row)))
+                else:
+                    jobs.append((float(r), float(e), args.objective, s))
     # Demo-grid cells (every other range column) first, so a partial run
     # already covers the 11 x 12 grid the omd sweep used.
     jobs.sort(key=lambda j: (j[0] % 50.0 != 0.0, j[0], j[1]))
