@@ -91,34 +91,37 @@ def make_aircraft_model_class(
             flight_phase = self.options["flight_phase"]
 
             # ---- Controls ----
-            controls = self.add_subsystem("controls", om.IndepVarComp(), promotes_outputs=["*"])
+            # CFM56 receives throttle from the mission phase and has no
+            # aircraft-level controls, matching OpenConcept's B738 example.
+            if not is_cfm56:
+                controls = self.add_subsystem(
+                    "controls",
+                    om.IndepVarComp(),
+                    promotes_outputs=["*"],
+                )
 
-            if is_cfm56:
-                # CFM56 doesn't need RPM control
-                pass
-            else:
                 # Propeller RPM control
                 if num_engines == 1:
                     controls.add_output("prop1rpm", val=np.ones((nn,)) * rpm_val, units="rpm")
                 else:
                     controls.add_output("proprpm", val=np.ones((nn,)) * rpm_val, units="rpm")
 
-            # Hybridization control for hybrid architectures
-            if is_hybrid:
-                if flight_phase in ["climb", "cruise", "descent"]:
-                    controls.add_output("hybridization", val=0.0)
-                else:
-                    # Takeoff phases use battery backup
-                    controls.add_output("hybridization", val=1.0)
+                # Hybridization control for hybrid architectures
+                if is_hybrid:
+                    if flight_phase in ["climb", "cruise", "descent"]:
+                        controls.add_output("hybridization", val=0.0)
+                    else:
+                        # Takeoff phases use battery backup
+                        controls.add_output("hybridization", val=1.0)
 
-                self.add_subsystem(
-                    "hybrid_factor",
-                    LinearInterpolator(num_nodes=nn),
-                    promotes_inputs=[
-                        ("start_val", "hybridization"),
-                        ("end_val", "hybridization"),
-                    ],
-                )
+                    self.add_subsystem(
+                        "hybrid_factor",
+                        LinearInterpolator(num_nodes=nn),
+                        promotes_inputs=[
+                            ("start_val", "hybridization"),
+                            ("end_val", "hybridization"),
+                        ],
+                    )
 
             # ---- Propulsion ----
             if is_cfm56:

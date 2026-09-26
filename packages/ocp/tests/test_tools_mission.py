@@ -85,3 +85,30 @@ async def test_run_caravan_mission_analysis():
     assert result["results"]["fuel_burn_kg"] > 0
     assert result["results"]["OEW_kg"] > 0
     assert result["validation"]["passed"]
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("mission_type", ["basic", "full", "with_reserve"])
+async def test_run_b738_mission_analysis(mission_type):
+    """The advertised B738 twin-turbofan workflow runs for every mission type."""
+    await load_aircraft_template("b738")
+    await set_propulsion_architecture("twin_turbofan")
+    await configure_mission(
+        mission_type=mission_type,
+        cruise_altitude=33000,
+        mission_range=2050,
+        reserve_altitude=15000 if mission_type == "with_reserve" else None,
+        reserve_range=100 if mission_type == "with_reserve" else None,
+        loiter_duration=20 if mission_type == "with_reserve" else None,
+        num_nodes=11,
+    )
+
+    result = await run_mission_analysis()
+
+    assert result["schema_version"] == "1.0"
+    assert result["tool_name"] == "run_mission_analysis"
+    assert result["run_id"]
+    assert result["results"]["fuel_burn_kg"] > 0
+    assert result["results"]["OEW_kg"] > 0
+    assert result["results"]["MTOW_kg"] > result["results"]["OEW_kg"]
+    assert result["validation"]["passed"]
