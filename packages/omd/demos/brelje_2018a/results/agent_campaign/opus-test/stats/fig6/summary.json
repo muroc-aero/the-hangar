@@ -1,0 +1,356 @@
+{
+  "sources": [
+    "paper",
+    "truth",
+    "lane_b",
+    "opus-test"
+  ],
+  "figures": {
+    "6": {
+      "comparisons": [
+        {
+          "candidate": "truth",
+          "reference": "paper",
+          "fig": "6",
+          "n_reference": 252,
+          "n_candidate": 252,
+          "n_candidate_ok": 252,
+          "n_attempted": 252,
+          "n_common_ok": 252,
+          "metrics": {
+            "fuel_mileage_lb_per_nmi": {
+              "n": 252,
+              "pass_rate": 0.7857142857142857,
+              "median_abs_rel": 0.020301684951469424,
+              "p90_abs_rel": 0.8918575726034369,
+              "max_abs_rel": 0.9522640938373866,
+              "mean_rel": -0.18412814712530115,
+              "median_abs_err": 0.013538995109043328,
+              "max_abs_err": 0.35346061500739046
+            },
+            "doc_per_nmi": {
+              "n": 252,
+              "pass_rate": 0.626984126984127,
+              "median_abs_rel": 0.03190885269033577,
+              "p90_abs_rel": 0.06674125695273576,
+              "max_abs_rel": 0.09583677039365301,
+              "mean_rel": -0.032400917460710034,
+              "median_abs_err": 0.0168418113445169,
+              "max_abs_err": 0.05544263981746378
+            },
+            "electric_percent": {
+              "n": 252,
+              "pass_rate": 0.626984126984127,
+              "median_abs_rel": 0.03755982589104683,
+              "p90_abs_rel": 0.5435866424804384,
+              "max_abs_rel": 6.35064707162646,
+              "mean_rel": 0.23699281769860642,
+              "median_abs_err": 1.1614952751104748,
+              "max_abs_err": 42.59685665318066
+            },
+            "MTOW_lb": {
+              "n": 252,
+              "pass_rate": 0.5476190476190477,
+              "median_abs_rel": 0.007765277664911559,
+              "p90_abs_rel": 0.02393917874388609,
+              "max_abs_rel": 0.40322358404824327,
+              "mean_rel": 0.0067783621327018465,
+              "median_abs_err": 70.30900120000115,
+              "max_abs_err": 3611.00562826
+            }
+          },
+          "coverage": 1.0,
+          "regime_agreement": {
+            "n": 252,
+            "rate": 0.9365079365079365,
+            "basis": [
+              "electric_percent"
+            ]
+          },
+          "candidate_meta": {
+            "path": [
+              "/home/user/the-hangar/packages/omd/demos/brelje_2018a/results/lane_a_upstream/fig6_paper.csv"
+            ],
+            "starts_agree": 194,
+            "cells_multi_start": 215
+          }
+        },
+        {
+          "candidate": "lane_b",
+          "reference": "truth",
+          "fig": "6",
+          "n_reference": 252,
+          "n_candidate": 132,
+          "n_candidate_ok": 0,
+          "n_attempted": 132,
+          "n_common_ok": 0,
+          "metrics": {},
+          "coverage": 0.0,
+          "candidate_meta": {
+            "path": "/home/user/the-hangar/packages/omd/demos/brelje_2018a/results/fig6_grid.csv",
+            "rescored": "/home/user/the-hangar/packages/omd/demos/brelje_2018a/results/rescored/fig6_grid.csv",
+            "converged_but_infeasible_in_truth": 132
+          }
+        },
+        {
+          "candidate": "lane_b",
+          "reference": "paper",
+          "fig": "6",
+          "n_reference": 252,
+          "n_candidate": 132,
+          "n_candidate_ok": 0,
+          "n_attempted": 132,
+          "n_common_ok": 0,
+          "metrics": {},
+          "coverage": 0.0,
+          "candidate_meta": {
+            "path": "/home/user/the-hangar/packages/omd/demos/brelje_2018a/results/fig6_grid.csv",
+            "rescored": "/home/user/the-hangar/packages/omd/demos/brelje_2018a/results/rescored/fig6_grid.csv",
+            "converged_but_infeasible_in_truth": 132
+          }
+        },
+        {
+          "candidate": "opus-test",
+          "reference": "truth",
+          "fig": "6",
+          "n_reference": 252,
+          "n_candidate": 6,
+          "n_candidate_ok": 3,
+          "n_attempted": 6,
+          "n_common_ok": 3,
+          "metrics": {
+            "objective": {
+              "n": 3,
+              "pass_rate": 0.3333333333333333,
+              "median_abs_rel": 0.0457691610593833,
+              "p90_abs_rel": 0.08191215269785825,
+              "max_abs_rel": 0.09094790060747698,
+              "mean_rel": 0.045570418101146704,
+              "median_abs_err": 0.03290792443069335,
+              "max_abs_err": 0.04674805455694819
+            },
+            "MTOW_lb": {
+              "n": 3,
+              "pass_rate": 0.6666666666666666,
+              "median_abs_rel": 0.00010773335432902494,
+              "p90_abs_rel": 0.033803138106069025,
+              "max_abs_rel": 0.04222698929400402,
+              "mean_rel": 0.01403975003641881,
+              "median_abs_err": 0.9501479229274992,
+              "max_abs_err": 420.3834470793663
+            },
+            "fuel_mileage_lb_per_nmi": {
+              "n": 3,
+              "pass_rate": 0.3333333333333333,
+              "median_abs_rel": 0.03960515595577007,
+              "p90_abs_rel": 0.39271258858200575,
+              "max_abs_rel": 0.48098944673856464,
+              "mean_rel": 0.173547656536697,
+              "median_abs_err": 0.06754499223554689,
+              "max_abs_err": 0.13757857905868293
+            },
+            "W_battery_kg": {
+              "n": 3,
+              "pass_rate": 0.3333333333333333,
+              "median_abs_rel": 0.042022254503828634,
+              "p90_abs_rel": 0.06622675806739863,
+              "max_abs_rel": 0.07227788395829111,
+              "mean_rel": -0.010675772470462598,
+              "median_abs_err": 6.4899006063727995,
+              "max_abs_err": 126.9514155572192
+            },
+            "S_ref_m2": {
+              "n": 3,
+              "pass_rate": 0.6666666666666666,
+              "median_abs_rel": 0.00010773335415876446,
+              "p90_abs_rel": 0.03380313810592004,
+              "max_abs_rel": 0.04222698929386036,
+              "mean_rel": 0.014039750036356692,
+              "median_abs_err": 0.0025735308398999734,
+              "max_abs_err": 1.1386329867619835
+            },
+            "cruise_hybridization": {
+              "n": 3,
+              "pass_rate": 0.6666666666666666,
+              "median_abs_rel": 0.008779067653738721,
+              "p90_abs_rel": 0.09253584022423775,
+              "max_abs_rel": 0.1134750333668625,
+              "mean_rel": -0.04075136780188549,
+              "median_abs_err": 0.0001758361569586149,
+              "max_abs_err": 0.10123211618496097
+            },
+            "electric_percent": {
+              "n": 3,
+              "pass_rate": 0.6666666666666666,
+              "median_abs_rel": 0.0017882836783341832,
+              "p90_abs_rel": 0.05764070494623899,
+              "max_abs_rel": 0.07160381026321519,
+              "mean_rel": -0.024069215751196704,
+              "median_abs_err": 0.014073951574388843,
+              "max_abs_err": 6.2321792225623085
+            },
+            "doc_per_nmi": {
+              "n": 3,
+              "pass_rate": 0.3333333333333333,
+              "median_abs_rel": 0.0457691610593833,
+              "p90_abs_rel": 0.08191215269785825,
+              "max_abs_rel": 0.09094790060747698,
+              "mean_rel": 0.045570418101146704,
+              "median_abs_err": 0.03290792443069335,
+              "max_abs_err": 0.04674805455694819
+            }
+          },
+          "coverage": 0.5,
+          "optimality_gap": {
+            "n": 3,
+            "median": 0.0457691610593833,
+            "max": 0.09094790060747698,
+            "frac_worse_than_ref": 0.6666666666666666,
+            "frac_better_than_ref": 0.0,
+            "frac_matched": 0.33333333333333337
+          },
+          "regime_agreement": {
+            "n": 3,
+            "rate": 1.0,
+            "basis": [
+              "electric_percent"
+            ]
+          },
+          "candidate_meta": {
+            "path": "packages/omd/demos/brelje_2018a/results/agent_campaign/opus-test/seed0/fig6",
+            "n_rows": 6
+          }
+        },
+        {
+          "candidate": "opus-test",
+          "reference": "paper",
+          "fig": "6",
+          "n_reference": 252,
+          "n_candidate": 6,
+          "n_candidate_ok": 3,
+          "n_attempted": 6,
+          "n_common_ok": 3,
+          "metrics": {
+            "fuel_mileage_lb_per_nmi": {
+              "n": 3,
+              "pass_rate": 0.3333333333333333,
+              "median_abs_rel": 0.04271200989945896,
+              "p90_abs_rel": 0.3195439600469913,
+              "max_abs_rel": 0.3887519475838744,
+              "mean_rel": 0.14162186699570423,
+              "median_abs_err": 0.07262656196882222,
+              "max_abs_err": 0.11858100657150922
+            },
+            "doc_per_nmi": {
+              "n": 3,
+              "pass_rate": 0.3333333333333333,
+              "median_abs_rel": 0.044372882852205794,
+              "p90_abs_rel": 0.05419801405057217,
+              "max_abs_rel": 0.05665429685016376,
+              "mean_rel": 0.031885839851312714,
+              "median_abs_err": 0.02382522073560056,
+              "max_abs_err": 0.040314687749904876
+            },
+            "electric_percent": {
+              "n": 3,
+              "pass_rate": 0.3333333333333333,
+              "median_abs_rel": 0.17021738284360105,
+              "p90_abs_rel": 0.2203234921144154,
+              "max_abs_rel": 0.232850019432119,
+              "mean_rel": 0.0012179215964606138,
+              "median_abs_err": 1.4837759749761066,
+              "max_abs_err": 5.064472725794275
+            },
+            "MTOW_lb": {
+              "n": 3,
+              "pass_rate": 0.6666666666666666,
+              "median_abs_rel": 0.0005902023055198274,
+              "p90_abs_rel": 0.027478860181887596,
+              "max_abs_rel": 0.03420102465097954,
+              "mean_rel": 0.011251054603176063,
+              "median_abs_err": 7.4210680070737,
+              "max_abs_err": 343.1246810496723
+            }
+          },
+          "coverage": 0.5,
+          "regime_agreement": {
+            "n": 3,
+            "rate": 1.0,
+            "basis": [
+              "electric_percent"
+            ]
+          },
+          "candidate_meta": {
+            "path": "packages/omd/demos/brelje_2018a/results/agent_campaign/opus-test/seed0/fig6",
+            "n_rows": 6
+          }
+        }
+      ],
+      "truth_quality": {
+        "n_cells": 252,
+        "n_ok": 252,
+        "starts_agree": 194,
+        "cells_multi_start": 215
+      },
+      "arms": [
+        {
+          "arm": "opus-test",
+          "reference": "truth",
+          "aggregate": {
+            "coverage": {
+              "mean": 0.5,
+              "min": 0.5,
+              "max": 0.5,
+              "n_seeds": 1
+            },
+            "objective_pass_rate": {
+              "mean": 0.3333333333333333,
+              "min": 0.3333333333333333,
+              "max": 0.3333333333333333,
+              "n_seeds": 1
+            },
+            "objective_median_abs_rel": {
+              "mean": 0.0457691610593833,
+              "min": 0.0457691610593833,
+              "max": 0.0457691610593833,
+              "n_seeds": 1
+            },
+            "frac_matched_optimum": {
+              "mean": 0.33333333333333337,
+              "min": 0.33333333333333337,
+              "max": 0.33333333333333337,
+              "n_seeds": 1
+            },
+            "regime_agreement": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n_seeds": 1
+            }
+          }
+        },
+        {
+          "arm": "opus-test",
+          "reference": "paper",
+          "aggregate": {
+            "coverage": {
+              "mean": 0.5,
+              "min": 0.5,
+              "max": 0.5,
+              "n_seeds": 1
+            },
+            "objective_pass_rate": null,
+            "objective_median_abs_rel": null,
+            "frac_matched_optimum": null,
+            "regime_agreement": {
+              "mean": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "n_seeds": 1
+            }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "case_id": "fig5-r500-e450",
+  "fig": "5",
+  "design_range_nm": 500.0,
+  "spec_energy_whkg": 450.0,
+  "run_id": null,
+  "converged": false,
+  "arm": "opus-test",
+  "model": null,
+  "status": "no_report",
+  "cost_usd": 1.8430787999999998,
+  "turns": 53,
+  "grading": null,
+  "n_runs": 12,
+  "wall_time_s": 408.3010756969452
+}
