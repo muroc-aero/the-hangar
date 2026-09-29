@@ -97,7 +97,7 @@ Top-level config keys:
 | Key | Meaning |
 |-----|---------|
 | `aircraft_template` | Built-in aircraft: `caravan`, `b738`, `kingair`, `tbm850` |
-| `aircraft_data` | Inline aircraft data dict (alternative to a template) |
+| `aircraft_data` | With `aircraft_template`: field overrides merged over the template (see below). Without one: the complete aircraft data dict |
 | `architecture` | `turboprop`, `twin_turboprop`, `series_hybrid`, `twin_series_hybrid`, `twin_turbofan` |
 | `num_nodes` | Integration nodes per phase (must be odd; default 11) |
 | `mission_params` | Mission profile dict, see below |
@@ -105,7 +105,39 @@ Top-level config keys:
 | `propulsion_overrides` | Propulsion parameter overrides |
 | `skip_fields` | Aircraft-data fields to omit |
 | `include_cost_model` | Adds promoted `doc_per_nmi` trip cost |
+| `structural_fudge` | Structural weight multiplier of the empty-weight model (OpenConcept default 1.6), applied to every phase |
 | `slots` | Provider slots, see below |
+
+**Changing template aircraft data.** Start from `aircraft_template` and
+override individual fields; any of these works and they all land in the
+same place:
+
+```yaml
+components:
+- id: mission
+  type: ocp/FullMission
+  config:
+    aircraft_template: kingair
+    architecture: twin_series_hybrid
+    structural_fudge: 2.0            # airframe weight multiplier (stock 1.6)
+    aircraft_data:                   # merged over the template
+      ac|propulsion|propeller|diameter: {value: 2.2, units: m}
+      # nested template shape also works: {ac: {propulsion: {...}}}
+operating_points:                    # aircraft-data paths only, for ocp/*
+  ac|propulsion|engine|rating: {value: 1117.2, units: hp}
+```
+
+Units are converted to the template's own; a bare number is taken in the
+template's units. An override path the template does not have, or one the
+architecture does not read (e.g. `ac|weights|OEW` on a propeller
+architecture, where OEW is computed), is an error with suggestions, both
+in `validate_plan` and at run time -- never silently ignored.
+`ac|weights|structural_fudge` is accepted as an alias for
+`structural_fudge`. The run summary reports `structural_fudge` and the
+`aircraft_overrides` it applied. For an `ocp/*` component on its own,
+mission conditions belong in `mission_params`; other `operating_points`
+keys are flagged by `validate_plan`. Values that are design variables
+start from the override unless the DV sets `initial`.
 
 `mission_params` keys carry units in their suffix (`_NM`, `_ft`,
 `_ftmin`, `_kn`): `mission_range_NM`, `cruise_altitude_ft`,
@@ -204,6 +236,22 @@ config:
   as-configured MTOW (no loop); `evt/SizingFD` is the gradient-free black-box
   fallback. `input_specs` overrides which config keys are exposed as
   OpenMDAO inputs/DVs.
+
+## Plan-level starting values (`initial_values`, DV `initial`)
+
+`initial_values: [{name, val, units?}, ...]` sets any independent model
+value by name after setup; `design_variables[].initial` sets a DV's
+starting point (a DV's `initial` wins over an `initial_values` entry for
+the same variable, so warm starts are not overwritten). Both apply in
+analysis and optimize runs alike, with or without an objective.
+
+Every name must take effect: a name that does not exist, or that names a
+quantity the model computes (its value would be overwritten when the
+model runs), stops the run with an error listing similar settable names.
+An input fed by an independent variable is redirected to that source.
+Prefer factory config (e.g. `structural_fudge`, `aircraft_data`) over raw
+paths: per-phase constants such as `cruise.OEW.structural_fudge` set on
+one phase leave the others at their defaults.
 
 ## DV / constraint / objective short names
 

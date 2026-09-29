@@ -380,12 +380,14 @@ PLAN_SCHEMA: dict[str, Any] = {
         "initial_values": {
             "type": "array",
             "description": (
-                "Plan-level starting value overrides applied after "
-                "setup().  Useful for warm-starting optimizers.  DVs "
-                "can also declare `initial:` inline in "
-                "design_variables[]; top-level entries here work for "
-                "arbitrary paths (factory inputs, mission params, "
-                "etc.)."
+                "Plan-level starting values applied after setup(), in "
+                "analysis and optimize runs alike.  Top-level entries "
+                "work for any independent model value (factory inputs, "
+                "mission params, etc.); DVs can also declare `initial:` "
+                "inline in design_variables[], which wins for the same "
+                "variable.  A name that does not exist, or that the "
+                "model computes, is an error listing similar settable "
+                "names."
             ),
             "items": {
                 "type": "object",

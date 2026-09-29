@@ -70,6 +70,12 @@ def _resolve_value(key: str, raw: Any) -> Any:
     if not (isinstance(raw, dict) and "value" in raw):
         return raw
 
+    # OpenConcept aircraft-data paths (``ac|...``) keep their tag: the OCP
+    # factory converts them to the aircraft template's own units, which
+    # differ per field and per template.
+    if "|" in key:
+        return raw
+
     value = raw["value"]
     units = raw.get("units")
     if units is None:

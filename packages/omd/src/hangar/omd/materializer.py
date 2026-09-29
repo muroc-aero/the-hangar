@@ -186,6 +186,15 @@ def materialize(
     if skipped_initial_values:
         metadata["skipped_initial_values"] = skipped_initial_values
 
+    # Values that must take effect: factory options that set model
+    # constants (e.g. OCP structural_fudge) and everything the plan sets
+    # itself (initial_values, design_variables[].initial). Applied last,
+    # so the plan wins over factory defaults, in analysis and optimize
+    # mode alike; a name that does not exist is an error, not a skip.
+    strict = dict(metadata.get("strict_initial_values") or {})
+    strict.update(_plan_values(plan, metadata))
+    metadata["applied_plan_values"] = _apply_strict_values(prob, strict)
+
     # Configure recorder after setup
     rec_path = _configure_recorder(prob, recording_level, recorder_path)
     metadata["recorder_path"] = rec_path
@@ -285,6 +294,7 @@ def _materialize_composite(
     component_ids: list[str] = []
     all_initial_values: dict[str, object] = {}
     all_initial_values_with_units: dict[str, dict] = {}
+    all_strict_values: dict[str, dict] = {}
 
     # Shared DVs (plan-level) injected as `skip_fields` per consumer so
     # each factory omits the named inputs from its internal IVC. The
@@ -341,6 +351,9 @@ def _materialize_composite(
 
         for path, spec in inner_meta.get("initial_values_with_units", {}).items():
             all_initial_values_with_units[f"{comp_id}.{path}"] = spec
+
+        for path, spec in inner_meta.get("strict_initial_values", {}).items():
+            all_strict_values[f"{comp_id}.{path}"] = spec
 
         component_metadata[comp_id] = inner_meta
 
@@ -405,6 +418,7 @@ def _materialize_composite(
         "component_metadata": component_metadata,
         "initial_values": all_initial_values,
         "initial_values_with_units": all_initial_values_with_units,
+        "strict_initial_values": all_strict_values,
         "shared_var_paths": shared_var_paths,
         "var_paths": merged_var_paths,
     }
@@ -738,32 +752,8 @@ def _configure_driver(
     components = plan.get("components", [])
     component_type = components[0].get("type") if components else None
 
-    # Build var_paths: factory-provided mappings take precedence
-    var_paths = metadata.get("var_paths")
-    if metadata.get("_composite"):
-        # For composite problems, merge var_paths from each component,
-        # prefixed by component_id. Also keep unprefixed entries for
-        # single-component shorthand (first-wins).
-        merged_var_paths: dict[str, str] = {}
-        for comp_id, comp_meta in metadata.get("component_metadata", {}).items():
-            for short_name, full_path in comp_meta.get("var_paths", {}).items():
-                merged_var_paths[f"{comp_id}.{short_name}"] = f"{comp_id}.{full_path}"
-                if short_name not in merged_var_paths:
-                    merged_var_paths[short_name] = f"{comp_id}.{full_path}"
-        # Shared-var names win over component-local var_paths so
-        # `design_variables: [{name: ac|geom|wing|AR}]` registers the
-        # DV at the root shared_ivc rather than the first component.
-        for sv_name, sv_path in metadata.get("shared_var_paths", {}).items():
-            merged_var_paths[sv_name] = sv_path
-        var_paths = merged_var_paths or var_paths
+    var_paths = _plan_var_paths(metadata)
 
-    # Plan-level initial values live in metadata so materialize() can
-    # apply them after setup().  Two sources:
-    #   1. ``design_variables[*].initial`` -- per-DV warm starts.
-    #   2. Top-level ``initial_values: [{name, val, units?}, ...]`` --
-    #      arbitrary paths (mission params, factory inputs) that the
-    #      plan wants to override without a factory code change.
-    plan_initial: dict[str, dict] = {}
     for dv in plan.get("design_variables", []):
         dv_name = dv["name"]
         path = _resolve_var_path(dv_name, point_name, surface_names,
@@ -782,27 +772,6 @@ def _configure_driver(
         if "units" in dv:
             kwargs["units"] = dv["units"]
         prob.model.add_design_var(path, **kwargs)
-        if "initial" in dv:
-            plan_initial[path] = {
-                "val": dv["initial"],
-                "units": dv.get("units"),
-            }
-
-    for iv in plan.get("initial_values", []) or []:
-        name = iv["name"]
-        path = _resolve_var_path(name, point_name, surface_names,
-                                 component_type, var_paths=var_paths)
-        plan_initial[path] = {
-            "val": iv["val"],
-            "units": iv.get("units"),
-        }
-
-    if plan_initial:
-        # User-wins: merge AFTER factory initial_values_with_units so
-        # the plan's warm starts override factory defaults.
-        existing = dict(metadata.get("initial_values_with_units", {}) or {})
-        existing.update(plan_initial)
-        metadata["initial_values_with_units"] = existing
 
     # Constraints
     point_names = metadata.get("point_names")
@@ -854,6 +823,176 @@ def _configure_driver(
         if "units" in obj:
             kwargs["units"] = obj["units"]
         prob.model.add_objective(path, **kwargs)
+
+
+def _plan_var_paths(metadata: dict) -> dict[str, str] | None:
+    """Short-name -> path map for resolving plan variable names.
+
+    Factory-provided mappings take precedence. For composite problems the
+    per-component maps are merged, prefixed by component id, with
+    unprefixed entries kept for single-component shorthand (first wins)
+    and shared-var names winning over component-local ones, so
+    ``design_variables: [{name: ac|geom|wing|AR}]`` registers the DV at
+    the root shared_ivc rather than the first component.
+    """
+    var_paths = metadata.get("var_paths")
+    if metadata.get("_composite"):
+        merged_var_paths: dict[str, str] = {}
+        for comp_id, comp_meta in metadata.get("component_metadata", {}).items():
+            for short_name, full_path in comp_meta.get("var_paths", {}).items():
+                merged_var_paths[f"{comp_id}.{short_name}"] = f"{comp_id}.{full_path}"
+                if short_name not in merged_var_paths:
+                    merged_var_paths[short_name] = f"{comp_id}.{full_path}"
+        for sv_name, sv_path in metadata.get("shared_var_paths", {}).items():
+            merged_var_paths[sv_name] = sv_path
+        var_paths = merged_var_paths or var_paths
+    return var_paths
+
+
+def _plan_values(plan: dict, metadata: dict) -> dict[str, dict]:
+    """Starting values the plan itself sets, keyed by resolved path.
+
+    Two sources, applied whether or not the plan optimizes:
+
+    1. Top-level ``initial_values: [{name, val, units?}, ...]`` --
+       arbitrary paths (aircraft constants, mission params, factory
+       inputs) the plan overrides without a factory code change.
+    2. ``design_variables[*].initial`` -- per-DV starting points (and
+       warm starts, which write here). A DV's own ``initial`` wins over
+       an ``initial_values`` entry for the same path, so a warm start is
+       never overwritten by the plan's cold-start value.
+    """
+    point_name = metadata.get("point_name", "AS_point_0")
+    surface_names = metadata.get("surface_names", [])
+    components = plan.get("components", [])
+    component_type = components[0].get("type") if components else None
+    var_paths = _plan_var_paths(metadata)
+
+    values: dict[str, dict] = {}
+    for i, iv in enumerate(plan.get("initial_values", []) or []):
+        path = _resolve_var_path(iv["name"], point_name, surface_names,
+                                 component_type, var_paths=var_paths)
+        values[path] = {"val": iv["val"], "units": iv.get("units"),
+                        "source": f"initial_values[{i}] ({iv['name']})"}
+    for dv in plan.get("design_variables", []) or []:
+        if "initial" not in dv:
+            continue
+        path = _resolve_var_path(dv["name"], point_name, surface_names,
+                                 component_type, var_paths=var_paths)
+        values[path] = {"val": dv["initial"], "units": dv.get("units"),
+                        "source": f"design_variables[{dv['name']}].initial"}
+    return values
+
+
+def _leaf(name: str) -> str:
+    return name.replace("|", ".").rsplit(".", 1)[-1]
+
+
+def _apply_strict_values(prob: om.Problem, values: dict[str, dict]) -> list[dict]:
+    """Set values that must take effect, or raise UserInputError.
+
+    Unlike factory defaults (best effort), every value here was asked for
+    by the plan (or a factory option such as ``structural_fudge``), so a
+    name that does not exist -- or names a quantity the model computes,
+    where a set value would be overwritten on the first run -- is an
+    error that lists what went wrong and the closest real names.
+    Returns ``[{name, target, source}]`` for what was applied.
+    """
+    import difflib
+
+    if not values:
+        return []
+    model = prob.model
+    outputs = model.get_io_metadata(iotypes=("output",), metadata_keys=("tags",),
+                                    return_rel_names=False)
+    inputs = model.get_io_metadata(iotypes=("input",), return_rel_names=False)
+    out_prom: dict[str, list[str]] = {}
+    for abs_name, meta in outputs.items():
+        out_prom.setdefault(meta["prom_name"], []).append(abs_name)
+    in_prom: dict[str, list[str]] = {}
+    for abs_name, meta in inputs.items():
+        in_prom.setdefault(meta["prom_name"], []).append(abs_name)
+    # Connection map is populated by setup(); private, so degrade to "no
+    # computed-source check" if a future OpenMDAO renames it.
+    conns: dict[str, str] = getattr(model, "_conn_global_abs_in2out", None) or {}
+
+    def indep(abs_out: str) -> bool:
+        return "openmdao:indep_var" in (outputs.get(abs_out, {}).get("tags") or ())
+
+    def prom_of(abs_out: str) -> str:
+        return outputs.get(abs_out, {}).get("prom_name", abs_out)
+
+    def settable(prom: str) -> bool:
+        if prom in out_prom:
+            return all(indep(a) for a in out_prom[prom])
+        return all((conns.get(a) or "_auto_ivc.").startswith("_auto_ivc.")
+                   for a in in_prom.get(prom, ()))
+
+    applied: list[dict] = []
+    problems: list[str] = []
+    candidates: list[str] | None = None
+    for name, spec in values.items():
+        units = spec.get("units") if isinstance(spec, dict) else None
+        val = spec.get("val") if isinstance(spec, dict) else spec
+        source = (spec.get("source") if isinstance(spec, dict) else None) or name
+
+        abs_outs = [name] if name in outputs else out_prom.get(name)
+        abs_ins = [name] if name in inputs else in_prom.get(name)
+        target, reason = name, None
+        if abs_outs:
+            if not all(indep(a) for a in abs_outs):
+                reason = (f"'{name}' is computed by the model, so a set value "
+                          "is overwritten when it runs")
+        elif abs_ins:
+            srcs = {conns.get(a) for a in abs_ins} - {None}
+            srcs = {s for s in srcs if not s.startswith("_auto_ivc.")}
+            computed = sorted(s for s in srcs if not indep(s))
+            if computed:
+                reason = (f"'{name}' is an input connected to "
+                          f"'{prom_of(computed[0])}', which the model computes, "
+                          "so a set value is overwritten when it runs")
+            elif len(srcs) == 1:
+                # Fed by an independent variable: setting the input would be
+                # overwritten by that source on the first run -- set the source.
+                target = prom_of(next(iter(srcs)))
+            elif srcs:
+                reason = (f"'{name}' is fed by several sources "
+                          f"({', '.join(sorted(prom_of(s) for s in srcs))}); set those")
+        else:
+            if candidates is None:
+                candidates = sorted(c for c in set(out_prom) | set(in_prom) if settable(c))
+            leaf = _leaf(name)
+            same_leaf = [c for c in candidates if _leaf(c) == leaf]
+            close = difflib.get_close_matches(name, candidates, n=3, cutoff=0.6)
+            hint = list(dict.fromkeys(same_leaf[:8] + close))
+            reason = (f"'{name}' does not exist in the model"
+                      + (f"; similar settable names: {', '.join(hint)}" if hint else ""))
+            if leaf == "structural_fudge":
+                reason += (". For an OCP mission set the component's "
+                           "config.structural_fudge, which applies it to every "
+                           "phase's empty-weight model")
+        if reason is None:
+            try:
+                if units:
+                    prob.set_val(target, val, units=units)
+                else:
+                    prob.set_val(target, val)
+            except Exception as exc:  # noqa: BLE001 -- OpenMDAO raises many types
+                reason = f"could not set '{target}': {exc}"
+        if reason:
+            problems.append(f"{source}: {reason}")
+        else:
+            applied.append({"name": name, "target": target, "source": source})
+
+    if problems:
+        from hangar.sdk.errors import UserInputError
+
+        raise UserInputError(
+            "Plan values could not be applied (nothing was run):\n  "
+            + "\n  ".join(problems),
+            details={"problems": problems},
+        )
+    return applied
 
 
 def _resolve_var_path(

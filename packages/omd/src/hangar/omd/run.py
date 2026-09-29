@@ -1271,6 +1271,15 @@ def _extract_ocp_summary(prob, metadata: dict, mode: str) -> dict:
     if mtow is not None:
         summary["MTOW_kg"] = mtow
 
+    # Structural weight multiplier the empty-weight model actually used
+    # (OpenConcept default 1.6), and any aircraft-data overrides applied
+    # over the template -- so a run shows which airframe it sized.
+    fudge = _safe_get("cruise.OEW.structural_fudge")
+    if fudge is not None:
+        summary["structural_fudge"] = fudge
+    if metadata.get("aircraft_overrides"):
+        summary["aircraft_overrides"] = metadata["aircraft_overrides"]
+
     # TOFL (full mission only)
     if metadata.get("has_takeoff"):
         tofl = _safe_get("rotate.range_final")

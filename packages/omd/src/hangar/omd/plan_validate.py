@@ -87,7 +87,7 @@ _KNOWN_SLOT_NAMES: dict[str, set[str]] = {
 _OCP_CONFIG_KEYS = {
     "aircraft_template", "aircraft_data", "architecture", "num_nodes",
     "mission_params", "solver_settings", "propulsion_overrides",
-    "skip_fields", "include_cost_model", "slots",
+    "skip_fields", "include_cost_model", "slots", "structural_fudge",
 }
 
 _OCP_MISSION_PARAM_KEYS = {
@@ -484,6 +484,61 @@ def validate_component_config(plan: dict) -> list[ValidationFinding]:
                         ),
                         suggestions=_suggest(key, _OCP_MISSION_PARAM_KEYS),
                     ))
+            findings += _ocp_override_findings(plan, i, config)
+    return findings
+
+
+def _ocp_override_findings(plan: dict, index: int, config: dict) -> list[ValidationFinding]:
+    """Aircraft overrides an OCP component cannot apply.
+
+    Runs the factory's own override checks (``aircraft_overrides``)
+    statically: unknown aircraft-data paths, fields the architecture does
+    not read, a structural_fudge the weight model will not see. For a
+    single-component OCP plan, operating_points keys that are not
+    aircraft overrides are flagged too -- the mission factory reads its
+    conditions from ``config.mission_params`` and would ignore them.
+    """
+    from hangar.omd.factories.ocp.aircraft_overrides import (
+        collect_overrides,
+        is_override_key,
+    )
+    from hangar.omd.factories.ocp.architectures import PROPULSION_ARCHITECTURES
+    from hangar.omd.factories.ocp.templates import AIRCRAFT_TEMPLATES
+
+    findings: list[ValidationFinding] = []
+    op = plan.get("operating_points") or {}
+    components = plan.get("components") or []
+    if len(components) == 1 and isinstance(op, dict):
+        for key in op:
+            if isinstance(key, str) and not is_override_key(key):
+                findings.append(ValidationFinding(
+                    path=f"operating_points.{key}",
+                    message=(
+                        f"OCP missions do not read operating point '{key}'. "
+                        "Mission conditions go in components[].config."
+                        "mission_params; operating_points only carry "
+                        "aircraft-data overrides ('ac|...' keys) and "
+                        "structural_fudge."
+                    ),
+                    suggestions=_suggest(key, _OCP_MISSION_PARAM_KEYS),
+                ))
+
+    template = config.get("aircraft_template")
+    arch = config.get("architecture") or (
+        AIRCRAFT_TEMPLATES[template]["default_architecture"]
+        if template in AIRCRAFT_TEMPLATES else "turboprop")
+    if arch not in PROPULSION_ARCHITECTURES:
+        return findings  # reported at materialize time with the valid list
+    try:
+        *_, problems = collect_overrides(config, op, arch)
+    except ValueError:
+        return findings  # unknown template / no aircraft: materialize reports it
+    for p in problems:
+        path = p.path if p.path.startswith("operating_points") else (
+            f"components[{index}].{p.path}")
+        findings.append(ValidationFinding(
+            path=path, message=p.message, suggestions=p.suggestions,
+        ))
     return findings
 
 

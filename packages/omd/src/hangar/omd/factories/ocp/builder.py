@@ -15,6 +15,7 @@ from openconcept.mission import (
     MissionWithReserve,
 )
 
+from hangar.omd.factories.ocp.aircraft_overrides import resolve_aircraft
 from hangar.omd.factories.ocp.architectures import PROPULSION_ARCHITECTURES
 from hangar.omd.factories.ocp.templates import AIRCRAFT_TEMPLATES
 from hangar.omd.factories.ocp.defaults import (
@@ -50,6 +51,7 @@ def _build_mission_problem(
     slots: dict | None = None,
     skip_fields: list[str] | None = None,
     include_cost_model: bool = False,
+    structural_fudge: float | None = None,
 ) -> tuple[om.Problem, FactoryMetadata]:
     """Build a complete OpenMDAO mission problem.
 
@@ -58,6 +60,9 @@ def _build_mission_problem(
             Mission values are put into metadata as
             initial_values_with_units for the materializer to apply.
         slots: Optional dict of slot overrides for the aircraft model.
+        structural_fudge: Structural weight multiplier for the
+            architecture's empty-weight model (OpenConcept default 1.6),
+            set on every phase's ``OEW.const.structural_fudge``.
 
     Returns (problem, metadata).
     """
@@ -407,37 +412,38 @@ def _build_mission_problem(
     if slots:
         metadata["active_slots"] = slots
 
+    # Structural weight multiplier: a constant inside each phase's
+    # empty-weight model, not an aircraft-data field. Set on every phase
+    # that carries an aircraft model (the full mission's engine-out climb
+    # included) so takeoff, mission, margin and cost all see one airframe.
+    fudge_values: dict[str, dict] = {}
+    if structural_fudge is not None:
+        oew_phases = phases + (["engineoutclimb"] if mission_type == "full" else [])
+        fudge_values = {
+            f"analysis.{ph}.acmodel.OEW.const.structural_fudge": {
+                "val": float(structural_fudge), "units": None,
+                "source": "structural_fudge",
+            }
+            for ph in oew_phases
+        }
+        metadata["structural_fudge"] = float(structural_fudge)
+
     if defer_setup:
         metadata["initial_values_with_units"] = _collect_mission_values(
             params, phases, num_nodes, is_hybrid, mission_type,
         )
+        if fudge_values:
+            # Applied strictly by the materializer: a path that does not
+            # exist is an error, not a silently skipped value.
+            metadata["strict_initial_values"] = fudge_values
     else:
         prob.setup(check=False, mode="fwd")
         _set_mission_values(prob, params, phases, num_nodes, is_hybrid, mission_type)
+        for path, spec in fudge_values.items():
+            prob.set_val(path, spec["val"])
         metadata["_setup_done"] = True
 
     return prob, metadata
-
-
-def _load_aircraft_data(config: dict) -> dict:
-    """Load aircraft data from template name or inline config."""
-    template_name = config.get("aircraft_template")
-    if template_name:
-        if template_name not in AIRCRAFT_TEMPLATES:
-            available = ", ".join(sorted(AIRCRAFT_TEMPLATES.keys()))
-            raise ValueError(
-                f"Unknown aircraft template '{template_name}'. "
-                f"Available: {available}"
-            )
-        return copy.deepcopy(AIRCRAFT_TEMPLATES[template_name]["data"])
-
-    aircraft_data = config.get("aircraft_data")
-    if aircraft_data:
-        return copy.deepcopy(aircraft_data)
-
-    raise ValueError(
-        "OCP factory requires either 'aircraft_template' or 'aircraft_data' in config"
-    )
 
 
 def _resolve_architecture(config: dict) -> str:
@@ -459,36 +465,48 @@ def _resolve_architecture(config: dict) -> str:
     return "turboprop"
 
 
+def _build_from_config(
+    component_config: dict,
+    operating_points: dict,
+    mission_type: str,
+) -> tuple[om.Problem, FactoryMetadata]:
+    """Shared body of the three OCP mission entry points."""
+    config = dict(component_config)
+    defer_setup = config.pop("_defer_setup", False)
+    architecture = _resolve_architecture(config)
+    aircraft = resolve_aircraft(config, operating_points, architecture)
+    propulsion_overrides = config.get("propulsion_overrides")
+    if aircraft.battery_specific_energy is not None:
+        propulsion_overrides = {
+            **(propulsion_overrides or {}),
+            "battery_specific_energy": aircraft.battery_specific_energy,
+        }
+
+    prob, metadata = _build_mission_problem(
+        aircraft_data=aircraft.data,
+        architecture=architecture,
+        mission_type=mission_type,
+        mission_params=config.get("mission_params", {}),
+        num_nodes=config.get("num_nodes", 11),
+        solver_settings=config.get("solver_settings", {}),
+        propulsion_overrides=propulsion_overrides,
+        defer_setup=defer_setup,
+        slots=config.get("slots"),
+        skip_fields=config.get("skip_fields"),
+        include_cost_model=bool(config.get("include_cost_model", False)),
+        structural_fudge=aircraft.structural_fudge,
+    )
+    if aircraft.applied:
+        metadata["aircraft_overrides"] = aircraft.applied
+    return prob, metadata
+
+
 def build_ocp_basic_mission(
     component_config: dict,
     operating_points: dict,
 ) -> tuple[om.Problem, FactoryMetadata]:
     """Build an OpenConcept basic mission (climb/cruise/descent)."""
-    config = dict(component_config)
-    defer_setup = config.pop("_defer_setup", False)
-    slots = config.get("slots")
-    ac_data = _load_aircraft_data(config)
-    architecture = _resolve_architecture(config)
-    num_nodes = config.get("num_nodes", 11)
-    mission_params = config.get("mission_params", {})
-    solver_settings = config.get("solver_settings", {})
-    propulsion_overrides = config.get("propulsion_overrides")
-    skip_fields = config.get("skip_fields")
-    include_cost_model = bool(config.get("include_cost_model", False))
-
-    return _build_mission_problem(
-        aircraft_data=ac_data,
-        architecture=architecture,
-        mission_type="basic",
-        mission_params=mission_params,
-        num_nodes=num_nodes,
-        solver_settings=solver_settings,
-        propulsion_overrides=propulsion_overrides,
-        defer_setup=defer_setup,
-        slots=slots,
-        skip_fields=skip_fields,
-        include_cost_model=include_cost_model,
-    )
+    return _build_from_config(component_config, operating_points, "basic")
 
 
 def build_ocp_full_mission(
@@ -496,31 +514,7 @@ def build_ocp_full_mission(
     operating_points: dict,
 ) -> tuple[om.Problem, FactoryMetadata]:
     """Build an OpenConcept full mission with balanced-field takeoff."""
-    config = dict(component_config)
-    defer_setup = config.pop("_defer_setup", False)
-    slots = config.get("slots")
-    ac_data = _load_aircraft_data(config)
-    architecture = _resolve_architecture(config)
-    num_nodes = config.get("num_nodes", 11)
-    mission_params = config.get("mission_params", {})
-    solver_settings = config.get("solver_settings", {})
-    propulsion_overrides = config.get("propulsion_overrides")
-    skip_fields = config.get("skip_fields")
-    include_cost_model = bool(config.get("include_cost_model", False))
-
-    return _build_mission_problem(
-        aircraft_data=ac_data,
-        architecture=architecture,
-        mission_type="full",
-        mission_params=mission_params,
-        num_nodes=num_nodes,
-        solver_settings=solver_settings,
-        propulsion_overrides=propulsion_overrides,
-        defer_setup=defer_setup,
-        slots=slots,
-        skip_fields=skip_fields,
-        include_cost_model=include_cost_model,
-    )
+    return _build_from_config(component_config, operating_points, "full")
 
 
 def build_ocp_mission_with_reserve(
@@ -528,31 +522,7 @@ def build_ocp_mission_with_reserve(
     operating_points: dict,
 ) -> tuple[om.Problem, FactoryMetadata]:
     """Build an OpenConcept mission with reserve + loiter phases."""
-    config = dict(component_config)
-    defer_setup = config.pop("_defer_setup", False)
-    slots = config.get("slots")
-    ac_data = _load_aircraft_data(config)
-    architecture = _resolve_architecture(config)
-    num_nodes = config.get("num_nodes", 11)
-    mission_params = config.get("mission_params", {})
-    solver_settings = config.get("solver_settings", {})
-    propulsion_overrides = config.get("propulsion_overrides")
-    skip_fields = config.get("skip_fields")
-    include_cost_model = bool(config.get("include_cost_model", False))
-
-    return _build_mission_problem(
-        aircraft_data=ac_data,
-        architecture=architecture,
-        mission_type="with_reserve",
-        mission_params=mission_params,
-        num_nodes=num_nodes,
-        solver_settings=solver_settings,
-        propulsion_overrides=propulsion_overrides,
-        defer_setup=defer_setup,
-        slots=slots,
-        skip_fields=skip_fields,
-        include_cost_model=include_cost_model,
-    )
+    return _build_from_config(component_config, operating_points, "with_reserve")
 
 
 # Shared contract across all three OCP mission entry points. Produces
