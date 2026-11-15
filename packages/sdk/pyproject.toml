@@ -8,8 +8,8 @@ dependencies = [
     # fastmcp.* helpers this SDK and the tool servers import. The workspace
     # venv is protected by uv.lock; the isolated .venv-avy (no lockfile)
     # is not, so the bound must live here.
-    "fastmcp>=2.0,<4",
-    "mcp>=1.0,<2",
+    "fastmcp>=3.4.10,<4",
+    "mcp>=1.30,<2",
     "pydantic>=2.0",
     "python-dotenv>=1.0",
     "pyyaml>=6.0",
@@ -19,10 +19,10 @@ dependencies = [
 hangar-study = "hangar.sdk.study.cli:main"
 
 [project.optional-dependencies]
-auth = ["PyJWT[crypto]>=2.8", "httpx>=0.27"]
+auth = ["PyJWT[crypto]>=2.15", "httpx>=0.27"]
 viz  = ["matplotlib"]
 http = ["uvicorn>=0.27", "itsdangerous>=2.1"]
-all  = ["PyJWT[crypto]>=2.8", "httpx>=0.27", "matplotlib", "uvicorn>=0.27", "itsdangerous>=2.1"]
+all  = ["PyJWT[crypto]>=2.15", "httpx>=0.27", "matplotlib", "uvicorn>=0.27", "itsdangerous>=2.1"]
 
 [build-system]
 requires = ["hatchling"]

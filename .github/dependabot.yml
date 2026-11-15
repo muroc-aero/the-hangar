@@ -1,0 +1,27 @@
+# Dependency update PRs. Security updates are raised as soon as an
+# advisory lands; the weekly schedule batches routine version bumps.
+#
+# Not covered here: the upstream clones pinned in scripts/upstream-pins.env
+# (bumped by hand) and the unlocked .venv-avy (resolved at build time
+# against the floors in packages/sdk/pyproject.toml).
+
+version: 2
+updates:
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      python:
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: docker
+    directories:
+      - /packages/*
+    schedule:
+      interval: weekly
