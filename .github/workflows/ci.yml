@@ -123,6 +123,16 @@ jobs:
       - name: Set up environment
         run: bash scripts/dev-setup.sh --pypi
 
+      - name: Audit locked dependencies for known vulnerabilities
+        # Open packages only (the range-safety submodule is not checked
+        # out here). continue-on-error so an advisory published overnight
+        # is visible on the run without masking the test results below.
+        continue-on-error: true
+        run: |
+          uv export --frozen --all-extras --no-hashes --no-emit-workspace \
+            -o "$RUNNER_TEMP/requirements-audit.txt" -q
+          uvx pip-audit -r "$RUNNER_TEMP/requirements-audit.txt" --no-deps --disable-pip
+
       - name: Full suite (slow + golden tiers included)
         run: uv run pytest -q
 
