@@ -53,7 +53,7 @@ jobs:
           enable-cache: true
 
       - name: Cache upstream clones
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: upstream
           key: upstream-${{ hashFiles('scripts/upstream-pins.env', 'scripts/pycycle-numpy2.patch') }}
@@ -76,7 +76,7 @@ jobs:
           enable-cache: true
 
       - name: Cache upstream clones
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: upstream
           key: upstream-${{ hashFiles('scripts/upstream-pins.env', 'scripts/pycycle-numpy2.patch') }}
@@ -115,7 +115,7 @@ jobs:
           enable-cache: true
 
       - name: Cache upstream clones
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: upstream
           key: upstream-${{ hashFiles('scripts/upstream-pins.env', 'scripts/pycycle-numpy2.patch') }}
