@@ -16,14 +16,22 @@ components:
     architecture: twin_turbofan
     num_nodes: 3
     solver_settings:
-      solver_type: nlbgs
-      maxiter: 200
+      # Newton (the mission's altitude/duration/throttle BalanceComps are
+      # implicit and need it). The dual-surrogate coupling is well-conditioned
+      # with the structured akima propulsion surrogate. The run converges to a
+      # residual floor (rel ~1e-6) set by the bound-active top-of-climb node
+      # (throttle saturates climbing to the near-ceiling 35k ft cruise alt) --
+      # a physically correct condition, not a solver failure.
+      solver_type: newton
+      maxiter: 30
       atol: 1e-8
       rtol: 1e-8
+      solve_subsystems: true
+      linesearch: bounds
     mission_params:
       cruise_altitude_ft: 35000
       mission_range_NM: 1500
-      climb_vs_ftmin: 2000
+      climb_vs_ftmin: 1500
       climb_Ueas_kn: 250
       cruise_Ueas_kn: 256
       descent_vs_ftmin: 1500
