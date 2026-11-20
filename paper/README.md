@@ -3,7 +3,9 @@
 Collects everything the paper reports -- the three-lane parity table, the
 sandboxed local-model eval table, and the paper-reproduction figures -- and
 makes each piece re-runnable from scratch. All commands run from the repo
-root.
+root. For step-by-step setup and run instructions across all Lane C
+execution paths (scripted, live-agent, hangar-evals, have-agent), see
+`docs/lane-c-runbook.md`.
 
 This file is the map of what exists and where it comes from. The step-by-step
 runbook for regenerating the two tables is `paper/tables/README.md` -- start
