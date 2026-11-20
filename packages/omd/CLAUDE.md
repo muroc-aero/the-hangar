@@ -494,3 +494,40 @@ explorer.exe "$(wslpath -w dag.html)"
 # Export standalone Python script
 omd-cli export plan.yaml --output script.py
 ```
+
+## Agent-facing discoverability (2026-09-21)
+
+- `plan_add_component` rejects an unregistered `comp_type` at call time
+  (`UserInputError`), and every unknown-type message -- there and in
+  `validate_plan` / `run_plan` semantic validation -- lists the registered
+  types (`unknown_component_type_message` in `plan_validate.py`). A close
+  match adds "Did you mean"; the list is there regardless, because an
+  invented name has no close match and a bare "unknown" just restarts the
+  guessing (every gemma seed on the 2026-09-21 eval arm).
+- The server's MCP `instructions` block lives in `hangar/omd/instructions.py`
+  (`INSTRUCTIONS`), importable without building the server. hangar-evals
+  reads it plus `tools/resources.py` to hand OpenCode agents the same texts
+  Claude Code gets over MCP (OpenCode 1.17.5 forwards neither instructions
+  nor resources). Edit the text there, not in `server.py`.
+- Three more agent-facing gaps closed after the 2026-09-21 gemma arm (each
+  had cost whole eval cells): `run_plan` / `validate_plan` / `run_polar`
+  given a plan *directory* resolve `<dir>/plan.yaml` or raise a typed error
+  naming it (`resolve_plan_path(..., want_file=True)`); OAS factories check
+  the `surfaces` list up front (`require_surfaces` in `factories/oas.py`:
+  `name` and `num_y` per entry, and a hint when mesh keys sit at the
+  component top level) instead of leaking `KeyError('num_y')`; and
+  `reference.md` must list every registered type
+  (`tests/test_reference_coverage.py` fails when a new factory is not
+  documented -- add a row to the type table AND a config-keys bullet).
+- Relative plan paths resolve **workspace first, server cwd second**
+  (`resolve_plan_path` / `resolve_plan_dir` in `tools/_helpers.py`), and
+  every tool that writes -- `write_plan`, the `plan_*` builders, and
+  `assemble_plan`'s `output` -- writes only into the workspace
+  (`workspace_write_target`). On the http transport the cwd and the
+  workspace differ; the old cwd-first order let an `assemble_plan` output
+  next to the cwd shadow the workspace copy the agent kept rewriting
+  (2026-09-22 qwen arm, pyc_turbojet seed 0: three `write_plan` rewrites,
+  same validation error each time). "Not found" messages for relative
+  paths name the next tool call (`assemble_plan(plan_dir=...)`,
+  `plan_init`, `read_plan('.')`) and never list host paths -- a sandboxed
+  agent cannot use them and goes hunting with `find` instead.

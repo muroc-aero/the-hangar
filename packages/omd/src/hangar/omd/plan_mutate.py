@@ -355,10 +355,23 @@ def add_component(
 
     if not comp_id:
         raise UserInputError("comp_id must be a non-empty string")
-    if not comp_type:
+    if not comp_type or not isinstance(comp_type, str):
         raise UserInputError("comp_type must be a non-empty string")
     if not isinstance(config, dict):
         raise UserInputError("config must be a mapping")
+    # Reject an unregistered type HERE, not three tools later in validate_plan:
+    # an agent that gets a success envelope for `VortexLatticeWing` builds the
+    # rest of the plan on it. The message lists the registered types.
+    from hangar.omd.plan_validate import (
+        component_type_suggestions, unknown_component_type_message)
+    from hangar.omd.registry import list_factories
+
+    known = list_factories()
+    if comp_type not in known:
+        hint = component_type_suggestions(comp_type, known)
+        raise UserInputError(
+            unknown_component_type_message(comp_type, known)
+            + (f" Did you mean: {', '.join(hint)}?" if hint else ""))
 
     comp_dir = plan_dir / "components"
     comp_dir.mkdir(exist_ok=True)

@@ -18,6 +18,7 @@ from openaerostruct.aerodynamics.aero_groups import AeroPoint
 
 # Reuse mesh and surface helpers from the aerostruct factory
 from hangar.omd.factories.oas import (
+    require_surfaces,
     _generate_mesh,
     _apply_sweep,
     _apply_dihedral,
@@ -156,9 +157,7 @@ def build_oas_aeropoint(
     Returns:
         Tuple of (problem, metadata). Problem has setup NOT called.
     """
-    surface_configs = component_config.get("surfaces", [])
-    if not surface_configs:
-        raise ValueError("component config must contain 'surfaces' list")
+    surface_configs = require_surfaces(component_config)
 
     surfaces = [_plan_config_to_aero_surface(sc) for sc in surface_configs]
 

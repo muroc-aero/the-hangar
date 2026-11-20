@@ -87,6 +87,43 @@ _KNOWN_SURFACE_KEYS: frozenset[str] = (
 )
 
 
+# The keys _generate_mesh / _plan_config_to_surface_dict index directly.
+_REQUIRED_SURFACE_KEYS: tuple[str, ...] = ("name", "num_y")
+_SURFACE_EXAMPLE = ("surfaces: [{name: wing, wing_type: rect, num_x: 2, num_y: 7, "
+                    "span: 10.0, root_chord: 1.0, symmetry: true}]")
+
+
+def require_surfaces(component_config: dict) -> list[dict]:
+    """The ``surfaces`` list of an OAS component config, checked up front.
+
+    Raises ``ValueError`` (surfaced as the run's ``[materialize]`` error)
+    that says WHERE the keys go. Agents put ``num_y``/``span``/... at the
+    component top level next to ``surfaces: [{id: wing}]`` and got a bare
+    ``KeyError: 'num_y'`` (every oas_aerostruct_rect and oas_ocp_combined
+    seed of the 2026-09-21 gemma arm, up to 40 retries each).
+    """
+    misplaced = sorted(k for k in component_config if k in _KNOWN_SURFACE_KEYS and k != "name")
+    hint = (f" Mesh/aero/structural keys found at the component top level: "
+            f"{misplaced} -- they go INSIDE each surfaces[] entry." if misplaced else "")
+    surface_configs = component_config.get("surfaces")
+    if not isinstance(surface_configs, list) or not surface_configs:
+        raise ValueError(
+            "component config must contain a non-empty 'surfaces' list, e.g. "
+            f"{_SURFACE_EXAMPLE}.{hint}"
+        )
+    for i, sc in enumerate(surface_configs):
+        if not isinstance(sc, dict):
+            raise ValueError(f"surfaces[{i}] must be a mapping, got {type(sc).__name__}")
+        missing = [k for k in _REQUIRED_SURFACE_KEYS if k not in sc]
+        if missing:
+            raise ValueError(
+                f"surfaces[{i}] is missing required key(s) {missing}; every "
+                f"surface entry needs {list(_REQUIRED_SURFACE_KEYS)} plus its "
+                f"mesh keys, e.g. {_SURFACE_EXAMPLE}.{hint}"
+            )
+    return surface_configs
+
+
 def _warn_unknown_surface_keys(
     surface_config: dict, known_keys: frozenset[str],
 ) -> None:
@@ -459,9 +496,7 @@ def build_oas_aerostruct(
         - problem is the assembled om.Problem (setup NOT called)
         - metadata has point_name, surface_names, flight_conditions
     """
-    surface_configs = component_config.get("surfaces", [])
-    if not surface_configs:
-        raise ValueError("component config must contain 'surfaces' list")
+    surface_configs = require_surfaces(component_config)
 
     # Build OAS surface dicts
     surfaces = [_plan_config_to_surface_dict(sc) for sc in surface_configs]
@@ -654,9 +689,7 @@ def build_oas_aerostruct_multipoint(
     Returns:
         Tuple of (problem, metadata) where problem has setup NOT called.
     """
-    surface_configs = component_config.get("surfaces", [])
-    if not surface_configs:
-        raise ValueError("component config must contain 'surfaces' list")
+    surface_configs = require_surfaces(component_config)
 
     surfaces = [_plan_config_to_surface_dict(sc) for sc in surface_configs]
 
